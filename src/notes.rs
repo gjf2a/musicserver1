@@ -1,16 +1,15 @@
-use std::collections::BTreeSet;
-use bare_metal_modulo::ModNumC;
+use bare_metal_modulo::{MNum, ModNumC};
 use ordered_float::OrderedFloat;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-struct Note {
+pub struct Note {
     note: u8,
     duration: OrderedFloat<f64>,
     intensity: OrderedFloat<f64>
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct Melody {
+pub struct Melody {
     notes: Vec<Note>
 }
 
@@ -67,37 +66,60 @@ impl Melody {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct Scale {
-    notes: BTreeSet<ModNumC<u8, 12>>
+const NOTES_PER_OCTAVE: u8 = 12;
+const DIATONIC_SCALE_SIZE: usize = 7;
+const DIATONIC_SCALE_HOPS: [u8; DIATONIC_SCALE_SIZE] = [2, 2, 1, 2, 2, 2, 1];
+
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub struct Scale {
+    root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>,
+    root_note: u8,
+    octave_notes: [u8; DIATONIC_SCALE_SIZE]
 }
 
 impl Scale {
-    pub fn from(s: &str) -> Self {
-        Scale {notes: s.split(",").map(|n| ModNumC::new(n.parse::<u8>().unwrap())).collect()}
+    pub fn all_modes_for(root_note: u8) -> Vec<Self> {
+        (0..DIATONIC_SCALE_SIZE)
+            .map(|i| Self::new(ModNumC::new(i), root_note))
+            .collect()
+    }
+
+    pub fn new(root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>, root_note: u8) -> Self {
+        let mut octave_notes = [root_note; DIATONIC_SCALE_SIZE];
+        let mut offset = DIATONIC_SCALE_HOPS[root_pos.a()];
+        for i in 1..octave_notes.len() {
+            octave_notes[i] += offset;
+            offset += DIATONIC_SCALE_HOPS[(root_pos + i).a()];
+        }
+        Scale {root_note, root_pos, octave_notes}
+    }
+
+    pub fn note(&self, degree: u8) -> u8 {
+        assert!(degree >= 1);
+        let mut result = self.root_note;
+        let mut to_next = self.root_pos;
+        for _ in 0..(degree - 1) {
+            result += DIATONIC_SCALE_HOPS[to_next.a()];
+            to_next += 1;
+        }
+        result
     }
 
     pub fn contains(&self, note: u8) -> bool {
-        self.notes.contains(&(ModNumC::new(note)))
+        self.octave_notes.contains(&(self.root_note + note % NOTES_PER_OCTAVE))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::notes::{Melody, Scale};
+    use bare_metal_modulo::ModNumC;
+    use crate::notes::{DIATONIC_SCALE_SIZE, Melody, Scale};
 
     #[test]
     fn test_parse_melody() {
         let m = "69,0.24,1.0,69,0.09,0.0,72,0.31,1.0,72,0.08,0.0,71,0.29,0.69";
         let notes = Melody::from(m);
         assert_eq!(format!("{:?}", notes), "Melody { notes: [Note { note: 69, duration: OrderedFloat(0.24), intensity: OrderedFloat(1.0) }, Note { note: 69, duration: OrderedFloat(0.09), intensity: OrderedFloat(0.0) }, Note { note: 72, duration: OrderedFloat(0.31), intensity: OrderedFloat(1.0) }, Note { note: 72, duration: OrderedFloat(0.08), intensity: OrderedFloat(0.0) }, Note { note: 71, duration: OrderedFloat(0.29), intensity: OrderedFloat(0.69) }] }");
-    }
-
-    #[test]
-    fn test_parse_scale() {
-        let s = "62,64,66,67,69,71,72,74,76,78,79,81,83,84,86,88,90,91,93,95,96,98";
-        let scale = Scale::from(s);
-        assert_eq!(format!("{:?}", scale), "Scale { notes: {ModNumC { num: 0 }, ModNumC { num: 2 }, ModNumC { num: 4 }, ModNumC { num: 6 }, ModNumC { num: 7 }, ModNumC { num: 9 }, ModNumC { num: 11 }} }");
     }
 
     #[test]
@@ -121,6 +143,39 @@ mod tests {
         assert_eq!(subs.len(), expected_subs.len());
         for i in 0..expected_subs.len() {
             assert_eq!(Melody::from(expected_subs[i]).without_silence(), subs[i]);
+        }
+    }
+
+    #[test]
+    fn test_scales() {
+        let c5_major = Scale::new(ModNumC::new(0), 72);
+        let c_notes: [u8; 8] = [72, 74, 76, 77, 79, 81, 83, 84];
+        for (i, n) in c_notes.iter().enumerate() {
+            let degree = (i + 1) as u8;
+            assert_eq!(c5_major.note(degree), *n);
+            assert!(c5_major.contains(*n));
+        }
+
+        let not_c_notes: [u8; 5] = [73, 75, 78, 80, 82];
+        for n in not_c_notes.iter() {
+            assert!(!c5_major.contains(*n));
+        }
+    }
+
+    #[test]
+    fn test_modes() {
+        let modes = Scale::all_modes_for(72);
+        let expected: [[u8; DIATONIC_SCALE_SIZE]; DIATONIC_SCALE_SIZE] = [
+            [72, 74, 76, 77, 79, 81, 83],
+            [72, 74, 75, 77, 79, 81, 82],
+            [72, 73, 75, 77, 79, 80, 82],
+            [72, 74, 76, 78, 79, 81, 83],
+            [72, 74, 76, 77, 79, 81, 82],
+            [72, 74, 75, 77, 79, 80, 82],
+            [72, 73, 75, 77, 78, 80, 82]
+        ];
+        for i in 0..DIATONIC_SCALE_SIZE {
+            assert_eq!(modes[i].octave_notes, expected[i]);
         }
     }
 }
