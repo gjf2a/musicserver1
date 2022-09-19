@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
+use std::ops::Index;
 use bare_metal_modulo::{MNum, ModNumC};
 use ordered_float::OrderedFloat;
 use histogram_macros::*;
@@ -6,7 +7,7 @@ use enum_iterator::{Sequence, all};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Note {
-    note: u8,
+    note: i8,
     duration: OrderedFloat<f64>,
     intensity: OrderedFloat<f64>
 }
@@ -113,16 +114,16 @@ impl Melody {
     }
 }
 
-const NOTES_PER_OCTAVE: u8 = 12;
+const NOTES_PER_OCTAVE: i8 = 12;
 const DIATONIC_SCALE_SIZE: usize = 7;
-const DIATONIC_SCALE_HOPS: [u8; DIATONIC_SCALE_SIZE] = [2, 2, 1, 2, 2, 2, 1];
+const DIATONIC_SCALE_HOPS: [i8; DIATONIC_SCALE_SIZE] = [2, 2, 1, 2, 2, 2, 1];
 const NOTE_NAMES: [&str; NOTES_PER_OCTAVE as usize] = ["C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab", "A", "A#/Bb", "B"];
 const MODE_NAMES: [&str; DIATONIC_SCALE_SIZE] = ["ionian", "dorian", "phrygian", "lydian", "mixolydian", "aeolian", "locrian"];
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct MusicMode {
     root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>,
-    octave_notes: [u8; DIATONIC_SCALE_SIZE]
+    octave_notes: [i8; DIATONIC_SCALE_SIZE]
 }
 
 impl MusicMode {
@@ -136,7 +137,7 @@ impl MusicMode {
         format!("{} {}", NOTE_NAMES[self.root() as usize], MODE_NAMES[self.root_pos.a()])
     }
 
-    pub fn new(root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>, root_note: u8) -> Self {
+    pub fn new(root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>, root_note: i8) -> Self {
         let mut octave_notes = [root_note; DIATONIC_SCALE_SIZE];
         let mut offset = DIATONIC_SCALE_HOPS[root_pos.a()];
         for i in 1..octave_notes.len() {
@@ -146,7 +147,27 @@ impl MusicMode {
         MusicMode {root_pos, octave_notes}
     }
 
-    pub fn note(&self, degree: u8) -> u8 {
+    pub fn next_note(&self, reference_note: i8, scale_steps_away: i8) -> i8 {
+        let mut octaves_up = reference_note / NOTES_PER_OCTAVE;
+        match self.octave_notes.iter()
+            .position(self.octave_note(reference_note)) {
+            Some(i) => {
+                let mut j = i as i8 + scale_steps_away;
+                while j < 0 {
+                    j += DIATONIC_SCALE_SIZE as i8;
+                    octaves_up -= 1;
+                }
+                while j >= DIATONIC_SCALE_SIZE as i8 {
+                    j -= DIATONIC_SCALE_SIZE as i8;
+                    octaves_up += 1;
+                }
+                self.octave_notes[j as usize] + octaves_up * NOTES_PER_OCTAVE
+            }
+            None => {self.next_note(reference_note + 1, scale_steps_away)}
+        }
+    }
+
+    pub fn note(&self, degree: u8) -> i8 {
         assert!(degree >= 1);
         let mut result = self.root();
         let mut to_next = self.root_pos;
@@ -157,12 +178,16 @@ impl MusicMode {
         result
     }
 
-    fn root(&self) -> u8 {
+    fn root(&self) -> i8 {
         self.octave_notes[0]
     }
 
-    pub fn contains(&self, note: u8) -> bool {
-        self.octave_notes.contains(&(self.root() + note % NOTES_PER_OCTAVE))
+    fn octave_note(&self, note: i8) -> i8 {
+        self.root() + note % NOTES_PER_OCTAVE
+    }
+
+    pub fn contains(&self, note: i8) -> bool {
+        self.octave_notes.contains(&(self.octave_note(note)))
     }
 }
 
