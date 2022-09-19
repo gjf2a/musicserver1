@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, HashMap};
-use std::ops::Index;
 use bare_metal_modulo::{MNum, ModNumC};
 use ordered_float::OrderedFloat;
 use histogram_macros::*;
@@ -7,7 +6,7 @@ use enum_iterator::{Sequence, all};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Note {
-    note: i8,
+    note: i16,
     duration: OrderedFloat<f64>,
     intensity: OrderedFloat<f64>
 }
@@ -114,20 +113,20 @@ impl Melody {
     }
 }
 
-const NOTES_PER_OCTAVE: i8 = 12;
+const NOTES_PER_OCTAVE: i16 = 12;
 const DIATONIC_SCALE_SIZE: usize = 7;
-const DIATONIC_SCALE_HOPS: [i8; DIATONIC_SCALE_SIZE] = [2, 2, 1, 2, 2, 2, 1];
+const DIATONIC_SCALE_HOPS: [i16; DIATONIC_SCALE_SIZE] = [2, 2, 1, 2, 2, 2, 1];
 const NOTE_NAMES: [&str; NOTES_PER_OCTAVE as usize] = ["C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab", "A", "A#/Bb", "B"];
 const MODE_NAMES: [&str; DIATONIC_SCALE_SIZE] = ["ionian", "dorian", "phrygian", "lydian", "mixolydian", "aeolian", "locrian"];
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct MusicMode {
     root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>,
-    octave_notes: [i8; DIATONIC_SCALE_SIZE]
+    octave_notes: [i16; DIATONIC_SCALE_SIZE]
 }
 
 impl MusicMode {
-    pub fn all_modes_for(root_note: u8) -> Vec<Self> {
+    pub fn all_modes_for(root_note: i16) -> Vec<Self> {
         (0..DIATONIC_SCALE_SIZE)
             .map(|i| Self::new(ModNumC::new(i), root_note))
             .collect()
@@ -137,7 +136,7 @@ impl MusicMode {
         format!("{} {}", NOTE_NAMES[self.root() as usize], MODE_NAMES[self.root_pos.a()])
     }
 
-    pub fn new(root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>, root_note: i8) -> Self {
+    pub fn new(root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>, root_note: i16) -> Self {
         let mut octave_notes = [root_note; DIATONIC_SCALE_SIZE];
         let mut offset = DIATONIC_SCALE_HOPS[root_pos.a()];
         for i in 1..octave_notes.len() {
@@ -147,18 +146,18 @@ impl MusicMode {
         MusicMode {root_pos, octave_notes}
     }
 
-    pub fn next_note(&self, reference_note: i8, scale_steps_away: i8) -> i8 {
+    pub fn next_note(&self, reference_note: i16, scale_steps_away: i16) -> i16 {
         let mut octaves_up = reference_note / NOTES_PER_OCTAVE;
         match self.octave_notes.iter()
-            .position(self.octave_note(reference_note)) {
+            .position(|p| *p == self.octave_note(reference_note)) {
             Some(i) => {
-                let mut j = i as i8 + scale_steps_away;
+                let mut j = i as i16 + scale_steps_away;
                 while j < 0 {
-                    j += DIATONIC_SCALE_SIZE as i8;
+                    j += DIATONIC_SCALE_SIZE as i16;
                     octaves_up -= 1;
                 }
-                while j >= DIATONIC_SCALE_SIZE as i8 {
-                    j -= DIATONIC_SCALE_SIZE as i8;
+                while j >= DIATONIC_SCALE_SIZE as i16 {
+                    j -= DIATONIC_SCALE_SIZE as i16;
                     octaves_up += 1;
                 }
                 self.octave_notes[j as usize] + octaves_up * NOTES_PER_OCTAVE
@@ -167,7 +166,7 @@ impl MusicMode {
         }
     }
 
-    pub fn note(&self, degree: u8) -> i8 {
+    pub fn note(&self, degree: u8) -> i16 {
         assert!(degree >= 1);
         let mut result = self.root();
         let mut to_next = self.root_pos;
@@ -178,15 +177,15 @@ impl MusicMode {
         result
     }
 
-    fn root(&self) -> i8 {
+    fn root(&self) -> i16 {
         self.octave_notes[0]
     }
 
-    fn octave_note(&self, note: i8) -> i8 {
+    fn octave_note(&self, note: i16) -> i16 {
         self.root() + note % NOTES_PER_OCTAVE
     }
 
-    pub fn contains(&self, note: i8) -> bool {
+    pub fn contains(&self, note: i16) -> bool {
         self.octave_notes.contains(&(self.octave_note(note)))
     }
 }
@@ -226,9 +225,9 @@ pub enum MelodicFigure {
 impl MelodicFigure {
     pub fn len(&self) -> usize {self.pattern().len() + 1}
 
-    pub fn total_change(&self) -> i8 {self.pattern().iter().sum()}
+    pub fn total_change(&self) -> i16 {self.pattern().iter().sum()}
 
-    pub fn interval2figures() -> BTreeMap<i8, Vec<Self>> {
+    pub fn interval2figures() -> BTreeMap<i16, Vec<Self>> {
         let mut result = BTreeMap::new();
         for m in all::<MelodicFigure>() {
             let interval = m.total_change();
@@ -240,7 +239,7 @@ impl MelodicFigure {
         result
     }
 
-    pub fn pattern(&self) -> Vec<i8> {
+    pub fn pattern(&self) -> Vec<i16> {
         match self {
             MelodicFigure::Note3ScaleUp   => vec![1, 1],
             MelodicFigure::Note3ScaleDown => vec![-1, -1],
@@ -372,14 +371,14 @@ mod tests {
     #[test]
     fn test_scales() {
         let c5_major = MusicMode::new(ModNumC::new(0), 72);
-        let c_notes: [u8; 8] = [72, 74, 76, 77, 79, 81, 83, 84];
+        let c_notes: [i16; 8] = [72, 74, 76, 77, 79, 81, 83, 84];
         for (i, n) in c_notes.iter().enumerate() {
             let degree = (i + 1) as u8;
             assert_eq!(c5_major.note(degree), *n);
             assert!(c5_major.contains(*n));
         }
 
-        let not_c_notes: [u8; 5] = [73, 75, 78, 80, 82];
+        let not_c_notes: [i16; 5] = [73, 75, 78, 80, 82];
         for n in not_c_notes.iter() {
             assert!(!c5_major.contains(*n));
         }
@@ -388,7 +387,7 @@ mod tests {
     #[test]
     fn test_modes() {
         let modes = MusicMode::all_modes_for(72);
-        let expected: [[u8; DIATONIC_SCALE_SIZE]; DIATONIC_SCALE_SIZE] = [
+        let expected: [[i16; DIATONIC_SCALE_SIZE]; DIATONIC_SCALE_SIZE] = [
             [72, 74, 76, 77, 79, 81, 83],
             [72, 74, 75, 77, 79, 81, 82],
             [72, 73, 75, 77, 79, 80, 82],
