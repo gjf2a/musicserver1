@@ -4,11 +4,25 @@ use ordered_float::OrderedFloat;
 use histogram_macros::*;
 use enum_iterator::{Sequence, all};
 
+const NOTES_PER_OCTAVE: i16 = 12;
+const DIATONIC_SCALE_SIZE: usize = 7;
+const DIATONIC_SCALE_HOPS: [i16; DIATONIC_SCALE_SIZE] = [2, 2, 1, 2, 2, 2, 1];
+const NOTE_NAMES: [&str; NOTES_PER_OCTAVE as usize] = ["C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab", "A", "A#/Bb", "B"];
+const MODE_NAMES: [&str; DIATONIC_SCALE_SIZE] = ["ionian", "dorian", "phrygian", "lydian", "mixolydian", "aeolian", "locrian"];
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Note {
     note: i16,
     duration: OrderedFloat<f64>,
     intensity: OrderedFloat<f64>
+}
+
+impl Note {
+    pub fn new(note: i16, duration: f64, intensity: f64) -> Self {
+        Note {note, duration: OrderedFloat(duration), intensity: OrderedFloat(intensity)}
+    }
+
+    pub fn note(&self) -> i16 {self.note}
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -34,13 +48,20 @@ impl Melody {
         Melody {notes}
     }
 
+    pub fn first_note(&self) -> Note {
+        self.notes[0]
+    }
+
+    pub fn last_note(&self) -> Note {
+        *self.notes.last().unwrap()
+    }
+
     pub fn len(&self) -> usize {self.notes.len()}
 
     pub fn view_notes(&self) -> String {
         let mut result = String::new();
         for n in self.notes.iter() {
-            result.push_str(NOTE_NAMES[(n.note % NOTES_PER_OCTAVE) as usize]);
-            result.push_str(" ");
+            result.push_str(format!("{} [({:2}) ({:2})] ", NOTE_NAMES[(n.note % NOTES_PER_OCTAVE) as usize], n.duration, n.intensity).as_str());
         }
         result
     }
@@ -53,22 +74,6 @@ impl Melody {
 
     pub fn without_silence(&self) -> Self {
         Melody {notes: self.notes.iter().filter(|n| n.intensity > OrderedFloat(0.0)).copied().collect()}
-    }
-
-    pub fn create_variation(&self, p_rewrite: f64) -> Self {
-        assert!(0.0 <= p_rewrite && p_rewrite <= 1.0);
-        let subs = self.get_subdivisions();
-        let mut result = Melody {notes: Vec::new()};
-        for sub in subs.iter() {
-            if rand::random::<f64>() < p_rewrite {
-
-            } else {
-                for note in sub.notes.iter().copied() {
-                    result.notes.push(note);
-                }
-            }
-        }
-        result
     }
 
     fn find_pause_indices(&self) -> Vec<usize> {
@@ -113,11 +118,42 @@ impl Melody {
     }
 }
 
-const NOTES_PER_OCTAVE: i16 = 12;
-const DIATONIC_SCALE_SIZE: usize = 7;
-const DIATONIC_SCALE_HOPS: [i16; DIATONIC_SCALE_SIZE] = [2, 2, 1, 2, 2, 2, 1];
-const NOTE_NAMES: [&str; NOTES_PER_OCTAVE as usize] = ["C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab", "A", "A#/Bb", "B"];
-const MODE_NAMES: [&str; DIATONIC_SCALE_SIZE] = ["ionian", "dorian", "phrygian", "lydian", "mixolydian", "aeolian", "locrian"];
+pub struct MelodyMaker {
+    figure_table: BTreeMap<i16, Vec<MelodicFigure>>,
+}
+
+impl MelodyMaker {
+    pub fn new() -> Self {
+        MelodyMaker {figure_table: MelodicFigure::interval2figures()}
+    }
+
+    pub fn create_variation(&self, original: &Melody, p_rewrite: f64) -> Melody {
+        assert!(0.0 <= p_rewrite && p_rewrite <= 1.0);
+        let subs = original.get_subdivisions();
+        let mut result = Melody {notes: Vec::new()};
+        for sub in subs.iter() {
+            if rand::random::<f64>() < p_rewrite {
+                // TODO: Continue work from here...
+                let figure = self.pick_figure(sub.first_note().note(), sub.last_note().note());
+                // 2. Find the difference between the figure length and the number of notes in sub.
+
+                // 3. Create a melody using the figure, doubling-up notes as needed.
+            } else {
+                for note in sub.notes.iter().copied() {
+                    result.notes.push(note);
+                }
+            }
+        }
+        result
+    }
+
+    pub fn pick_figure(&self, first_note: i16, last_note: i16) -> MelodicFigure {
+        let jump = last_note - first_note;
+        // TODO: Better error-handling strategy here.
+        let options = self.figure_table.get(&jump).unwrap();
+        options[rand::random::<usize>() % options.len()]
+    }
+}
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct MusicMode {
@@ -349,7 +385,7 @@ mod tests {
         let subs = notes.get_subdivisions();
         assert_eq!(subs.len(), expected_subs.len());
         for i in 0..expected_subs.len() {
-            println!("sub length: {} {}", subs[i].notes.len(), subs[i].view_notes());
+            println!("sub length: {} {}", subs[i].len(), subs[i].view_notes());
             assert_eq!(Melody::from(expected_subs[i]).without_silence(), subs[i]);
         }
 
