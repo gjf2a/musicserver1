@@ -137,7 +137,7 @@ impl MusicMode {
     }
 
     pub fn new(root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>, root_note: i16) -> Self {
-        let mut octave_notes = [root_note; DIATONIC_SCALE_SIZE];
+        let mut octave_notes = [root_note % NOTES_PER_OCTAVE; DIATONIC_SCALE_SIZE];
         let mut offset = DIATONIC_SCALE_HOPS[root_pos.a()];
         for i in 1..octave_notes.len() {
             octave_notes[i] += offset;
@@ -164,17 +164,6 @@ impl MusicMode {
             }
             None => {self.next_note(reference_note + 1, scale_steps_away)}
         }
-    }
-
-    pub fn note(&self, degree: u8) -> i16 {
-        assert!(degree >= 1);
-        let mut result = self.root();
-        let mut to_next = self.root_pos;
-        for _ in 0..(degree - 1) {
-            result += DIATONIC_SCALE_HOPS[to_next.a()];
-            to_next += 1;
-        }
-        result
     }
 
     fn root(&self) -> i16 {
@@ -373,8 +362,8 @@ mod tests {
         let c5_major = MusicMode::new(ModNumC::new(0), 72);
         let c_notes: [i16; 8] = [72, 74, 76, 77, 79, 81, 83, 84];
         for (i, n) in c_notes.iter().enumerate() {
-            let degree = (i + 1) as u8;
-            assert_eq!(c5_major.note(degree), *n);
+            let next = c5_major.next_note(72, i as i16);
+            assert_eq!(next, *n);
             assert!(c5_major.contains(*n));
         }
 
@@ -388,13 +377,13 @@ mod tests {
     fn test_modes() {
         let modes = MusicMode::all_modes_for(72);
         let expected: [[i16; DIATONIC_SCALE_SIZE]; DIATONIC_SCALE_SIZE] = [
-            [72, 74, 76, 77, 79, 81, 83],
-            [72, 74, 75, 77, 79, 81, 82],
-            [72, 73, 75, 77, 79, 80, 82],
-            [72, 74, 76, 78, 79, 81, 83],
-            [72, 74, 76, 77, 79, 81, 82],
-            [72, 74, 75, 77, 79, 80, 82],
-            [72, 73, 75, 77, 78, 80, 82]
+            [0, 2, 4, 5, 7, 9, 11],
+            [0, 2, 3, 5, 7, 9, 10],
+            [0, 1, 3, 5, 7, 8, 10],
+            [0, 2, 4, 6, 7, 9, 11],
+            [0, 2, 4, 5, 7, 9, 10],
+            [0, 2, 3, 5, 7, 8, 10],
+            [0, 1, 3, 5, 6, 8, 10]
         ];
         for i in 0..DIATONIC_SCALE_SIZE {
             assert_eq!(modes[i].octave_notes, expected[i]);
