@@ -119,22 +119,24 @@ impl Melody {
 }
 
 pub struct MelodyMaker {
-    figure_table: BTreeMap<i16, Vec<MelodicFigure>>,
+    figure_tables: BTreeMap<usize, BTreeMap<i16, Vec<MelodicFigure>>>
 }
 
 impl MelodyMaker {
     pub fn new() -> Self {
-        MelodyMaker {figure_table: MelodicFigure::interval2figures()}
+        MelodyMaker {
+            figure_tables: (3..=4).map(|len| (len, MelodicFigure::interval2figures(len))).collect()
+        }
     }
 
-    pub fn create_variation(&self, original: &Melody, p_rewrite: f64) -> Melody {
+    pub fn create_variation(&self, original: &Melody, p_rewrite: f64, p_3: f64) -> Melody {
         assert!(0.0 <= p_rewrite && p_rewrite <= 1.0);
         let subs = original.get_subdivisions();
-        let mut result = Melody {notes: Vec::new()};
+        let mut result = Melody {notes: vec![subs[0].first_note()]};
         for sub in subs.iter() {
             if rand::random::<f64>() < p_rewrite {
                 // TODO: Continue work from here...
-                let figure = self.pick_figure(sub.first_note().note(), sub.last_note().note());
+                //let figure = self.pick_figure(result.last_note().note(), sub.last_note().note());
                 // 2. Find the difference between the figure length and the number of notes in sub.
 
                 // 3. Create a melody using the figure, doubling-up notes as needed.
@@ -147,10 +149,10 @@ impl MelodyMaker {
         result
     }
 
-    pub fn pick_figure(&self, first_note: i16, last_note: i16) -> MelodicFigure {
+    pub fn pick_figure(&self, figure_length: usize, first_note: i16, last_note: i16) -> MelodicFigure {
         let jump = last_note - first_note;
         // TODO: Better error-handling strategy here.
-        let options = self.figure_table.get(&jump).unwrap();
+        let options = self.figure_tables.get(&figure_length).unwrap().get(&jump).unwrap();
         options[rand::random::<usize>() % options.len()]
     }
 }
@@ -252,13 +254,15 @@ impl MelodicFigure {
 
     pub fn total_change(&self) -> i16 {self.pattern().iter().sum()}
 
-    pub fn interval2figures() -> BTreeMap<i16, Vec<Self>> {
+    pub fn interval2figures(figure_length: usize) -> BTreeMap<i16, Vec<Self>> {
         let mut result = BTreeMap::new();
         for m in all::<MelodicFigure>() {
-            let interval = m.total_change();
-            match result.get_mut(&interval) {
-                None => {result.insert(interval, vec![m]);}
-                Some(v) => {v.push(m);}
+            if m.len() == figure_length {
+                let interval = m.total_change();
+                match result.get_mut(&interval) {
+                    None => { result.insert(interval, vec![m]); }
+                    Some(v) => { v.push(m); }
+                }
             }
         }
         result
@@ -428,7 +432,14 @@ mod tests {
 
     #[test]
     fn test_interval_table() {
-        let table = MelodicFigure::interval2figures();
+        println!("Length 3 figures");
+        let table = MelodicFigure::interval2figures(3);
+        for (i, ms) in table.iter() {
+            println!("{}: {:?}", *i, ms);
+        }
+
+        println!("Length 4 figures");
+        let table = MelodicFigure::interval2figures(4);
         for (i, ms) in table.iter() {
             println!("{}: {:?}", *i, ms);
         }
