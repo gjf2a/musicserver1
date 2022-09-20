@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use bare_metal_modulo::{MNum, ModNumC};
 use ordered_float::OrderedFloat;
 use histogram_macros::*;
@@ -12,17 +12,17 @@ const MODE_NAMES: [&str; DIATONIC_SCALE_SIZE] = ["ionian", "dorian", "phrygian",
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Note {
-    note: i16,
+    pitch: i16,
     duration: OrderedFloat<f64>,
     intensity: OrderedFloat<f64>
 }
 
 impl Note {
-    pub fn new(note: i16, duration: f64, intensity: f64) -> Self {
-        Note {note, duration: OrderedFloat(duration), intensity: OrderedFloat(intensity)}
+    pub fn new(pitch: i16, duration: f64, intensity: f64) -> Self {
+        Note { pitch, duration: OrderedFloat(duration), intensity: OrderedFloat(intensity)}
     }
 
-    pub fn note(&self) -> i16 {self.note}
+    pub fn note(&self) -> i16 {self.pitch }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -40,7 +40,7 @@ impl Melody {
                     let note = note.parse().unwrap();
                     let duration = nums.next().unwrap().parse().unwrap();
                     let intensity = nums.next().unwrap().parse().unwrap();
-                    notes.push(Note {note, duration, intensity});
+                    notes.push(Note { pitch: note, duration, intensity});
                 }
                 _ => {break;}
             }
@@ -61,7 +61,7 @@ impl Melody {
     pub fn view_notes(&self) -> String {
         let mut result = String::new();
         for n in self.notes.iter() {
-            result.push_str(format!("{} [({:2}) ({:2})] ", NOTE_NAMES[(n.note % NOTES_PER_OCTAVE) as usize], n.duration, n.intensity).as_str());
+            result.push_str(format!("{} [({:2}) ({:2})] ", NOTE_NAMES[(n.pitch % NOTES_PER_OCTAVE) as usize], n.duration, n.intensity).as_str());
         }
         result
     }
@@ -103,13 +103,13 @@ impl Melody {
     pub fn best_scale_for(&self) -> MusicMode {
         let mut note_weights = HashMap::new();
         for n in self.notes.iter() {
-            bump_by!(note_weights, n.note % NOTES_PER_OCTAVE, n.duration);
+            bump_by!(note_weights, n.pitch % NOTES_PER_OCTAVE, n.duration);
         }
         let root = mode_by_weight!(note_weights).unwrap();
         let mut mode_weights = HashMap::new();
         for mode in MusicMode::all_modes_for(root).iter() {
             for n in self.notes.iter() {
-                if mode.contains(n.note) {
+                if mode.contains(n.pitch) {
                     bump_ref_by!(mode_weights, mode, n.duration);
                 }
             }
@@ -132,14 +132,21 @@ impl MelodyMaker {
     pub fn create_variation(&self, original: &Melody, p_rewrite: f64, p_3: f64) -> Melody {
         assert!(0.0 <= p_rewrite && p_rewrite <= 1.0);
         let subs = original.get_subdivisions();
-        let mut result = Melody {notes: vec![subs[0].first_note()]};
+        let mut result = Melody {notes: Vec::new()};
         for sub in subs.iter() {
             if rand::random::<f64>() < p_rewrite {
-                // TODO: Continue work from here...
-                //let figure = self.pick_figure(result.last_note().note(), sub.last_note().note());
-                // 2. Find the difference between the figure length and the number of notes in sub.
+                let mut pitches_to_use: VecDeque<i16> = sub.notes.iter().map(|n| n.pitch).collect();
+                let start_pitch = match result.notes.get(0) {
+                    None => sub.notes[0],
+                    Some(note) => note
+                }.pitch;
 
-                // 3. Create a melody using the figure, doubling-up notes as needed.
+                // TODO: Continue work from here...
+                // - Rewrite pick_figure to use the figure length.
+                // - Pick a figure length using p_3. Also go with 3 if there is no option for 4
+                // given the note difference.
+                // - Create a while loop of some kind using notes_to_use. If we don't have enough
+                //   notes, double up some created notes randomly or something.
             } else {
                 for note in sub.notes.iter().copied() {
                     result.notes.push(note);
