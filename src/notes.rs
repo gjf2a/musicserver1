@@ -137,24 +137,14 @@ impl MelodyMaker {
         for sub in subs.iter() {
             if rand::random::<f64>() < p_rewrite {
                 let mut notes_to_use: VecDeque<Note> = sub.notes.iter().map(|n| n).copied().collect();
-                let start_note = match result.notes.get(0) {
-                    None => {let starter = notes_to_use.pop_front().unwrap(); result.notes.push(starter); starter}, // add to result?
+                let start_note = match result.notes.last() {
+                    None => {let starter = notes_to_use.pop_front().unwrap(); result.notes.push(starter); starter},
                     Some(note) => *note
                 };
                 while notes_to_use.len() > 1 {
-                    let mut figure_length = 3;
-                    let mut jump = notes_to_use[1].pitch - start_note.pitch;
-                    if notes_to_use.len() > 2 && rand::random::<f64>() > p_3 {
-                        let jump4 = notes_to_use[2].pitch - start_note.pitch;
-                        if !((4i16..7).contains(&jump4)) && !((-6i16..-3).contains(&jump4)) {
-                            figure_length = 4;
-                            jump = jump4;
-                        }
-                    }
-                    let pitch_steps = self.pick_figure(figure_length, jump).pattern();
-                    for step in pitch_steps {
+                    for step in self.find_pitch_steps(start_note.pitch, &notes_to_use, p_3) {
                         let mut note = notes_to_use.pop_front().unwrap();
-                        let prev_pitch = result.notes[0].pitch();
+                        let prev_pitch = result.notes.last().unwrap().pitch();
                         note.pitch = scale.next_pitch(prev_pitch, step);
                         result.notes.push(note);
                     }
@@ -171,8 +161,21 @@ impl MelodyMaker {
         result
     }
 
+    pub fn find_pitch_steps(&self, start_pitch: i16, notes_to_use: &VecDeque<Note>, p_3: f64) -> Vec<i16> {
+        let mut figure_length = 3;
+        let mut jump = notes_to_use[1].pitch - start_pitch;
+        if notes_to_use.len() > 2 && rand::random::<f64>() > p_3 {
+            let jump4 = notes_to_use[2].pitch - start_pitch;
+            if !((4i16..=6).contains(&jump4)) && !((-6i16..=-4).contains(&jump4)) {
+                figure_length = 4;
+                jump = jump4;
+            }
+        }
+        println!("Figure length: {} jump: {}", figure_length, jump);
+        self.pick_figure(figure_length, jump).pattern()
+    }
+
     pub fn pick_figure(&self, figure_length: usize, jump: i16) -> MelodicFigure {
-        // TODO: Better error-handling strategy here.
         let table = self.figure_tables.get(&figure_length).unwrap();
         let options = table.get(&jump).unwrap();
         options[rand::random::<usize>() % options.len()]
