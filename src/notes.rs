@@ -20,6 +20,10 @@ pub struct Note {
 
 impl Note {
     pub fn pitch(&self) -> i16 {self.pitch}
+
+    pub fn sonic_pi_list(&self) -> String {
+        format!("[{}, {}, {}]", self.pitch, self.duration, self.intensity)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -43,6 +47,12 @@ impl Melody {
             }
         }
         Melody {notes}
+    }
+
+    pub fn sonic_pi_list(&self) -> String {
+        let mut list_str = self.notes.iter().map(|n| format!("{},", n.sonic_pi_list())).collect::<String>();
+        list_str.pop();
+        format!("[{}]", list_str)
     }
 
     pub fn last_note(&self) -> Note {
@@ -481,5 +491,11 @@ mod tests {
             let np = mode.next_pitch(reference_pitch, scale_steps_away).unwrap();
             assert_eq!(np, expected);
         }
+    }
+
+    #[test]
+    fn test_send_back() {
+        let tune = Melody::from(EXAMPLE_MELODY).without_silence();
+        assert_eq!(tune.sonic_pi_list(), "[[55, 0.39, 0.91],[59, 0.33, 0.73],[60, 0.06, 0.44],[62, 0.02, 0.87],[55, 0.39, 0.61],[57, 0.34, 0.98],[55, 0.39, 0.78],[54, 0.02, 0.98],[52, 0.11, 0.74],[54, 0.12, 0.46],[50, 0.1, 0.84],[55, 0.27, 0.74],[59, 0.27, 0.44],[60, 0.07, 0.54],[62, 0.04, 0.91],[55, 0.29, 0.67],[57, 0.32, 0.76],[55, 0.23, 0.7],[54, 0.12, 0.93],[50, 0.37, 0.8],[55, 0.36, 0.76],[59, 0.28, 0.76],[60, 0.05, 0.7],[62, 0.01, 0.91],[55, 0.33, 0.67],[57, 0.29, 0.8],[55, 0.29, 0.9],[54, 0.16, 1],[52, 0.12, 0.72],[54, 0.01, 0.71],[50, 0.1, 0.76],[55, 0.22, 0.65],[57, 0.29, 0.64],[55, 0.23, 0.76],[54, 0.12, 0.99],[52, 0.24, 0.95],[54, 0.13, 1],[52, 0.12, 0.72],[54, 0.19, 0.83],[50, 0.06, 0.69],[55, 0.01, 0.73],[57, 0.07, 0.66]]");
     }
 }
