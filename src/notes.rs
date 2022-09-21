@@ -135,17 +135,17 @@ impl MelodyMaker {
         assert!(0.0 <= p_3 && p_3 <= 1.0);
         let scale = original.best_scale_for();
         let mut notes_to_use = original.notes.iter().copied().collect::<VecDeque<_>>();
-        let mut result = Melody {notes: Vec::new()};
+        let mut result = Melody {notes: vec![notes_to_use.pop_front().unwrap()]};
         while notes_to_use.len() > 0 {
+            let start_pitch = result.last_note().pitch;
             let jump3 = notes_to_use.get(1)
-                .and_then(|n| scale.diatonic_steps_between(n.pitch, notes_to_use[0].pitch))
+                .and_then(|n| scale.diatonic_steps_between(n.pitch, start_pitch))
                 .filter(|p| p.abs() < 8);
             let jump4 = notes_to_use.get(2)
-                .and_then(|n| scale.diatonic_steps_between(n.pitch, notes_to_use[0].pitch))
+                .and_then(|n| scale.diatonic_steps_between(n.pitch, start_pitch))
                 .filter(|p| p.abs() < 8 && !(4i16..=6).contains(&p.abs()));
-            if scale.contains(notes_to_use[0].pitch) && (jump3.is_some() || jump4.is_some()) && rand::random::<f64>() < p_rewrite {
+            if scale.contains(start_pitch) && (jump3.is_some() || jump4.is_some()) && rand::random::<f64>() < p_rewrite {
                 let (figure_length, jump) = if jump3.is_none() || (jump4.is_some() && rand::random::<f64>() > p_3) {(4, jump4)} else {(3, jump3)};
-                result.notes.push(notes_to_use.pop_front().unwrap());
                 let pitch_steps = self.pick_figure(figure_length, jump.unwrap()).pattern();
                 for step in pitch_steps {
                     let mut note = notes_to_use.pop_front().unwrap();
