@@ -230,8 +230,8 @@ impl MusicMode {
         self.octave_notes[self.root_pos.a()].a()
     }
 
-    pub fn contains(&self, note: i16) -> bool {
-        self.octave_notes.contains(&(ModNumC::new(note)))
+    pub fn contains(&self, pitch: i16) -> bool {
+        self.octave_notes.contains(&(ModNumC::new(pitch)))
     }
 }
 
@@ -487,12 +487,24 @@ mod tests {
     #[test]
     fn test_melody_maker() {
         let tune = Melody::from(EXAMPLE_MELODY);
+        let scale = tune.best_scale_for();
         println!("tune: {:?}", tune);
         let maker = MelodyMaker::new();
         for _ in 0..20 {
             let var = maker.create_variation(&tune, 0.5, 0.5);
             println!("variation: {:?}", var);
             assert_eq!(var.len(), tune.len());
+            let mut different_count = 0;
+            for i in 0..var.len() {
+                assert_eq!(var.notes[i].duration, tune.notes[i].duration);
+                assert_eq!(var.notes[i].intensity, tune.notes[i].intensity);
+                assert!(!scale.contains(tune.notes[i].pitch) || scale.contains(var.notes[i].pitch));
+                if var.notes[i].pitch != tune.notes[i].pitch {
+                    different_count += 1;
+                }
+            }
+            let portion_changed = different_count as f64 / var.len() as f64;
+            assert!(0.25 < portion_changed && portion_changed < 0.75);
         }
     }
 
