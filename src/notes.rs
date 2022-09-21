@@ -132,46 +132,37 @@ impl MelodyMaker {
 
     pub fn create_variation(&self, original: &Melody, p_rewrite: f64, p_3: f64) -> Melody {
         assert!(0.0 <= p_rewrite && p_rewrite <= 1.0);
-        let subs = original.get_subdivisions();
+        assert!(0.0 <= p_3 && p_3 <= 1.0);
         let scale = original.best_scale_for();
+        let mut notes_to_use = original.notes.iter().copied().collect::<VecDeque<_>>();
         let mut result = Melody {notes: Vec::new()};
-        for sub in subs.iter() {
-            let mut notes_to_use: VecDeque<Note> = sub.notes.iter().copied().collect();
-            let start_note = match result.notes.last() {
-                None => {let starter = notes_to_use.pop_front().unwrap(); result.notes.push(starter); starter},
-                Some(note) => *note
-            };
+        while notes_to_use.len() > 0 {
             let jump3 = notes_to_use.get(1)
-                .and_then(|n| scale.diatonic_steps_between(n.pitch, start_note.pitch));
+                .and_then(|n| scale.diatonic_steps_between(n.pitch, notes_to_use[0].pitch))
+                .filter(|p| p.abs() < 8);
             let jump4 = notes_to_use.get(2)
-                .and_then(|n| scale.diatonic_steps_between(n.pitch, start_note.pitch))
-                .filter(|p| !(4i16..=6).contains(&p.abs()));
-            if scale.contains(start_note.pitch) && (jump3.is_some() || jump4.is_some()) && rand::random::<f64>() < p_rewrite {
-                println!("start note: {:?}", start_note);
-                println!("notes to use: {:?}", notes_to_use);
-                while notes_to_use.len() > 1 {
-                    let (figure_length, jump) = if jump3.is_none() || (jump4.is_some() && rand::random::<f64>() > p_3) {(4, jump4)} else {(3, jump3)};
-                    let pitch_steps = self.pick_figure(figure_length, jump.unwrap()).pattern();
-                    for step in pitch_steps {
-                        let mut note = notes_to_use.pop_front().unwrap();
-                        let prev_pitch = result.notes.last().unwrap().pitch();
-                        note.pitch = scale.next_pitch(prev_pitch, step).unwrap();
-                        result.notes.push(note);
-                    }
-                }
-                if notes_to_use.len() == 1 {
-                    result.notes.push(notes_to_use.pop_front().unwrap());
-                }
-            } else {
-                for note in notes_to_use {
+                .and_then(|n| scale.diatonic_steps_between(n.pitch, notes_to_use[0].pitch))
+                .filter(|p| p.abs() < 8 && !(4i16..=6).contains(&p.abs()));
+            if scale.contains(notes_to_use[0].pitch) && (jump3.is_some() || jump4.is_some()) && rand::random::<f64>() < p_rewrite {
+                let (figure_length, jump) = if jump3.is_none() || (jump4.is_some() && rand::random::<f64>() > p_3) {(4, jump4)} else {(3, jump3)};
+                result.notes.push(notes_to_use.pop_front().unwrap());
+                let pitch_steps = self.pick_figure(figure_length, jump.unwrap()).pattern();
+                for step in pitch_steps {
+                    let mut note = notes_to_use.pop_front().unwrap();
+                    let prev_pitch = result.notes.last().unwrap().pitch();
+                    note.pitch = scale.next_pitch(prev_pitch, step).unwrap();
                     result.notes.push(note);
                 }
+            } else {
+                result.notes.push(notes_to_use.pop_front().unwrap());
             }
         }
+
         result
     }
 
     pub fn pick_figure(&self, figure_length: usize, jump: i16) -> MelodicFigure {
+        println!("Figure length: {} jump: {}", figure_length, jump);
         let table = self.figure_tables.get(&figure_length).unwrap();
         let options = table.get(&jump).unwrap();
         options[rand::random::<usize>() % options.len()]
@@ -206,39 +197,43 @@ impl MusicMode {
     }
 
     pub fn diatonic_steps_between(&self, pitch1: i16, pitch2: i16) -> Option<i16> {
+        assert!(pitch1 < 200);
         if pitch1 > pitch2 {
             self.diatonic_steps_between(pitch2, pitch1).map(|steps| -steps)
         } else if !self.contains(pitch1) || !self.contains(pitch2) {
             None
         } else {
+            println!("diatonic_steps_between: {:?} {} {}", self, pitch1, pitch2);
             let mut count = 0;
             let mut p = pitch1;
             while p != pitch2 {
-                print!("Scale: {:?}; Before: {}", self, p);
                 p = self.next_pitch(p, 1).unwrap();
                 println!(" After: {}", p);
                 assert!(self.contains(p));
                 count += 1;
             }
+            println!("diatonic count: {}", count);
             Some(count)
         }
     }
 
     pub fn next_pitch(&self, reference_pitch: i16, scale_steps_away: i16) -> Option<i16> {
+        println!("reference_pitch: {} scale_steps_away: {}", reference_pitch, scale_steps_away);
+        assert!(reference_pitch < 200);
         let mut octaves_up = reference_pitch / NOTES_PER_OCTAVE;
         self.octave_notes.iter()
             .position(|p| *p == reference_pitch)
             .map(|i| {
-                let mut j = i as i16 + scale_steps_away;
-                while j < 0 {
-                    j += DIATONIC_SCALE_SIZE as i16;
+                let ref_octave_basis = self.octave_notes[i].a();
+                let j: ModNumC<i16, DIATONIC_SCALE_SIZE> = ModNumC::new(i as i16 + scale_steps_away);
+                let next_octave_basis = self.octave_notes[j.a() as usize].a();
+                if scale_steps_away > 0 && ref_octave_basis > next_octave_basis {
+                    octaves_up += 1
+                } else if scale_steps_away < 0 && ref_octave_basis < next_octave_basis {
                     octaves_up -= 1;
                 }
-                while j >= DIATONIC_SCALE_SIZE as i16 {
-                    j -= DIATONIC_SCALE_SIZE as i16;
-                    octaves_up += 1;
-                }
-                self.octave_notes[j as usize].a() + octaves_up * NOTES_PER_OCTAVE
+                octaves_up += scale_steps_away / 7;
+                next_octave_basis + octaves_up * NOTES_PER_OCTAVE
             })
     }
 
@@ -504,5 +499,32 @@ mod tests {
         let var = maker.create_variation(&tune, 0.5, 0.5);
         println!("variation: {:?}", var);
         assert_eq!(var.len(), tune.len());
+    }
+
+    #[test]
+    fn test_diatonic_bug() {
+        let mode = MusicMode { root_pos: ModNumC::new(0), octave_notes: [ModNumC::new(7), ModNumC::new(9), ModNumC::new(11), ModNumC::new(0), ModNumC::new(2), ModNumC::new(4), ModNumC::new(6) ] };
+        let steps = mode.diatonic_steps_between(54, 57);
+        assert_eq!(steps.unwrap(), 2);
+    }
+
+    #[test]
+    fn test_next_note_bug() {
+        let mode = MusicMode { root_pos: ModNumC::new(0), octave_notes: [ModNumC::new(7), ModNumC::new(9), ModNumC::new(11), ModNumC::new(0), ModNumC::new(2), ModNumC::new(4), ModNumC::new(6) ] };
+        println!("mode: {}", mode.name());
+        println!("{:?}", mode);
+        let tests = [
+            (54, 1, 55), (67, 1, 69), (69, 1, 71), (71, 1, 72), (60, 1, 62), (62, 1, 64),
+            (64, 1, 66), (66, 1, 67), (79, 1, 81), (81, 1, 83), (83, 1, 84), (72, 1, 74),
+            (74, 1, 76), (76, 1, 78), (78, 1, 79), (91, 1, 93), (93, 1, 95), (95, 1, 96),
+            (84, 1, 86), (86, 1, 88), (88, 1, 90), (90, 1, 91), (103, 1, 105), (105, 1, 107),
+            (107, 1, 108), (96, 1, 98), (98, 1, 100), (100, 1, 102), (102, 1, 103), (115, 1, 117),
+            (117, 1, 119), (108, 1, 110), (110, 1, 112), (112, 1, 114), (114, 1, 115),
+            (127, 1, 129), (129, 1, 131), (131, 1, 132), (120, 1, 122), (122, 1, 124)
+        ];
+        for (reference_pitch, scale_steps_away, expected) in tests {
+            let np = mode.next_pitch(reference_pitch, scale_steps_away).unwrap();
+            assert_eq!(np, expected);
+        }
     }
 }
