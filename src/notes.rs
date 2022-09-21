@@ -19,10 +19,6 @@ pub struct Note {
 }
 
 impl Note {
-    pub fn new(pitch: i16, duration: f64, intensity: f64) -> Self {
-        Note {pitch, duration: OrderedFloat(duration), intensity: OrderedFloat(intensity)}
-    }
-
     pub fn pitch(&self) -> i16 {self.pitch}
 }
 
@@ -47,10 +43,6 @@ impl Melody {
             }
         }
         Melody {notes}
-    }
-
-    pub fn first_note(&self) -> Note {
-        self.notes[0]
     }
 
     pub fn last_note(&self) -> Note {
@@ -138,12 +130,8 @@ impl MelodyMaker {
         let mut result = Melody {notes: vec![notes_to_use.pop_front().unwrap()]};
         while notes_to_use.len() > 0 {
             let start_pitch = result.last_note().pitch;
-            let jump3 = notes_to_use.get(1)
-                .and_then(|n| scale.diatonic_steps_between(n.pitch, start_pitch))
-                .filter(|p| p.abs() < 8);
-            let jump4 = notes_to_use.get(2)
-                .and_then(|n| scale.diatonic_steps_between(n.pitch, start_pitch))
-                .filter(|p| p.abs() < 8 && !(4i16..=6).contains(&p.abs()));
+            let jump3 = Self::find_jump(&scale, start_pitch, &notes_to_use, 1, |_p| true);
+            let jump4 = Self::find_jump(&scale, start_pitch, &notes_to_use, 2, |p| !(4i16..=6).contains(&p.abs()));
             if scale.contains(start_pitch) && (jump3.is_some() || jump4.is_some()) && rand::random::<f64>() < p_rewrite {
                 let (figure_length, jump) = if jump3.is_none() || (jump4.is_some() && rand::random::<f64>() > p_3) {(4, jump4)} else {(3, jump3)};
                 let pitch_steps = self.pick_figure(figure_length, jump.unwrap()).pattern();
@@ -159,6 +147,12 @@ impl MelodyMaker {
         }
 
         result
+    }
+
+    fn find_jump<P:Fn(&i16)->bool>(scale: &MusicMode, start_pitch: i16, notes_to_use: &VecDeque<Note>, end_jump_index: usize, filter: P) -> Option<i16> {
+        notes_to_use.get(end_jump_index)
+            .and_then(|n| scale.diatonic_steps_between(n.pitch, start_pitch))
+            .filter(|p| p.abs() < 8 && filter(p))
     }
 
     pub fn pick_figure(&self, figure_length: usize, jump: i16) -> MelodicFigure {
