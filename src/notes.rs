@@ -162,7 +162,6 @@ impl MelodyMaker {
     }
 
     pub fn pick_figure(&self, figure_length: usize, jump: i16) -> MelodicFigure {
-        println!("Figure length: {} jump: {}", figure_length, jump);
         let table = self.figure_tables.get(&figure_length).unwrap();
         let options = table.get(&jump).unwrap();
         options[rand::random::<usize>() % options.len()]
@@ -203,22 +202,18 @@ impl MusicMode {
         } else if !self.contains(pitch1) || !self.contains(pitch2) {
             None
         } else {
-            println!("diatonic_steps_between: {:?} {} {}", self, pitch1, pitch2);
             let mut count = 0;
             let mut p = pitch1;
             while p != pitch2 {
                 p = self.next_pitch(p, 1).unwrap();
-                println!(" After: {}", p);
                 assert!(self.contains(p));
                 count += 1;
             }
-            println!("diatonic count: {}", count);
             Some(count)
         }
     }
 
     pub fn next_pitch(&self, reference_pitch: i16, scale_steps_away: i16) -> Option<i16> {
-        println!("reference_pitch: {} scale_steps_away: {}", reference_pitch, scale_steps_away);
         assert!(reference_pitch < 200);
         let mut octaves_up = reference_pitch / NOTES_PER_OCTAVE;
         self.octave_notes.iter()
@@ -431,10 +426,11 @@ mod tests {
         let mode = MusicMode::new(root_pos, notes[0]);
         println!("{} {:?}", mode.name(), mode);
         for (i, n) in notes.iter().enumerate() {
-            let next = mode.next_pitch(notes[0], i as i16).unwrap();
+            let i = i as i16;
+            let next = mode.next_pitch(notes[0], i).unwrap();
             assert_eq!(next, *n);
             assert!(mode.contains(*n));
-            let prev = mode.next_pitch(*n, -(i as i16)).unwrap();
+            let prev = mode.next_pitch(*n, -i).unwrap();
             assert_eq!(notes[0], prev);
             assert!(mode.contains(prev));
         }
@@ -499,9 +495,11 @@ mod tests {
         let tune = Melody::from(EXAMPLE_MELODY);
         println!("tune: {:?}", tune);
         let maker = MelodyMaker::new();
-        let var = maker.create_variation(&tune, 0.5, 0.5);
-        println!("variation: {:?}", var);
-        assert_eq!(var.len(), tune.len());
+        for _ in 0..20 {
+            let var = maker.create_variation(&tune, 0.5, 0.5);
+            println!("variation: {:?}", var);
+            assert_eq!(var.len(), tune.len());
+        }
     }
 
     #[test]
