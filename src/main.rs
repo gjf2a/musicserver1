@@ -1,5 +1,29 @@
 mod notes;
 
+// Example Sonic Pi code that communicates with this:
+/*
+# There is a melody named 'countdown'
+
+require 'socket'
+
+s = TCPSocket.open('localhost', 8888)
+s.puts("create_variation 0.5 0.5")
+shipment = countdown.join(",")
+print shipment
+s.puts(shipment)
+reply = s.gets
+s.close
+
+reply = eval(reply)
+print reply
+sleep(4)
+
+play_melody countdown, :additive_1
+sleep(1)
+play_melody reply, :additive_2
+
+ */
+
 use std::io::{Write, BufReader, BufRead};
 use std::net::{TcpListener, TcpStream};
 use crate::notes::{Melody, MelodyMaker};
@@ -21,6 +45,7 @@ fn handle_client(stream: &mut TcpStream) -> std::io::Result<()> {
     println!("Read: {} then {} ", command, melody);
     let melody = Melody::from(melody.as_str());
     println!("{}", melody.view_notes());
+    println!("{}", melody.best_scale_for().name());
     let cmd_params = command.split_whitespace().collect::<Vec<_>>();
     if cmd_params.len() == 3 && cmd_params[0] == "create_variation" {
         let p_rewrite: f64 = cmd_params[1].parse().unwrap();
