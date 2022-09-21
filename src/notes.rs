@@ -432,58 +432,36 @@ mod tests {
         println!("{} {:?}", best.name(), best);
     }
 
-    #[test]
-    fn test_scales() {
-        let c5_major = MusicMode::new(ModNumC::new(0), 72);
-        let c_notes: [i16; 15] = [72, 74, 76, 77, 79, 81, 83, 84, 86, 88, 89, 91, 93, 95, 96];
-        for (i, n) in c_notes.iter().enumerate() {
-            let next = c5_major.next_pitch(72, i as i16).unwrap();
+    fn test_natural_mode(root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>, notes: [i16; 15]) {
+        let mode = MusicMode::new(root_pos, notes[0]);
+        println!("{} {:?}", mode.name(), mode);
+        for (i, n) in notes.iter().enumerate() {
+            let next = mode.next_pitch(notes[0], i as i16).unwrap();
             assert_eq!(next, *n);
-            assert!(c5_major.contains(*n));
+            assert!(mode.contains(*n));
         }
 
-        let mut prev = 72;
-        for n in c_notes.iter().skip(1) {
-            let next = c5_major.next_pitch(prev, 1).unwrap();
+        let mut prev = notes[0];
+        for n in notes.iter().skip(1) {
+            let next = mode.next_pitch(prev, 1).unwrap();
             assert_eq!(next, *n);
             prev = next;
         }
 
         let not_c_notes: [i16; 5] = [73, 75, 78, 80, 82];
         for n in not_c_notes.iter() {
-            assert!(!c5_major.contains(*n));
+            assert!(!mode.contains(*n));
         }
+    }
+
+    #[test]
+    fn test_scales() {
+        test_natural_mode(ModNumC::new(0), [72, 74, 76, 77, 79, 81, 83, 84, 86, 88, 89, 91, 93, 95, 96]);
     }
 
     #[test]
     fn test_scales_dorian() {
-        let d5_dorian = MusicMode::new(ModNumC::new(1), 74);
-        println!("{} {:?}", d5_dorian.name(), d5_dorian);
-        let d_notes: [i16; 15] = [74, 76, 77, 79, 81, 83, 84, 86, 88, 89, 91, 93, 95, 96, 98];
-        for (i, n) in d_notes.iter().enumerate() {
-            let next = d5_dorian.next_pitch(d_notes[0], i as i16).unwrap();
-            assert_eq!(next, *n);
-            println!("next: {}", next);
-            assert!(d5_dorian.contains(*n));
-        }
-
-        let mut prev = d_notes[0];
-        for n in d_notes.iter().skip(1) {
-            let next = d5_dorian.next_pitch(prev, 1).unwrap();
-            assert_eq!(next, *n);
-            prev = next;
-        }
-
-        let not_c_notes: [i16; 5] = [73, 75, 78, 80, 82];
-        for n in not_c_notes.iter() {
-            assert!(!d5_dorian.contains(*n));
-        }
-    }
-
-    #[test]
-    fn test_scale_2() {
-        let scale = MusicMode::new(ModNumC::new(3), 7);
-        assert_eq!(format!("{:?}", scale), "MusicMode { root_pos: ModNumC { num: 3 }, octave_notes: [7, 9, 11, 13, 14, 16, 18] }");
+        test_natural_mode(ModNumC::new(1), [74, 76, 77, 79, 81, 83, 84, 86, 88, 89, 91, 93, 95, 96, 98]);
     }
 
     #[test]
@@ -491,12 +469,12 @@ mod tests {
         let modes = MusicMode::all_modes_for(72);
         let expected: [[i16; DIATONIC_SCALE_SIZE]; DIATONIC_SCALE_SIZE] = [
             [0, 2, 4, 5, 7, 9, 11],
-            [0, 2, 3, 5, 7, 9, 10],
-            [0, 1, 3, 5, 7, 8, 10],
-            [0, 2, 4, 6, 7, 9, 11],
-            [0, 2, 4, 5, 7, 9, 10],
-            [0, 2, 3, 5, 7, 8, 10],
-            [0, 1, 3, 5, 6, 8, 10]
+            [10, 0, 2, 3, 5, 7, 9],
+            [8, 10, 0, 1, 3, 5, 7],
+            [7, 9, 11, 0, 2, 4, 6],
+            [5, 7, 9, 10, 0, 2, 4],
+            [3, 5, 7, 8, 10, 0, 2],
+            [1, 3, 5, 6, 8, 10, 0]
         ];
         for i in 0..DIATONIC_SCALE_SIZE {
             assert_eq!(modes[i].octave_notes, expected[i]);
