@@ -19,10 +19,10 @@ pub struct Note {
 
 impl Note {
     pub fn new(pitch: i16, duration: f64, intensity: f64) -> Self {
-        Note { pitch, duration: OrderedFloat(duration), intensity: OrderedFloat(intensity)}
+        Note {pitch, duration: OrderedFloat(duration), intensity: OrderedFloat(intensity)}
     }
 
-    pub fn note(&self) -> i16 {self.pitch }
+    pub fn pitch(&self) -> i16 {self.pitch}
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -132,21 +132,29 @@ impl MelodyMaker {
     pub fn create_variation(&self, original: &Melody, p_rewrite: f64, p_3: f64) -> Melody {
         assert!(0.0 <= p_rewrite && p_rewrite <= 1.0);
         let subs = original.get_subdivisions();
+        let scale = original.best_scale_for();
         let mut result = Melody {notes: Vec::new()};
         for sub in subs.iter() {
             if rand::random::<f64>() < p_rewrite {
-                let mut pitches_to_use: VecDeque<i16> = sub.notes.iter().map(|n| n.pitch).collect();
-                let start_pitch = match result.notes.get(0) {
-                    None => sub.notes[0],
-                    Some(note) => note
-                }.pitch;
-
-                // TODO: Continue work from here...
-                // - Rewrite pick_figure to use the figure length.
-                // - Pick a figure length using p_3. Also go with 3 if there is no option for 4
-                // given the note difference.
-                // - Create a while loop of some kind using notes_to_use. If we don't have enough
-                //   notes, double up some created notes randomly or something.
+                let mut notes_to_use: VecDeque<Note> = sub.notes.iter().map(|n| n).copied().collect();
+                let start_note = match result.notes.get(0) {
+                    None => {let starter = notes_to_use.pop_front().unwrap(); result.notes.push(starter); starter}, // add to result?
+                    Some(note) => *note
+                };
+                while notes_to_use.len() > 1 {
+                    let fig_len = if notes_to_use.len() == 2 || rand::random::<f64>() < p_3 {3} else {4};
+                    let pitch_steps = self.pick_figure(fig_len, start_note.pitch, notes_to_use[fig_len - 2].pitch).pattern();
+                    assert_eq!(fig_len, pitch_steps.len());
+                    for step in pitch_steps {
+                        let mut note = notes_to_use.pop_front().unwrap();
+                        let prev_pitch = result.notes[0].pitch();
+                        note.pitch = scale.next_pitch(prev_pitch, step);
+                        result.notes.push(note);
+                    }
+                }
+                if notes_to_use.len() == 1 {
+                    result.notes.push(notes_to_use.pop_front().unwrap());
+                }
             } else {
                 for note in sub.notes.iter().copied() {
                     result.notes.push(note);
@@ -156,8 +164,8 @@ impl MelodyMaker {
         result
     }
 
-    pub fn pick_figure(&self, figure_length: usize, first_note: i16, last_note: i16) -> MelodicFigure {
-        let jump = last_note - first_note;
+    pub fn pick_figure(&self, figure_length: usize, first_pitch: i16, last_pitch: i16) -> MelodicFigure {
+        let jump = last_pitch - first_pitch;
         // TODO: Better error-handling strategy here.
         let options = self.figure_tables.get(&figure_length).unwrap().get(&jump).unwrap();
         options[rand::random::<usize>() % options.len()]
@@ -191,10 +199,10 @@ impl MusicMode {
         MusicMode {root_pos, octave_notes}
     }
 
-    pub fn next_note(&self, reference_note: i16, scale_steps_away: i16) -> i16 {
-        let mut octaves_up = reference_note / NOTES_PER_OCTAVE;
+    pub fn next_pitch(&self, reference_pitch: i16, scale_steps_away: i16) -> i16 {
+        let mut octaves_up = reference_pitch / NOTES_PER_OCTAVE;
         match self.octave_notes.iter()
-            .position(|p| *p == self.octave_note(reference_note)) {
+            .position(|p| *p == self.octave_note(reference_pitch)) {
             Some(i) => {
                 let mut j = i as i16 + scale_steps_away;
                 while j < 0 {
@@ -207,7 +215,7 @@ impl MusicMode {
                 }
                 self.octave_notes[j as usize] + octaves_up * NOTES_PER_OCTAVE
             }
-            None => {self.next_note(reference_note + 1, scale_steps_away)}
+            None => {self.next_pitch(reference_pitch + 1, scale_steps_away)}
         }
     }
 
@@ -372,7 +380,7 @@ mod tests {
     fn test_parse_melody() {
         let m = "69,0.24,1.0,69,0.09,0.0,72,0.31,1.0,72,0.08,0.0,71,0.29,0.69";
         let notes = Melody::from(m);
-        assert_eq!(format!("{:?}", notes), "Melody { notes: [Note { note: 69, duration: OrderedFloat(0.24), intensity: OrderedFloat(1.0) }, Note { note: 69, duration: OrderedFloat(0.09), intensity: OrderedFloat(0.0) }, Note { note: 72, duration: OrderedFloat(0.31), intensity: OrderedFloat(1.0) }, Note { note: 72, duration: OrderedFloat(0.08), intensity: OrderedFloat(0.0) }, Note { note: 71, duration: OrderedFloat(0.29), intensity: OrderedFloat(0.69) }] }");
+        assert_eq!(format!("{:?}", notes), "Melody { notes: [Note { pitch: 69, duration: OrderedFloat(0.24), intensity: OrderedFloat(1.0) }, Note { pitch: 69, duration: OrderedFloat(0.09), intensity: OrderedFloat(0.0) }, Note { pitch: 72, duration: OrderedFloat(0.31), intensity: OrderedFloat(1.0) }, Note { pitch: 72, duration: OrderedFloat(0.08), intensity: OrderedFloat(0.0) }, Note { pitch: 71, duration: OrderedFloat(0.29), intensity: OrderedFloat(0.69) }] }");
     }
 
     #[test]
@@ -409,7 +417,7 @@ mod tests {
         let c5_major = MusicMode::new(ModNumC::new(0), 72);
         let c_notes: [i16; 8] = [72, 74, 76, 77, 79, 81, 83, 84];
         for (i, n) in c_notes.iter().enumerate() {
-            let next = c5_major.next_note(72, i as i16);
+            let next = c5_major.next_pitch(72, i as i16);
             assert_eq!(next, *n);
             assert!(c5_major.contains(*n));
         }
