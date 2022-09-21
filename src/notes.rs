@@ -141,8 +141,20 @@ impl MelodyMaker {
                     None => {let starter = notes_to_use.pop_front().unwrap(); result.notes.push(starter); starter},
                     Some(note) => *note
                 };
+                println!("start note: {:?}", start_note);
+                println!("notes to use: {:?}", notes_to_use);
                 while notes_to_use.len() > 1 {
-                    for step in self.find_pitch_steps(start_note.pitch, &notes_to_use, p_3) {
+                    let mut figure_length = 3;
+                    let mut jump = notes_to_use[1].pitch - start_note.pitch; // TODO: This is NOT an interval!!!
+                    if notes_to_use.len() > 2 && rand::random::<f64>() > p_3 {
+                        let jump4 = notes_to_use[2].pitch - start_note.pitch;
+                        if !((4i16..=6).contains(&jump4)) && !((-6i16..=-4).contains(&jump4)) {
+                            figure_length = 4;
+                            jump = jump4;
+                        }
+                    }
+                    let pitch_steps = self.pick_figure(figure_length, jump).pattern();
+                    for step in pitch_steps {
                         let mut note = notes_to_use.pop_front().unwrap();
                         let prev_pitch = result.notes.last().unwrap().pitch();
                         note.pitch = scale.next_pitch(prev_pitch, step);
@@ -159,20 +171,6 @@ impl MelodyMaker {
             }
         }
         result
-    }
-
-    pub fn find_pitch_steps(&self, start_pitch: i16, notes_to_use: &VecDeque<Note>, p_3: f64) -> Vec<i16> {
-        let mut figure_length = 3;
-        let mut jump = notes_to_use[1].pitch - start_pitch;
-        if notes_to_use.len() > 2 && rand::random::<f64>() > p_3 {
-            let jump4 = notes_to_use[2].pitch - start_pitch;
-            if !((4i16..=6).contains(&jump4)) && !((-6i16..=-4).contains(&jump4)) {
-                figure_length = 4;
-                jump = jump4;
-            }
-        }
-        println!("Figure length: {} jump: {}", figure_length, jump);
-        self.pick_figure(figure_length, jump).pattern()
     }
 
     pub fn pick_figure(&self, figure_length: usize, jump: i16) -> MelodicFigure {
