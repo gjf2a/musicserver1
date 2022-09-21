@@ -5,6 +5,7 @@ use histogram_macros::*;
 use enum_iterator::{Sequence, all};
 
 const NOTES_PER_OCTAVE: i16 = 12;
+const USIZE_NOTES_PER_OCTAVE: usize = NOTES_PER_OCTAVE as usize;
 const DIATONIC_SCALE_SIZE: usize = 7;
 const DIATONIC_SCALE_HOPS: [i16; DIATONIC_SCALE_SIZE] = [2, 2, 1, 2, 2, 2, 1];
 const NOTE_NAMES: [&str; NOTES_PER_OCTAVE as usize] = ["C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab", "A", "A#/Bb", "B"];
@@ -180,7 +181,7 @@ impl MelodyMaker {
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct MusicMode {
     root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>,
-    octave_notes: [i16; DIATONIC_SCALE_SIZE]
+    octave_notes: [ModNumC<i16,USIZE_NOTES_PER_OCTAVE>; DIATONIC_SCALE_SIZE]
 }
 
 impl MusicMode {
@@ -195,11 +196,11 @@ impl MusicMode {
     }
 
     pub fn new(root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>, root_note: i16) -> Self {
-        let mut octave_notes = [root_note % NOTES_PER_OCTAVE; DIATONIC_SCALE_SIZE];
+        let mut octave_notes = [ModNumC::new(root_note); DIATONIC_SCALE_SIZE];
         let mut offset = DIATONIC_SCALE_HOPS[root_pos.a()];
-        for i in 1..octave_notes.len() {
-            octave_notes[i] += offset;
-            offset += DIATONIC_SCALE_HOPS[(root_pos + i).a()];
+        for i in root_pos.iter().skip(1) {
+            octave_notes[i.a()] += offset;
+            offset += DIATONIC_SCALE_HOPS[i.a()];
         }
         MusicMode {root_pos, octave_notes}
     }
@@ -213,7 +214,10 @@ impl MusicMode {
             let mut count = 0;
             let mut p = pitch1;
             while p != pitch2 {
+                print!("Scale: {:?}; Before: {}", self, p);
                 p = self.next_pitch(p, 1).unwrap();
+                println!(" After: {}", p);
+                assert!(self.contains(p));
                 count += 1;
             }
             Some(count)
@@ -223,7 +227,7 @@ impl MusicMode {
     pub fn next_pitch(&self, reference_pitch: i16, scale_steps_away: i16) -> Option<i16> {
         let mut octaves_up = reference_pitch / NOTES_PER_OCTAVE;
         self.octave_notes.iter()
-            .position(|p| *p == self.octave_note(reference_pitch))
+            .position(|p| *p == reference_pitch)
             .map(|i| {
                 let mut j = i as i16 + scale_steps_away;
                 while j < 0 {
@@ -234,20 +238,16 @@ impl MusicMode {
                     j -= DIATONIC_SCALE_SIZE as i16;
                     octaves_up += 1;
                 }
-                self.octave_notes[j as usize] + octaves_up * NOTES_PER_OCTAVE
+                self.octave_notes[j as usize].a() + octaves_up * NOTES_PER_OCTAVE
             })
     }
 
     fn root(&self) -> i16 {
-        self.octave_notes[0]
-    }
-
-    fn octave_note(&self, note: i16) -> i16 {
-        self.root() + note % NOTES_PER_OCTAVE
+        self.octave_notes[self.root_pos.a()].a()
     }
 
     pub fn contains(&self, note: i16) -> bool {
-        self.octave_notes.contains(&(self.octave_note(note)))
+        self.octave_notes.contains(&(ModNumC::new(note)))
     }
 }
 
@@ -435,17 +435,55 @@ mod tests {
     #[test]
     fn test_scales() {
         let c5_major = MusicMode::new(ModNumC::new(0), 72);
-        let c_notes: [i16; 8] = [72, 74, 76, 77, 79, 81, 83, 84];
+        let c_notes: [i16; 15] = [72, 74, 76, 77, 79, 81, 83, 84, 86, 88, 89, 91, 93, 95, 96];
         for (i, n) in c_notes.iter().enumerate() {
             let next = c5_major.next_pitch(72, i as i16).unwrap();
             assert_eq!(next, *n);
             assert!(c5_major.contains(*n));
         }
 
+        let mut prev = 72;
+        for n in c_notes.iter().skip(1) {
+            let next = c5_major.next_pitch(prev, 1).unwrap();
+            assert_eq!(next, *n);
+            prev = next;
+        }
+
         let not_c_notes: [i16; 5] = [73, 75, 78, 80, 82];
         for n in not_c_notes.iter() {
             assert!(!c5_major.contains(*n));
         }
+    }
+
+    #[test]
+    fn test_scales_dorian() {
+        let d5_dorian = MusicMode::new(ModNumC::new(1), 74);
+        println!("{} {:?}", d5_dorian.name(), d5_dorian);
+        let d_notes: [i16; 15] = [74, 76, 77, 79, 81, 83, 84, 86, 88, 89, 91, 93, 95, 96, 98];
+        for (i, n) in d_notes.iter().enumerate() {
+            let next = d5_dorian.next_pitch(d_notes[0], i as i16).unwrap();
+            assert_eq!(next, *n);
+            println!("next: {}", next);
+            assert!(d5_dorian.contains(*n));
+        }
+
+        let mut prev = d_notes[0];
+        for n in d_notes.iter().skip(1) {
+            let next = d5_dorian.next_pitch(prev, 1).unwrap();
+            assert_eq!(next, *n);
+            prev = next;
+        }
+
+        let not_c_notes: [i16; 5] = [73, 75, 78, 80, 82];
+        for n in not_c_notes.iter() {
+            assert!(!d5_dorian.contains(*n));
+        }
+    }
+
+    #[test]
+    fn test_scale_2() {
+        let scale = MusicMode::new(ModNumC::new(3), 7);
+        assert_eq!(format!("{:?}", scale), "MusicMode { root_pos: ModNumC { num: 3 }, octave_notes: [7, 9, 11, 13, 14, 16, 18] }");
     }
 
     #[test]
