@@ -434,6 +434,9 @@ mod tests {
             let next = mode.next_pitch(notes[0], i as i16).unwrap();
             assert_eq!(next, *n);
             assert!(mode.contains(*n));
+            let prev = mode.next_pitch(*n, -(i as i16)).unwrap();
+            assert_eq!(notes[0], prev);
+            assert!(mode.contains(prev));
         }
 
         let mut prev = notes[0];
