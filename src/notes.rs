@@ -303,7 +303,7 @@ impl MusicMode {
 // Some of these will need more attention, most especially the ones where there is a note that
 // can jump just about anywhere:
 // * Arch, LeapingScale, LeapingAux, PendulumAux, ZigZag
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Sequence)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Sequence, Hash, Ord, PartialOrd)]
 pub enum MelodicFigure {
     Note3ScaleUp, Note3ScaleDown, AuxiliaryDown, AuxiliaryUp,
     ArpeggioUp, ArpeggioDown, RunUp, RunDown,
@@ -458,6 +458,7 @@ impl MelodicFigure {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeSet;
     use bare_metal_modulo::ModNumC;
     use crate::notes::{DIATONIC_SCALE_SIZE, MelodicFigure, Melody, MelodyMaker, MusicMode};
 
@@ -642,13 +643,50 @@ mod tests {
         let melody = Melody::from(EXAMPLE_MELODY).without_silence();
         let scale = melody.best_scale_for();
         let maker = MelodyMaker::new();
+        let mut figure_count = 0;
+        let mut figure_set = BTreeSet::new();
         for i in 0..melody.len() {
             if let Some(matched) = maker.matching_figure(&melody, i) {
+                figure_count += 1;
+                figure_set.insert(matched);
                 let pitches = matched.make_pitches(melody[i].pitch, &scale);
                 let melody_pitches = (i..(i + pitches.len())).map(|i| melody[i].pitch).collect::<Vec<_>>();
                 assert_eq!(pitches, melody_pitches);
-                println!("start: {}: {:?}: figure: {:?} melody: {:?}", i, matched, pitches, melody_pitches);
+                println!("first: {:?} last: {:?} start: {}: {:?}: figure: {:?}",
+                         scale.diatonic_degree(pitches[0]),
+                         scale.diatonic_degree(*pitches.last().unwrap()),
+                         i, matched, pitches);
             }
+        }
+        println!("# figures: {}", figure_count);
+        println!("# distinct figures: {}", figure_set.len());
+        println!("figures: {:?}", figure_set);
+        assert_eq!(figure_count, 29);
+        assert_eq!(figure_set.len(), 12);
+        assert_eq!(format!("{:?}", figure_set), "{Note3ScaleUp, AuxiliaryDown, RunDown, Trill1Up, Trill1Down, NP3DownSG, PivotUpDown, ReturnDownUp, CrazyDriverUpDown, LeapingScale2, LeapingScale3, LeapingAuxDownUpper4}");
+    }
+
+    #[test]
+    fn study_figures() {
+        let melody = Melody::from(EXAMPLE_MELODY).without_silence();
+        let scale = melody.best_scale_for();
+        let maker = MelodyMaker::new();
+        let mut start = 0;
+        let mut figures = Vec::new();
+        while start < melody.len() {
+            if let Some(matched) = maker.matching_figure(&melody, start) {
+                figures.push((start, Some(matched),
+                              Some(matched.make_pitches(melody[start].pitch, &scale))));
+                start += matched.len();
+            } else {
+                figures.push((start, None, None));
+                start += 1;
+            }
+        }
+        for (i, (start, figure, notes)) in figures.iter().enumerate() {
+            println!("Item {} Index {}", i, start);
+            println!("{:?} {:?}", figure, notes);
+            println!();
         }
     }
 
