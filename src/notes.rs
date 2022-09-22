@@ -89,6 +89,36 @@ impl Melody {
         }
         mode_by_weight!(mode_weights).unwrap()
     }
+
+    pub fn get_subdivisions(&self) -> Vec<Self> {
+        let no_zeros = self.without_silence();
+        let pauses = no_zeros.find_pause_indices();
+        no_zeros.subdivide_using(&pauses)
+    }
+
+    fn find_pause_indices(&self) -> Vec<usize> {
+        (1..(self.notes.len() - 1))
+            .filter(|i| self.notes[*i-1].duration < self.notes[*i].duration &&
+                self.notes[*i].duration > self.notes[*i+1].duration)
+            .collect()
+    }
+
+    fn subdivide_using(&self, indices: &Vec<usize>) -> Vec<Self> {
+        let mut result = Vec::new();
+        let mut current_sub: Vec<Note> = Vec::new();
+        let mut current_division = 0;
+        for (i, note) in self.notes.iter().enumerate() {
+            current_sub.push(*note);
+            if current_division < indices.len() && i == indices[current_division] {
+                let mut notes = Vec::new();
+                std::mem::swap(&mut current_sub, &mut notes);
+                result.push(Melody {notes});
+                current_division += 1;
+            }
+        }
+        result.push(Melody {notes: current_sub});
+        result
+    }
 }
 
 pub struct MelodyMaker {
@@ -102,7 +132,7 @@ impl MelodyMaker {
         }
     }
 
-    pub fn create_variation(&self, original: &Melody, p_rewrite: f64, p_3: f64) -> Melody {
+    pub fn create_variation_1(&self, original: &Melody, p_rewrite: f64, p_3: f64) -> Melody {
         assert!(0.0 <= p_rewrite && p_rewrite <= 1.0);
         assert!(0.0 <= p_3 && p_3 <= 1.0);
         let original = original.without_silence();
@@ -140,6 +170,15 @@ impl MelodyMaker {
         let table = self.figure_tables.get(&figure_length).unwrap();
         let options = table.get(&jump).unwrap();
         options[rand::random::<usize>() % options.len()]
+    }
+
+    pub fn create_variation_2(&self, original: &Melody, p_rewrite: f64, p_3: f64) -> Melody {
+        assert!(0.0 <= p_rewrite && p_rewrite <= 1.0);
+        assert!(0.0 <= p_3 && p_3 <= 1.0);
+        let original = original.without_silence();
+        let scale = original.best_scale_for();
+        let subs = original.get_subdivisions();
+        original // temp return value
     }
 }
 
@@ -213,6 +252,14 @@ impl MusicMode {
 
     pub fn contains(&self, pitch: i16) -> bool {
         self.octave_notes.contains(&(ModNumC::new(pitch)))
+    }
+
+    pub fn diatonic_degree(&self, pitch: i16) -> Option<i16> {
+        let mut pertinent_root = self.root();
+        while pertinent_root + NOTES_PER_OCTAVE <= pitch {
+            pertinent_root += NOTES_PER_OCTAVE;
+        }
+        self.diatonic_steps_between(pertinent_root, pitch).map(|d| d + 1)
     }
 }
 
@@ -444,7 +491,7 @@ mod tests {
         let scale = tune.best_scale_for();
         let maker = MelodyMaker::new();
         for _ in 0..20 {
-            let var = maker.create_variation(&tune, 0.5, 0.5);
+            let var = maker.create_variation_1(&tune, 0.5, 0.5);
             assert_eq!(var.len(), tune.len());
             let mut different_count = 0;
             for i in 0..var.len() {
@@ -497,5 +544,57 @@ mod tests {
     fn test_send_back() {
         let tune = Melody::from(EXAMPLE_MELODY).without_silence();
         assert_eq!(tune.sonic_pi_list(), "[[55, 0.39, 0.91],[59, 0.33, 0.73],[60, 0.06, 0.44],[62, 0.02, 0.87],[55, 0.39, 0.61],[57, 0.34, 0.98],[55, 0.39, 0.78],[54, 0.02, 0.98],[52, 0.11, 0.74],[54, 0.12, 0.46],[50, 0.1, 0.84],[55, 0.27, 0.74],[59, 0.27, 0.44],[60, 0.07, 0.54],[62, 0.04, 0.91],[55, 0.29, 0.67],[57, 0.32, 0.76],[55, 0.23, 0.7],[54, 0.12, 0.93],[50, 0.37, 0.8],[55, 0.36, 0.76],[59, 0.28, 0.76],[60, 0.05, 0.7],[62, 0.01, 0.91],[55, 0.33, 0.67],[57, 0.29, 0.8],[55, 0.29, 0.9],[54, 0.16, 1],[52, 0.12, 0.72],[54, 0.01, 0.71],[50, 0.1, 0.76],[55, 0.22, 0.65],[57, 0.29, 0.64],[55, 0.23, 0.76],[54, 0.12, 0.99],[52, 0.24, 0.95],[54, 0.13, 1],[52, 0.12, 0.72],[54, 0.19, 0.83],[50, 0.06, 0.69],[55, 0.01, 0.73],[57, 0.07, 0.66]]");
+    }
+
+    #[test]
+    fn test_subdivide_melody() {
+        let expected_subs = [
+            "55,0.39,0.91,55,0.04,0.0,59,0.33,0.73,60,0.06,0.44,62,0.02,0.87,59,0.05,0.0,60,0.16,0.0,62,0.2,0.0,55,0.39,0.61",
+            "55,0.01,0.0,57,0.34,0.98,57,0.05,0.0,55,0.39,0.78",
+            "54,0.02,0.98,55,0.19,0.0,54,0.12,0.0,52,0.11,0.74,52,0.0,0.0,54,0.12,0.46",
+            "54,0.03,0.0,50,0.1,0.84,50,0.27,0.0,55,0.27,0.74,55,0.1,0.0,59,0.27,0.44,60,0.07,0.54,62,0.04,0.91,59,0.09,0.0,60,0.11,0.0,62,0.19,0.0,55,0.29,0.67,55,0.07,0.0,57,0.32,0.76",
+            "57,0.06,0.0,55,0.23,0.7,55,0.05,0.0,54,0.12,0.93,54,0.07,0.0,50,0.37,0.8",
+            "50,0.5,0.0,55,0.36,0.76,55,0.05,0.0,59,0.28,0.76,60,0.05,0.7,62,0.01,0.91,59,0.07,0.0,60,0.15,0.0,62,0.2,0.0,55,0.33,0.67",
+            "55,0.02,0.0,57,0.29,0.8,57,0.1,0.0,55,0.29,0.9,55,0.08,0.0,54,0.16,1.0,54,0.12,0.0,52,0.12,0.72,54,0.01,0.71,52,0.14,0.0,54,0.07,0.0,50,0.1,0.76,50,0.23,0.0,55,0.22,0.65,55,0.13,0.0,57,0.29,0.64",
+            "57,0.08,0.0,55,0.23,0.76,55,0.07,0.0,54,0.12,0.99,54,0.04,0.0,52,0.24,0.95",
+            "52,0.19,0.0,54,0.13,1.0,54,0.15,0.0,52,0.12,0.72,52,0.03,0.0,54,0.19,0.83",
+            "54,0.13,0.0,50,0.06,0.69,50,0.15,0.0,55,0.01,0.73,57,0.07,0.66,57,0.55,0.0,55,1.5,0.0"
+        ];
+
+        let notes = Melody::from(EXAMPLE_MELODY);
+        println!("{:?}", notes);
+        let subs = notes.get_subdivisions();
+        assert_eq!(subs.len(), expected_subs.len());
+        for i in 0..expected_subs.len() {
+            println!("sub length: {} {}", subs[i].len(), subs[i].view_notes());
+            assert_eq!(Melody::from(expected_subs[i]).without_silence(), subs[i]);
+        }
+
+        let best = notes.best_scale_for();
+        println!("{} {:?}", best.name(), best);
+    }
+
+    #[test]
+    fn test_diatonic_degree() {
+        let melody = Melody::from(EXAMPLE_MELODY).without_silence();
+        let scale = melody.best_scale_for();
+        for (i, pitch) in [67, 69, 71, 72, 74, 76, 78, 79, 81, 83, 84, 86, 88, 90, 91].iter().enumerate() {
+            assert_eq!((i % DIATONIC_SCALE_SIZE) as i16 + 1, scale.diatonic_degree(*pitch).unwrap());
+        }
+    }
+
+    #[test]
+    fn study_subs() {
+        let melody = Melody::from(EXAMPLE_MELODY).without_silence();
+        let subs = melody.get_subdivisions();
+        let scale = melody.best_scale_for();
+        println!("Scale: {:?}", scale);
+        for sub in subs {
+            println!("{}", sub.view_notes());
+            let end = sub.notes.last().unwrap().pitch;
+            println!("Degree: {}", scale.diatonic_degree(end)
+                .map(|d| format!("{}", d))
+                .unwrap_or(String::from("chromatic")));
+        }
     }
 }
