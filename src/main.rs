@@ -50,10 +50,9 @@ fn handle_client(stream: &mut TcpStream) -> std::io::Result<()> {
     if cmd_params.len() == 1 && cmd_params[0] == "show_melody" {
         println!("Echoing...");
         write!(stream, "{}", melody.sonic_pi_list())
-    } else if cmd_params.len() == 3 && cmd_params[0] == "create_variation_1" {
+    } else if cmd_params.len() == 2 && cmd_params[0] == "create_variation_1" {
         let p_rewrite: f64 = cmd_params[1].parse().unwrap();
-        let p_3: f64 = cmd_params[2].parse().unwrap();
-        let reply = MelodyMaker::new().create_variation_1(&melody, p_rewrite, p_3);
+        let reply = MelodyMaker::new().create_variation_1(&melody, p_rewrite);
         println!("Sending {}", reply.sonic_pi_list());
         write!(stream, "{}", reply.sonic_pi_list())
     } else if cmd_params.len() == 3 && cmd_params[0] == "create_variation_2" {
