@@ -30,36 +30,41 @@ use crate::notes::{Melody, MelodyMaker};
 
 fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:8888")?;
+    let maker = MelodyMaker::new();
 
     // accept connections and process them serially
     for stream in listener.incoming() {
-        handle_client(&mut stream?)?;
+        handle_client(&mut stream?, &maker)?;
     }
     Ok(())
 }
 
-fn handle_client(stream: &mut TcpStream) -> std::io::Result<()> {
+fn handle_client(stream: &mut TcpStream, maker: &MelodyMaker) -> std::io::Result<()> {
     let mut reader = BufReader::new(stream.try_clone().unwrap());
     let command = get_trimmed_line(&mut reader)?;
     let melody = get_trimmed_line(&mut reader)?;
-    println!("Read: {} then {} ", command, melody);
+    println!("Command: {}", command);
+    println!("{}", melody);
     let melody = Melody::from(melody.as_str());
-    println!("{}", melody.view_notes());
     println!("{}", melody.best_scale_for().name());
+    println!("{:?}", maker.greedy_figure_chain(&(melody.without_silence())));
+    println!("{}", melody.view_notes());
     let cmd_params = command.split_whitespace().collect::<Vec<_>>();
     if cmd_params.len() == 1 && cmd_params[0] == "show_melody" {
         println!("Echoing...");
         write!(stream, "{}", melody.sonic_pi_list())
     } else if cmd_params.len() == 2 && cmd_params[0] == "create_variation_1" {
         let p_rewrite: f64 = cmd_params[1].parse().unwrap();
-        let reply = MelodyMaker::new().create_variation_1(&melody, p_rewrite);
+        let reply = maker.create_variation_1(&melody, p_rewrite);
         println!("Sending {}", reply.sonic_pi_list());
+        println!();
         write!(stream, "{}", reply.sonic_pi_list())
     } else if cmd_params.len() == 3 && cmd_params[0] == "create_variation_2" {
         let p_rewrite: f64 = cmd_params[1].parse().unwrap();
         let p_3: f64 = cmd_params[2].parse().unwrap();
-        let reply = MelodyMaker::new().create_variation_2(&melody, p_rewrite, p_3);
+        let reply = maker.create_variation_2(&melody, p_rewrite, p_3);
         println!("Sending {}", reply.sonic_pi_list());
+        println!();
         write!(stream, "{}", reply.sonic_pi_list())
     } else {
         write!(stream, "Could not process command")
