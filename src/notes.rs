@@ -696,6 +696,8 @@ mod tests {
                          scale.diatonic_degree(pitches[0]),
                          scale.diatonic_degree(*pitches.last().unwrap()),
                          i, matched, pitches);
+            } else {
+                println!("start: {} pitch: {}", i, melody[i].pitch);
             }
         }
         println!("# figures: {}", figure_count);
