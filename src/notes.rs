@@ -104,7 +104,7 @@ impl Melody {
         no_zeros.subdivide_using(&pauses)
     }
 
-    fn find_pause_indices(&self) -> Vec<usize> {
+    pub fn find_pause_indices(&self) -> Vec<usize> {
         (1..(self.notes.len() - 1))
             .filter(|i| self[*i-1].duration < self[*i].duration &&
                 self[*i].duration > self[*i+1].duration)
@@ -183,6 +183,23 @@ impl MelodyMaker {
         }
         figures
     }
+
+    pub fn all_figure_matches(&self, melody: &Melody) -> Vec<(usize,MelodicFigure)> {
+        (0..melody.len())
+            .filter_map(|i| self.matching_figure(melody, i)
+                .map(|f| (i, f)))
+            .collect()
+    }
+
+    /*
+    pub fn emphasis_figure_chain(&self, melody: &Melody, emphasized_indices: &Vec<usize>) -> VecDeque<(usize,Option<MelodicFigure>)> {
+        // TODO: Here's an algorithm:
+        // * Call all_figure_matches().
+        // * Create a repository of features we are keeping, perhaps in a BTreeMap to keep it in order.
+        // * Add to the repository each figure that ends with an emphasized note.
+    }
+
+     */
 
     pub fn create_variation_1(&self, original: &Melody, p_rewrite: f64) -> Melody {
         assert!(0.0 <= p_rewrite && p_rewrite <= 1.0);
@@ -692,17 +709,18 @@ mod tests {
                 let pitches = matched.make_pitches(melody[i].pitch, &scale);
                 let melody_pitches = (i..(i + pitches.len())).map(|i| melody[i].pitch).collect::<Vec<_>>();
                 assert_eq!(pitches, melody_pitches);
-                println!("first: {:?} last: {:?} start: {}: {:?}: figure: {:?}",
+                println!("start: {}\t{:?}: figure: {:?} first: {:?} last: {:?}",
+                         i, matched, pitches,
                          scale.diatonic_degree(pitches[0]),
-                         scale.diatonic_degree(*pitches.last().unwrap()),
-                         i, matched, pitches);
+                         scale.diatonic_degree(*pitches.last().unwrap()));
             } else {
-                println!("start: {} pitch: {}", i, melody[i].pitch);
+                println!("start: {}\tpitch: {}", i, melody[i].pitch);
             }
         }
         println!("# figures: {}", figure_count);
         println!("# distinct figures: {}", figure_set.len());
         println!("figures: {:?}", figure_set);
+        println!("pause indices: {:?}", melody.find_pause_indices());
         (figure_count, figure_set)
     }
 
