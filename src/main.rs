@@ -54,21 +54,23 @@ fn handle_client(stream: &mut TcpStream, maker: &MelodyMaker) -> std::io::Result
         println!("Echoing...");
         write!(stream, "{}", melody.sonic_pi_list())
     } else if cmd_params.len() == 2 && cmd_params[0] == "create_variation_1" {
-        let p_rewrite: f64 = cmd_params[1].parse().unwrap();
-        let reply = maker.create_variation_1(&melody, p_rewrite);
-        println!("Sending {}", reply.sonic_pi_list());
-        println!();
-        write!(stream, "{}", reply.sonic_pi_list())
+        invoke_variation_func(stream, &maker, &melody, &cmd_params, |mk, m, p| mk.create_variation_1(m, p))
     } else if cmd_params.len() == 2 && cmd_params[0] == "create_variation_2" {
-        let p_rewrite: f64 = cmd_params[1].parse().unwrap();
-        let reply = maker.create_variation_2(&melody, p_rewrite);
-        println!("Sending {}", reply.sonic_pi_list());
-        println!();
-        write!(stream, "{}", reply.sonic_pi_list())
+        invoke_variation_func(stream, &maker, &melody, &cmd_params, |mk, m, p| mk.create_variation_2(m, p))
+    } else if cmd_params.len() == 2 && cmd_params[0] == "create_variation_3" {
+        invoke_variation_func(stream, &maker, &melody, &cmd_params, |mk, m, p| mk.create_variation_3(m, p))
     } else {
         println!("Mystery command: {}", command);
         write!(stream, "Could not process command")
     }
+}
+
+fn invoke_variation_func<V:Fn(&MelodyMaker,&Melody,f64)->Melody>(stream: &mut TcpStream, maker: &MelodyMaker, melody: &Melody, cmd_params: &Vec<&str>, make_variation: V) -> std::io::Result<()> {
+    let p: f64 = cmd_params[1].parse().unwrap();
+    let reply = make_variation(maker, melody, p);
+    println!("Sending {}", reply.sonic_pi_list());
+    println!();
+    write!(stream, "{}", reply.sonic_pi_list())
 }
 
 fn get_trimmed_line(reader: &mut BufReader<TcpStream>) -> std::io::Result<String> {

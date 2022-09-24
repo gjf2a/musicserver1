@@ -5,12 +5,17 @@ use ordered_float::OrderedFloat;
 use histogram_macros::*;
 use enum_iterator::{Sequence, all};
 
+const MAX_USABLE_PITCH: i16 = 200;
 const NOTES_PER_OCTAVE: i16 = 12;
 const USIZE_NOTES_PER_OCTAVE: usize = NOTES_PER_OCTAVE as usize;
 const DIATONIC_SCALE_SIZE: usize = 7;
 const DIATONIC_SCALE_HOPS: [i16; DIATONIC_SCALE_SIZE] = [2, 2, 1, 2, 2, 2, 1];
 const NOTE_NAMES: [&str; NOTES_PER_OCTAVE as usize] = ["C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab", "A", "A#/Bb", "B"];
 const MODE_NAMES: [&str; DIATONIC_SCALE_SIZE] = ["ionian", "dorian", "phrygian", "lydian", "mixolydian", "aeolian", "locrian"];
+
+fn assert_prob(p: f64) {
+    assert!(0.0 <= p && p <= 1.0);
+}
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Note {
@@ -185,6 +190,22 @@ impl MelodyMaker {
         figures
     }
 
+    pub fn randomized_figure_chain(&self, melody: &Melody, p_pick: f64) -> VecDeque<(usize,Option<MelodicFigure>)> {
+        assert_prob(p_pick);
+        let all_matched = self.all_figure_matches(melody);
+        let mut v_i = 0;
+        let mut result = VecDeque::new();
+        let mut min_safe_i = 0;
+        for i in 0..melody.len() {
+            result.push_back((i, if v_i < all_matched.len() && i == all_matched[v_i].0 {
+                let figure = all_matched[v_i].1;
+                v_i += 1;
+                if i >= min_safe_i && rand::random::<f64>() < p_pick {min_safe_i = i + figure.len() - 1; Some(figure)} else {None}
+            } else {None}));
+        }
+        result
+    }
+
     pub fn all_figure_matches(&self, melody: &Melody) -> Vec<(usize,MelodicFigure)> {
         (0..melody.len())
             .filter_map(|i| self.matching_figure(melody, i)
@@ -217,7 +238,7 @@ impl MelodyMaker {
     }
 
     fn chain_variation_creator<C:Fn(&Self,&Melody)->VecDeque<(usize,Option<MelodicFigure>)>>(&self, original: &Melody, p_rewrite: f64, chain_maker: C) -> Melody {
-        assert!(0.0 <= p_rewrite && p_rewrite <= 1.0);
+        assert_prob(p_rewrite);
         let original = original.without_silence();
         let scale = original.best_scale_for();
         let mut figure_chain = chain_maker(self, &original);
@@ -263,6 +284,10 @@ impl MelodyMaker {
     pub fn create_variation_2(&self, original: &Melody, p_rewrite: f64) -> Melody {
         self.chain_variation_creator(original, p_rewrite, |s, m| s.emphasis_figure_chain(m, &m.find_pause_indices()))
     }
+
+    pub fn create_variation_3(&self, original: &Melody, p_pick: f64) -> Melody {
+        self.chain_variation_creator(original, 1.0, |s, m| s.randomized_figure_chain(m, p_pick))
+    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
@@ -293,7 +318,7 @@ impl MusicMode {
     }
 
     pub fn diatonic_steps_between(&self, pitch1: i16, pitch2: i16) -> Option<i16> {
-        assert!(pitch1 < 200);
+        assert!(pitch1 < MAX_USABLE_PITCH);
         if pitch1 > pitch2 {
             self.diatonic_steps_between(pitch2, pitch1).map(|steps| -steps)
         } else if !self.contains(pitch1) || !self.contains(pitch2) {
@@ -313,7 +338,7 @@ impl MusicMode {
     /// Returns the diatonic pitch `scale_steps_away` from `reference_pitch`.
     /// Panics if `reference_pitch` is not part of `self`'s scale.
     pub fn next_pitch(&self, reference_pitch: i16, scale_steps_away: i16) -> i16 {
-        assert!(reference_pitch < 200);
+        assert!(reference_pitch < MAX_USABLE_PITCH);
         let mut octaves_up = reference_pitch / NOTES_PER_OCTAVE;
         self.octave_notes.iter()
             .position(|p| *p == reference_pitch)
