@@ -213,10 +213,14 @@ impl MelodyMaker {
     }
 
     pub fn create_variation_1(&self, original: &Melody, p_rewrite: f64) -> Melody {
+        self.chain_variation_creator(original, p_rewrite, |s, m| s.greedy_figure_chain(m))
+    }
+
+    fn chain_variation_creator<C:Fn(&Self,&Melody)->VecDeque<(usize,Option<MelodicFigure>)>>(&self, original: &Melody, p_rewrite: f64, chain_maker: C) -> Melody {
         assert!(0.0 <= p_rewrite && p_rewrite <= 1.0);
         let original = original.without_silence();
         let scale = original.best_scale_for();
-        let mut figure_chain = self.greedy_figure_chain(&original);
+        let mut figure_chain = chain_maker(self, &original);
         let mut notes = vec![];
         let mut next_already_added = false;
         loop {
@@ -256,13 +260,8 @@ impl MelodyMaker {
         options[rand::random::<usize>() % options.len()]
     }
 
-    pub fn create_variation_2(&self, original: &Melody, p_rewrite: f64, p_3: f64) -> Melody {
-        assert!(0.0 <= p_rewrite && p_rewrite <= 1.0);
-        assert!(0.0 <= p_3 && p_3 <= 1.0);
-        let original = original.without_silence();
-        let scale = original.best_scale_for();
-        let subs = original.get_subdivisions();
-        original // temp return value
+    pub fn create_variation_2(&self, original: &Melody, p_rewrite: f64) -> Melody {
+        self.chain_variation_creator(original, p_rewrite, |s, m| s.emphasis_figure_chain(m, &m.find_pause_indices()))
     }
 }
 

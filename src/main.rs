@@ -7,7 +7,7 @@ pub mod notes;
 require 'socket'
 
 s = TCPSocket.open('localhost', 8888)
-s.puts("create_variation 0.5 0.5")
+s.puts("create_variation_1 1.0")
 shipment = countdown.join(",")
 print shipment
 s.puts(shipment)
@@ -16,7 +16,7 @@ s.close
 
 reply = eval(reply)
 print reply
-sleep(4)
+sleep(1)
 
 play_melody countdown, :additive_1
 sleep(1)
@@ -59,14 +59,14 @@ fn handle_client(stream: &mut TcpStream, maker: &MelodyMaker) -> std::io::Result
         println!("Sending {}", reply.sonic_pi_list());
         println!();
         write!(stream, "{}", reply.sonic_pi_list())
-    } else if cmd_params.len() == 3 && cmd_params[0] == "create_variation_2" {
+    } else if cmd_params.len() == 2 && cmd_params[0] == "create_variation_2" {
         let p_rewrite: f64 = cmd_params[1].parse().unwrap();
-        let p_3: f64 = cmd_params[2].parse().unwrap();
-        let reply = maker.create_variation_2(&melody, p_rewrite, p_3);
+        let reply = maker.create_variation_2(&melody, p_rewrite);
         println!("Sending {}", reply.sonic_pi_list());
         println!();
         write!(stream, "{}", reply.sonic_pi_list())
     } else {
+        println!("Mystery command: {}", command);
         write!(stream, "Could not process command")
     }
 }
