@@ -368,7 +368,7 @@ pub enum MelodicFigure {
     ArpeggioPlusUpDown, ArpeggioPlusDownUp,
     ParkourBounce1, ParkourBounce2, ParkourPounce1, ParkourPounce2,
     VaultDown4, VaultUp4, VaultDown5, VaultUp5, VaultDown6, VaultUp6,
-    VaultDown4R, VaultUp4R, VaultDown5R, VaultUp5R, VaultDown6R, VaultUp6R,
+    VaultDown4R, VaultUp4R, VaultDown5R, VaultUp5R, VaultDown6R, VaultUp6R, VaultUp7, VaultUp7R,
     RollUpDown, RollDownUp, DoubleNeighbor1, DoubleNeighbor2,
     Double3rd1, Double3rd2,
     PendulumUpDown43, PendulumDownUp43, PendulumUpDown54, PendulumDownUp54,
@@ -378,8 +378,9 @@ pub enum MelodicFigure {
     LeapingAuxLowerDown4, LeapingAuxUpperDown4, LeapingAuxDownLower4, LeapingAuxDownUpper4,
     PendulumUpDownAuxDown4, PendulumUpDownAuxUp4, PendulumDownUpAuxDown4, PendulumDownUpAuxUp4,
     FunnelUp, FunnelDown,
-    CambiataUp, CambiataDown,
-    ZigZagUp, ZigZagDown
+    CambiataUpUp2, CambiataUpDown4, CambiataDownDown2, CambiataDownUp4,
+    ZigZagUp, ZigZagDown, ZigZagDownLeapUp5, ZigZagUpLeapDown5,
+    MysteryCountdown
 }
 
 impl MelodicFigure {
@@ -468,12 +469,14 @@ impl MelodicFigure {
             MelodicFigure::VaultUp5               => vec![1, 5],
             MelodicFigure::VaultDown6             => vec![6, 1],
             MelodicFigure::VaultUp6               => vec![1, 6],
+            MelodicFigure::VaultUp7               => vec![1, 7],
             MelodicFigure::VaultDown4R            => vec![-4, -1],
             MelodicFigure::VaultUp4R              => vec![-1, -4],
             MelodicFigure::VaultDown5R            => vec![-5, -1],
             MelodicFigure::VaultUp5R              => vec![-1, -5],
             MelodicFigure::VaultDown6R            => vec![-6, -1],
             MelodicFigure::VaultUp6R              => vec![-1, -6],
+            MelodicFigure::VaultUp7R              => vec![-1, -7],
             MelodicFigure::RollUpDown             => vec![1, 1, -2],
             MelodicFigure::RollDownUp             => vec![-1, -1, 2],
             MelodicFigure::DoubleNeighbor1        => vec![1, -2, 1],
@@ -506,10 +509,15 @@ impl MelodicFigure {
             MelodicFigure::PendulumDownUpAuxUp4   => vec![-4, 5, -1],
             MelodicFigure::FunnelUp               => vec![3, -2, 1],
             MelodicFigure::FunnelDown             => vec![-3, 2, -1],
-            MelodicFigure::CambiataUp             => vec![1, 2, -1],
-            MelodicFigure::CambiataDown           => vec![-1, -2, 1],
+            MelodicFigure::CambiataUpUp2          => vec![1, 2, -1],
+            MelodicFigure::CambiataDownDown2      => vec![-1, -2, 1],
+            MelodicFigure::CambiataUpDown4        => vec![1, -4, 5],
+            MelodicFigure::CambiataDownUp4        => vec![-1, 4, -5],
             MelodicFigure::ZigZagUp               => vec![4, -2, 5],
             MelodicFigure::ZigZagDown             => vec![-4, 2, -5],
+            MelodicFigure::ZigZagDownLeapUp5      => vec![-1, 5, -1],
+            MelodicFigure::ZigZagUpLeapDown5      => vec![1, -5, 1],
+            MelodicFigure::MysteryCountdown       => vec![1, -5, 3]
         }
     }
 }
@@ -519,7 +527,7 @@ mod tests {
     use std::collections::{BTreeSet, VecDeque};
     use bare_metal_modulo::ModNumC;
     use crate::notes::{DIATONIC_SCALE_SIZE, MelodicFigure, Melody, MelodyMaker, MusicMode};
-    use crate::notes::MelodicFigure::LeapingScale3;
+    use crate::notes::MelodicFigure::{LeapingScale3, MysteryCountdown};
 
     const EXAMPLE_MELODY: &str = "55,0.39,0.91,55,0.04,0.0,59,0.33,0.73,60,0.06,0.44,62,0.02,0.87,59,0.05,0.0,60,0.16,0.0,62,0.2,0.0,55,0.39,0.61,55,0.01,0.0,57,0.34,0.98,57,0.05,0.0,55,0.39,0.78,54,0.02,0.98,55,0.19,0.0,54,0.12,0.0,52,0.11,0.74,52,0.0,0.0,54,0.12,0.46,54,0.03,0.0,50,0.1,0.84,50,0.27,0.0,55,0.27,0.74,55,0.1,0.0,59,0.27,0.44,60,0.07,0.54,62,0.04,0.91,59,0.09,0.0,60,0.11,0.0,62,0.19,0.0,55,0.29,0.67,55,0.07,0.0,57,0.32,0.76,57,0.06,0.0,55,0.23,0.7,55,0.05,0.0,54,0.12,0.93,54,0.07,0.0,50,0.37,0.8,50,0.5,0.0,55,0.36,0.76,55,0.05,0.0,59,0.28,0.76,60,0.05,0.7,62,0.01,0.91,59,0.07,0.0,60,0.15,0.0,62,0.2,0.0,55,0.33,0.67,55,0.02,0.0,57,0.29,0.8,57,0.1,0.0,55,0.29,0.9,55,0.08,0.0,54,0.16,1.0,54,0.12,0.0,52,0.12,0.72,54,0.01,0.71,52,0.14,0.0,54,0.07,0.0,50,0.1,0.76,50,0.23,0.0,55,0.22,0.65,55,0.13,0.0,57,0.29,0.64,57,0.08,0.0,55,0.23,0.76,55,0.07,0.0,54,0.12,0.99,54,0.04,0.0,52,0.24,0.95,52,0.19,0.0,54,0.13,1.0,54,0.15,0.0,52,0.12,0.72,52,0.03,0.0,54,0.19,0.83,54,0.13,0.0,50,0.06,0.69,50,0.15,0.0,55,0.01,0.73,57,0.07,0.66,57,0.55,0.0,55,1.5,0.0";
     const COUNTDOWN_MELODY: &str = "66,0.42,1.0,66,0.55,0.0,73,0.17,1.0,73,0.01,0.0,71,0.13,0.77,71,0.0,0.0,73,0.45,0.41,73,0.13,0.0,66,0.85,0.8,66,0.32,0.0,74,0.16,1.0,74,0.0,0.0,74,0.37,0.87,74,0.03,0.0,73,0.2,1.0,73,0.03,0.0,71,0.03,0.06,71,0.04,0.0,71,0.93,1.0,71,0.27,0.0,74,0.16,1.0,74,0.03,0.0,73,0.13,1.0,73,0.03,0.0,74,0.45,1.0,74,0.12,0.0,66,0.58,0.8,66,0.5,0.0,71,0.15,0.75,71,0.02,0.0,71,0.13,0.81,71,0.03,0.0,71,0.21,1.0,71,0.08,0.0,69,0.24,0.94,69,0.08,0.0,68,0.22,0.65,68,0.07,0.0,71,0.24,1.0,71,0.06,0.0,69,0.68,1.0,69,0.15,0.0,73,0.16,1.0,73,0.03,0.0,71,0.14,0.91,71,0.03,0.0,73,0.29,1.0,73,0.22,0.0,66,0.61,0.64,66,0.45,0.0,74,0.15,0.87,74,0.04,0.0,74,0.14,0.83,74,0.02,0.0,74,0.2,1.0,74,0.13,0.0,73,0.29,0.96,73,0.0,0.0,72,0.04,0.49,72,0.03,0.0,71,1.01,1.0,71,0.41,0.0,74,0.14,0.94,74,0.04,0.0,73,0.13,0.8,73,0.03,0.0,74,0.49,1.0,74,0.12,0.0,66,0.93,0.54,66,0.19,0.0,71,0.16,0.81,71,0.02,0.0,71,0.13,0.79,71,0.03,0.0,71,0.21,0.87,71,0.11,0.0,69,0.24,0.86,69,0.08,0.0,68,0.24,0.67,68,0.07,0.0,71,0.24,1.0,71,0.11,0.0,69,0.75,0.86,69,0.05,0.0,68,0.18,0.71,68,0.02,0.0,69,0.16,0.89,69,0.04,0.0,71,0.02,0.99,71,0.0,0.0,83,0.01,1.0,83,0.0,0.0,71,0.56,0.98,71,0.16,0.0,69,0.19,1.0,69,0.04,0.0,71,0.2,1.0,71,0.05,0.0,73,0.24,1.0,73,0.0,0.0,72,0.03,0.62,72,0.07,0.0,71,0.2,0.91,71,0.03,0.0,69,0.01,0.06,69,0.06,0.0,69,0.18,0.73,69,0.11,0.0,68,0.19,0.46,68,0.18,0.0,66,0.51,0.76,66,0.17,0.0,74,0.56,1.0,74,0.01,0.0,73,1.09,0.79,73,0.07,0.0,75,0.16,0.9,75,0.03,0.0,73,0.16,0.84,73,0.03,0.0,71,0.18,0.57,71,0.03,0.0,73,0.78,0.64,73,0.06,0.0,73,0.14,0.91,73,0.04,0.0,73,0.14,0.87,73,0.04,0.0,73,0.26,0.81,73,0.1,0.0,71,0.23,0.91,71,0.07,0.0,69,0.19,0.98,69,0.1,0.0,68,0.23,0.59,68,0.15,0.0,66,1.22,0.68,66,2.0,0.0";
@@ -710,14 +718,15 @@ mod tests {
     #[test]
     fn test_figure_match_countdown() {
         let (figure_count, figure_set) = test_figure_match(COUNTDOWN_MELODY);
-        assert_eq!(figure_count, 26);
-        assert_eq!(figure_set.len(), 13);
-        assert_eq!(format!("{:?}", figure_set), "{Note3ScaleUp, Note3ScaleDown, AuxiliaryDown, RunDown, LHPUpDown, ReturnDownUp, CrazyDriverDownUp, RollDownUp, DoubleNeighbor2, Double3rd1, LeapingScale8, LeapingAuxUpLower4, LeapingAuxLowerDown4}");
+        assert_eq!(figure_count, 32);
+        assert_eq!(figure_set.len(), 17);
+        assert_eq!(format!("{:?}", figure_set), "{Note3ScaleUp, Note3ScaleDown, AuxiliaryDown, RunDown, LHPUpDown, ReturnDownUp, CrazyDriverDownUp, VaultUp7, RollDownUp, DoubleNeighbor2, Double3rd1, LeapingScale8, LeapingAuxUpLower4, LeapingAuxLowerDown4, CambiataUpDown4, ZigZagDownLeapUp5, MysteryCountdown}");
     }
 
     fn test_figure_match(melody_str: &str) -> (usize, BTreeSet<MelodicFigure>) {
         let melody = Melody::from(melody_str).without_silence();
         let scale = melody.best_scale_for();
+        println!("scale: {}", scale.name());
         let maker = MelodyMaker::new();
         let mut figure_count = 0;
         let mut figure_set = BTreeSet::new();
@@ -733,7 +742,11 @@ mod tests {
                          scale.diatonic_degree(pitches[0]),
                          scale.diatonic_degree(*pitches.last().unwrap()));
             } else {
-                println!("start: {}\tpitch: {}", i, melody[i].pitch);
+                if i > 0 {
+                    println!("start: {}\tpitch: {}\tsteps to: {:?}", i, melody[i].pitch, scale.diatonic_steps_between(melody[i-1].pitch, melody[i].pitch));
+                } else {
+                    println!("start: {}\tpitch: {}", i, melody[i].pitch);
+                }
             }
         }
         println!("# figures: {}", figure_count);
@@ -757,7 +770,7 @@ mod tests {
             (8, None),
             (9, Some(MelodicFigure::LHPUpDown)),
             (10, None),
-            (11, None),
+            (11, Some(MelodicFigure::MysteryCountdown)),
             (12, None),
             (13, None),
             (14, None),
@@ -778,7 +791,7 @@ mod tests {
             (29, None),
             (30, Some(MelodicFigure::LHPUpDown)),
             (31, None),
-            (32, None),
+            (32, Some(MysteryCountdown)),
             (33, None),
             (34, None),
             (35, None),
@@ -799,8 +812,8 @@ mod tests {
             (50, None),
             (51, None),
             (52, None),
-            (53, Some(MelodicFigure::Note3ScaleDown)),
-            (54, None),
+            (53, None),
+            (54, Some(MelodicFigure::ZigZagDownLeapUp5)),
             (55, None),
             (56, None),
             (57, None),
