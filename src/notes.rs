@@ -1,4 +1,5 @@
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use std::cmp::max;
+use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use bare_metal_modulo::{MNum, ModNumC};
 use ordered_float::OrderedFloat;
 use histogram_macros::*;
@@ -191,15 +192,25 @@ impl MelodyMaker {
             .collect()
     }
 
-    /*
     pub fn emphasis_figure_chain(&self, melody: &Melody, emphasized_indices: &Vec<usize>) -> VecDeque<(usize,Option<MelodicFigure>)> {
-        // TODO: Here's an algorithm:
-        // * Call all_figure_matches().
-        // * Create a repository of features we are keeping, perhaps in a BTreeMap to keep it in order.
-        // * Add to the repository each figure that ends with an emphasized note.
+        let all_matched = self.all_figure_matches(melody);
+        let emphasized_indices: BTreeSet<usize> = emphasized_indices.iter().copied().collect();
+        let mut keepers = BTreeMap::new();
+        self.add_if_clear(&all_matched, &mut keepers, |s, f| emphasized_indices.contains(&(s + f.len() - 1)));
+        self.add_if_clear(&all_matched, &mut keepers, |s, _f| emphasized_indices.contains(&s));
+        self.add_if_clear(&all_matched, &mut keepers, |_s, _f| true);
+        (0..melody.len()).map(|i| (i, keepers.get(&i).copied())).collect()
     }
 
-     */
+    fn add_if_clear<P:Fn(usize,MelodicFigure)->bool>(&self, all_matched: &Vec<(usize, MelodicFigure)>, keepers: &mut BTreeMap<usize,MelodicFigure>, filter: P) {
+        for (start, figure) in all_matched.iter() {
+            let prev_start = max(*start as isize - *self.figure_tables.keys().max().unwrap() as isize, 0) as usize;
+            let mut prev_zone = prev_start..(start + figure.len());
+            if filter(*start, *figure) && !prev_zone.any(|i| keepers.get(&i).map_or(false, |f| figure.interfere(*start, *f, i))) {
+                keepers.insert(*start, *figure);
+            }
+        }
+    }
 
     pub fn create_variation_1(&self, original: &Melody, p_rewrite: f64) -> Melody {
         assert!(0.0 <= p_rewrite && p_rewrite <= 1.0);
@@ -377,6 +388,13 @@ impl MelodicFigure {
     /// Returns the net change of diatonic steps from the start to the end of this `MelodicFigure`.
     pub fn total_change(&self) -> i16 {self.pattern().iter().sum()}
 
+    /// Two `MelodicFigure` objects `interfere()` if they overlap anywhere except at their endpoints.
+    pub fn interfere(&self, self_start: usize, other: MelodicFigure, other_start: usize) -> bool {
+        let mut self_range = self_start..(self_start + self.len());
+        let other_range = (other_start + 1)..(other_start + other.len() - 1);
+        self_range.any(|i| other_range.contains(&i))
+    }
+
     pub fn matches(&self, melody: &Melody, scale: &MusicMode, start: usize) -> bool {
         melody.notes_left_from(start) >= self.len() &&
             self.pattern().iter().enumerate()
@@ -498,7 +516,7 @@ impl MelodicFigure {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeSet, VecDeque};
     use bare_metal_modulo::ModNumC;
     use crate::notes::{DIATONIC_SCALE_SIZE, MelodicFigure, Melody, MelodyMaker, MusicMode};
 
@@ -723,6 +741,96 @@ mod tests {
         println!("pause indices: {:?}", melody.find_pause_indices());
         (figure_count, figure_set)
     }
+
+    #[test]
+    fn test_emphasized_countdown() {
+        let expected = vec![
+            (0, None),
+            (1, Some(MelodicFigure::LeapingAuxLowerDown4)),
+            (2, None),
+            (3, None),
+            (4, None),
+            (5, None),
+            (6, Some(MelodicFigure::Note3ScaleDown)),
+            (7, None),
+            (8, None),
+            (9, Some(MelodicFigure::LHPUpDown)),
+            (10, None),
+            (11, None),
+            (12, None),
+            (13, None),
+            (14, None),
+            (15, None),
+            (16, None),
+            (17, Some(MelodicFigure::DoubleNeighbor2)),
+            (18, None),
+            (19, None),
+            (20, None),
+            (21, Some(MelodicFigure::LeapingAuxLowerDown4)),
+            (22, None),
+            (23, None),
+            (24, None),
+            (25, None),
+            (26, None),
+            (27, None),
+            (28, None),
+            (29, None),
+            (30, Some(MelodicFigure::LHPUpDown)),
+            (31, None),
+            (32, None),
+            (33, None),
+            (34, None),
+            (35, None),
+            (36, None),
+            (37, None),
+            (38, Some(MelodicFigure::DoubleNeighbor2)),
+            (39, None),
+            (40, None),
+            (41, Some(MelodicFigure::CrazyDriverDownUp)),
+            (42, None),
+            (43, None),
+            (44, None),
+            (45, None),
+            (46, Some(MelodicFigure::CrazyDriverDownUp)),
+            (47, None),
+            (48, None),
+            (49, None),
+            (50, None),
+            (51, None),
+            (52, None),
+            (53, Some(MelodicFigure::Note3ScaleDown)),
+            (54, None),
+            (55, None),
+            (56, None),
+            (57, None),
+            (58, None),
+            (59, Some(MelodicFigure::AuxiliaryDown)),
+            (60, None),
+            (61, None),
+            (62, None),
+            (63, None),
+            (64, Some(MelodicFigure::RunDown)),
+            (65, None),
+            (66, None),
+            (67, None),
+            (68, None)].iter().copied().collect();
+        test_emphasized(COUNTDOWN_MELODY, &expected);
+    }
+
+    #[test]
+    fn test_interfere() {
+        assert!(!MelodicFigure::DoubleNeighbor2.interfere(17, MelodicFigure::LHPUpDown, 20));
+        assert!(MelodicFigure::CrazyDriverDownUp.interfere(46, MelodicFigure::Note3ScaleUp, 47));
+    }
+
+    fn test_emphasized(melody_str: &str, expected: &VecDeque<(usize,Option<MelodicFigure>)>) {
+        let melody = Melody::from(melody_str).without_silence();
+        let maker = MelodyMaker::new();
+        let pauses = melody.find_pause_indices();
+        let chain = maker.emphasis_figure_chain(&melody, &pauses);
+        assert_eq!(&chain, expected);
+    }
+
 
     #[test]
     fn study_figures() {
