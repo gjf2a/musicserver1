@@ -89,7 +89,7 @@ impl Melody {
     }
 
     pub fn find_root_pitch(&self) -> i16 {
-        let mut note_iter = self.notes.iter().map(|n| (n.pitch % NOTES_PER_OCTAVE, n.duration));
+        let note_iter = self.notes.iter().map(|n| (n.pitch % NOTES_PER_OCTAVE, n.duration));
         let note_weights = collect_from_by_into!(note_iter, HashMap::new());
         mode_by_weight!(note_weights).unwrap()
     }
