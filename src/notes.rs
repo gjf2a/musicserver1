@@ -327,8 +327,8 @@ impl MelodyMaker {
         self.chain_variation_creator(original, 1.0, |s, m| s.randomized_figure_chain(m, p_pick), Self::pick_figure)
     }
 
-    // Create a new figure chain method that, once it has picked a figure at a point, will also
-    // re-pick that same figure at every opportunity.
+    // TODO: Set up a probability for each committed mapping to be replaced.
+    // pick_remembered_figure() could be a good place to do this.
     pub fn create_variation_4(&mut self, original: &Melody) -> Melody {
         self.reset_figure_mappings();
         self.chain_variation_creator(original, 1.0, |s, m| s.locked_in_figures(m),
