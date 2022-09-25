@@ -30,16 +30,16 @@ use crate::notes::{Melody, MelodyMaker};
 
 fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:8888")?;
-    let maker = MelodyMaker::new();
+    let mut maker = MelodyMaker::new();
 
     // accept connections and process them serially
     for stream in listener.incoming() {
-        handle_client(&mut stream?, &maker)?;
+        handle_client(&mut stream?, &mut maker)?;
     }
     Ok(())
 }
 
-fn handle_client(stream: &mut TcpStream, maker: &MelodyMaker) -> std::io::Result<()> {
+fn handle_client(stream: &mut TcpStream, maker: &mut MelodyMaker) -> std::io::Result<()> {
     let mut reader = BufReader::new(stream.try_clone().unwrap());
     let command = get_trimmed_line(&mut reader)?;
     let melody = get_trimmed_line(&mut reader)?;
@@ -47,25 +47,31 @@ fn handle_client(stream: &mut TcpStream, maker: &MelodyMaker) -> std::io::Result
     println!("{}", melody);
     let melody = Melody::from(melody.as_str());
     println!("{}", melody.best_scale_for().name());
-    println!("{:?}", maker.greedy_figure_chain(&(melody.without_silence())));
+    println!("{:?}", maker.all_figure_matches(&(melody.without_silence())));
     println!("{}", melody.view_notes());
     let cmd_params = command.split_whitespace().collect::<Vec<_>>();
     if cmd_params.len() == 1 && cmd_params[0] == "show_melody" {
         println!("Echoing...");
         write!(stream, "{}", melody.sonic_pi_list())
     } else if cmd_params.len() == 2 && cmd_params[0] == "create_variation_1" {
-        invoke_variation_func(stream, &maker, &melody, &cmd_params, |mk, m, p| mk.create_variation_1(m, p))
+        invoke_variation_func(stream, maker, &melody, &cmd_params, |mk, m, p| mk.create_variation_1(m, p))
     } else if cmd_params.len() == 2 && cmd_params[0] == "create_variation_2" {
-        invoke_variation_func(stream, &maker, &melody, &cmd_params, |mk, m, p| mk.create_variation_2(m, p))
+        invoke_variation_func(stream, maker, &melody, &cmd_params, |mk, m, p| mk.create_variation_2(m, p))
     } else if cmd_params.len() == 2 && cmd_params[0] == "create_variation_3" {
-        invoke_variation_func(stream, &maker, &melody, &cmd_params, |mk, m, p| mk.create_variation_3(m, p))
+        invoke_variation_func(stream, maker, &melody, &cmd_params, |mk, m, p| mk.create_variation_3(m, p))
+    } else if cmd_params.len() == 1 && cmd_params[0] == "create_variation_4" {
+        let reply = maker.create_variation_4(&melody);
+        maker.print_figure_mappings();
+        println!("Sending {}", reply.sonic_pi_list());
+        println!();
+        write!(stream, "{}", reply.sonic_pi_list())
     } else {
         println!("Mystery command: {}", command);
         write!(stream, "Could not process command")
     }
 }
 
-fn invoke_variation_func<V:Fn(&MelodyMaker,&Melody,f64)->Melody>(stream: &mut TcpStream, maker: &MelodyMaker, melody: &Melody, cmd_params: &Vec<&str>, make_variation: V) -> std::io::Result<()> {
+fn invoke_variation_func<V:Fn(&mut MelodyMaker,&Melody,f64)->Melody>(stream: &mut TcpStream, maker: &mut MelodyMaker, melody: &Melody, cmd_params: &Vec<&str>, make_variation: V) -> std::io::Result<()> {
     let p: f64 = cmd_params[1].parse().unwrap();
     let reply = make_variation(maker, melody, p);
     println!("Sending {}", reply.sonic_pi_list());

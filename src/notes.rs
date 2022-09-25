@@ -1,9 +1,10 @@
 use std::cmp::max;
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use bare_metal_modulo::{MNum, ModNumC};
 use ordered_float::OrderedFloat;
 use histogram_macros::*;
 use enum_iterator::{Sequence, all};
+use rand::prelude::SliceRandom;
 
 const MAX_USABLE_PITCH: i16 = 200;
 const NOTES_PER_OCTAVE: i16 = 12;
@@ -144,13 +145,15 @@ impl std::ops::Index<usize> for Melody {
 }
 
 pub struct MelodyMaker {
-    figure_tables: BTreeMap<usize, BTreeMap<i16, Vec<MelodicFigure>>>
+    figure_tables: BTreeMap<usize, BTreeMap<i16, Vec<MelodicFigure>>>,
+    figure_mappings: HashMap<MelodicFigure,MelodicFigure>
 }
 
 impl MelodyMaker {
     pub fn new() -> Self {
         MelodyMaker {
-            figure_tables: (3..=4).map(|len| (len, MelodicFigure::interval2figures(len))).collect()
+            figure_tables: (3..=4).map(|len| (len, MelodicFigure::interval2figures(len))).collect(),
+            figure_mappings: HashMap::new()
         }
     }
 
@@ -223,21 +226,53 @@ impl MelodyMaker {
         (0..melody.len()).map(|i| (i, keepers.get(&i).copied())).collect()
     }
 
+    pub fn locked_in_figures(&self, melody: &Melody) -> VecDeque<(usize,Option<MelodicFigure>)> {
+        let all_matched = self.all_figure_matches(melody);
+        let figure2count = collect_from_into!(all_matched.iter().copied().map(|(_, f)| f), HashMap::<MelodicFigure,usize>::new());
+        let mut ranked = ranking!(figure2count);
+        let mut rng = rand::thread_rng();
+        let mut keepers = BTreeMap::new();
+        while ranked.len() > 0 {
+            let max_count = ranked[0].1;
+            let mut candidates = HashSet::new();
+            while ranked.len() > 0 && ranked[0].1 == max_count {
+                candidates.insert(ranked.pop_front().unwrap().0);
+            }
+            let mut candidates = candidates.iter().copied().collect::<Vec<_>>();
+            candidates.shuffle(&mut rng);
+            while candidates.len() > 0 {
+                let figure = candidates.pop().unwrap();
+                for start in all_matched.iter().filter(|(_,f)| *f == figure).map(|(i, _)| *i) {
+                    self.add_no_interference(&mut keepers, figure, start);
+                }
+            }
+        }
+        (0..melody.len()).map(|i| (i, keepers.get(&i).copied())).collect()
+    }
+
     fn add_if_clear<P:Fn(usize,MelodicFigure)->bool>(&self, all_matched: &Vec<(usize, MelodicFigure)>, keepers: &mut BTreeMap<usize,MelodicFigure>, filter: P) {
         for (start, figure) in all_matched.iter() {
-            let prev_start = max(*start as isize - *self.figure_tables.keys().max().unwrap() as isize, 0) as usize;
-            let mut prev_zone = prev_start..(start + figure.len());
-            if filter(*start, *figure) && !prev_zone.any(|i| keepers.get(&i).map_or(false, |f| figure.interfere(*start, *f, i))) {
-                keepers.insert(*start, *figure);
+            if filter(*start, *figure) {
+                self.add_no_interference(keepers, *figure, *start);
             }
         }
     }
 
-    pub fn create_variation_1(&self, original: &Melody, p_rewrite: f64) -> Melody {
-        self.chain_variation_creator(original, p_rewrite, |s, m| s.greedy_figure_chain(m))
+    fn add_no_interference(&self, keepers: &mut BTreeMap<usize,MelodicFigure>, figure: MelodicFigure, start: usize) {
+        let prev_start = max(start as isize - *self.figure_tables.keys().max().unwrap() as isize, 0) as usize;
+        let mut prev_zone = prev_start..(start + figure.len());
+        if !prev_zone.any(|i| keepers.get(&i).map_or(false, |f| figure.interfere(start, *f, i))) {
+            keepers.insert(start, figure);
+        }
     }
 
-    fn chain_variation_creator<C:Fn(&Self,&Melody)->VecDeque<(usize,Option<MelodicFigure>)>>(&self, original: &Melody, p_rewrite: f64, chain_maker: C) -> Melody {
+    pub fn create_variation_1(&mut self, original: &Melody, p_rewrite: f64) -> Melody {
+        self.chain_variation_creator(original, p_rewrite, |s, m| s.greedy_figure_chain(m), Self::pick_figure)
+    }
+
+    fn chain_variation_creator<C,P>(&mut self, original: &Melody, p_rewrite: f64, chain_maker: C, mut figure_picker: P) -> Melody
+        where C:Fn(&Self,&Melody)->VecDeque<(usize,Option<MelodicFigure>)>,
+              P:FnMut(&mut Self,MelodicFigure)->MelodicFigure {
         assert_prob(p_rewrite);
         let original = original.without_silence();
         let scale = original.best_scale_for();
@@ -255,7 +290,7 @@ impl MelodyMaker {
                         None => {next_already_added = false;}
                         Some(figure) => {
                             let generator = if rand::random::<f64>() < p_rewrite {
-                                self.pick_figure(figure.len(), figure.total_change())
+                                figure_picker(self, figure)
                             } else {figure};
                             for (offset, pitch) in generator.make_pitches(notes.last().unwrap().pitch, &scale).iter().enumerate().skip(1) {
                                 notes.push(original[i + offset].repitched(*pitch));
@@ -275,18 +310,51 @@ impl MelodyMaker {
             .filter(|p| p.abs() < 8 && filter(p))
     }
 
-    pub fn pick_figure(&self, figure_length: usize, jump: i16) -> MelodicFigure {
+    pub fn pick_figure(&mut self, figure: MelodicFigure) -> MelodicFigure {
+        let figure_length = figure.len();
+        let jump = figure.total_change();
         let table = self.figure_tables.get(&figure_length).unwrap();
-        let options = table.get(&jump).unwrap();
-        options[rand::random::<usize>() % options.len()]
+        let options = table.get(&jump).unwrap().iter()
+            .filter(|f| **f != figure)
+            .copied().collect::<Vec<_>>();
+        if options.len() > 0 {options[rand::random::<usize>() % options.len()]} else {figure}
     }
 
-    pub fn create_variation_2(&self, original: &Melody, p_rewrite: f64) -> Melody {
-        self.chain_variation_creator(original, p_rewrite, |s, m| s.emphasis_figure_chain(m, &m.find_pause_indices()))
+    pub fn create_variation_2(&mut self, original: &Melody, p_rewrite: f64) -> Melody {
+        self.chain_variation_creator(original, p_rewrite, |s, m| s.emphasis_figure_chain(m, &m.find_pause_indices()), Self::pick_figure)
     }
 
-    pub fn create_variation_3(&self, original: &Melody, p_pick: f64) -> Melody {
-        self.chain_variation_creator(original, 1.0, |s, m| s.randomized_figure_chain(m, p_pick))
+    pub fn create_variation_3(&mut self, original: &Melody, p_pick: f64) -> Melody {
+        self.chain_variation_creator(original, 1.0, |s, m| s.randomized_figure_chain(m, p_pick), Self::pick_figure)
+    }
+
+    // Create a new figure chain method that, once it has picked a figure at a point, will also
+    // re-pick that same figure at every opportunity.
+    pub fn create_variation_4(&mut self, original: &Melody) -> Melody {
+        self.reset_figure_mappings();
+        self.chain_variation_creator(original, 1.0, |s, m| s.locked_in_figures(m),
+                                     Self::pick_remembered_figure)
+    }
+
+    fn pick_remembered_figure(&mut self, figure: MelodicFigure) -> MelodicFigure {
+        match self.figure_mappings.get(&figure) {
+            None => {
+                let r = self.pick_figure(figure);
+                self.figure_mappings.insert(figure, r);
+                r
+            }
+            Some(r) => {*r}
+        }
+    }
+
+    fn reset_figure_mappings(&mut self) {
+        self.figure_mappings = HashMap::new();
+    }
+
+    pub fn print_figure_mappings(&self) {
+        for (original, mapped) in self.figure_mappings.iter() {
+            println!("{:?} -> {:?}", original, mapped);
+        }
     }
 }
 
@@ -391,6 +459,7 @@ pub enum MelodicFigure {
     CrazyDriverDownUp, CrazyDriverUpDown,
     ArpeggioPlusUpDown, ArpeggioPlusDownUp,
     ParkourBounce1, ParkourBounce2, ParkourPounce1, ParkourPounce2,
+    ParkourBounce1R, ParkourBounce2R, ParkourPounce1R, ParkourPounce2R,
     VaultDown4, VaultUp4, VaultDown5, VaultUp5, VaultDown6, VaultUp6,
     VaultDown4R, VaultUp4R, VaultDown5R, VaultUp5R, VaultDown6R, VaultUp6R, VaultUp7, VaultUp7R,
     RollUpDown, RollDownUp, DoubleNeighbor1, DoubleNeighbor2,
@@ -487,6 +556,10 @@ impl MelodicFigure {
             MelodicFigure::ParkourPounce2         => vec![1, -6],
             MelodicFigure::ParkourBounce1         => vec![3, -1],
             MelodicFigure::ParkourBounce2         => vec![-5, 1],
+            MelodicFigure::ParkourPounce1R        => vec![1, -3],
+            MelodicFigure::ParkourPounce2R        => vec![-1, 6],
+            MelodicFigure::ParkourBounce1R        => vec![-3, 1],
+            MelodicFigure::ParkourBounce2R        => vec![5, -1],
             MelodicFigure::VaultDown4             => vec![4, 1],
             MelodicFigure::VaultUp4               => vec![1, 4],
             MelodicFigure::VaultDown5             => vec![5, 1],
@@ -636,7 +709,7 @@ mod tests {
     fn test_melody_maker() {
         let tune = Melody::from(EXAMPLE_MELODY).without_silence();
         let scale = tune.best_scale_for();
-        let maker = MelodyMaker::new();
+        let mut maker = MelodyMaker::new();
         for _ in 0..20 {
             let var = maker.create_variation_1(&tune, 0.9);
             assert_eq!(var.len(), tune.len());
