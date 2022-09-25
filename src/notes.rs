@@ -88,18 +88,17 @@ impl Melody {
         Melody {notes: self.notes.iter().filter(|n| n.intensity > OrderedFloat(0.0)).copied().collect()}
     }
 
+    pub fn find_root_pitch(&self) -> i16 {
+        let mut note_iter = self.notes.iter().map(|n| (n.pitch % NOTES_PER_OCTAVE, n.duration));
+        let note_weights = collect_from_by_into!(note_iter, HashMap::new());
+        mode_by_weight!(note_weights).unwrap()
+    }
+
     pub fn best_scale_for(&self) -> MusicMode {
-        let mut note_weights = HashMap::new();
-        for n in self.notes.iter() {
-            bump_by!(note_weights, n.pitch % NOTES_PER_OCTAVE, n.duration);
-        }
-        let root = mode_by_weight!(note_weights).unwrap();
         let mut mode_weights = HashMap::new();
-        for mode in MusicMode::all_modes_for(root).iter() {
-            for n in self.notes.iter() {
-                if mode.contains(n.pitch) {
-                    bump_ref_by!(mode_weights, mode, n.duration);
-                }
+        for mode in MusicMode::all_modes_for(self.find_root_pitch()).iter() {
+            for n in self.notes.iter().filter(|n| mode.contains(n.pitch)) {
+                bump_ref_by!(mode_weights, mode, n.duration);
             }
         }
         mode_by_weight!(mode_weights).unwrap()
@@ -799,6 +798,7 @@ mod tests {
     fn test_diatonic_degree() {
         let melody = Melody::from(EXAMPLE_MELODY).without_silence();
         let scale = melody.best_scale_for();
+        assert_eq!(scale.name(), "G ionian");
         for (i, pitch) in [67, 69, 71, 72, 74, 76, 78, 79, 81, 83, 84, 86, 88, 90, 91].iter().enumerate() {
             assert_eq!((i % DIATONIC_SCALE_SIZE) as i16 + 1, scale.diatonic_degree(*pitch).unwrap());
         }
@@ -815,9 +815,9 @@ mod tests {
     #[test]
     fn test_figure_match_countdown() {
         let (figure_count, figure_set) = test_figure_match(COUNTDOWN_MELODY);
-        assert_eq!(figure_count, 32);
-        assert_eq!(figure_set.len(), 17);
-        assert_eq!(format!("{:?}", figure_set), "{Note3ScaleUp, Note3ScaleDown, AuxiliaryDown, RunDown, LHPUpDown, ReturnDownUp, CrazyDriverDownUp, VaultUp7, RollDownUp, DoubleNeighbor2, Double3rd1, LeapingScale8, LeapingAuxUpLower4, LeapingAuxLowerDown4, CambiataUpDown4, ZigZagDownLeapUp5, MysteryCountdown}");
+        assert_eq!(figure_count, 33);
+        assert_eq!(figure_set.len(), 18);
+        assert_eq!(format!("{:?}", figure_set), "{Note3ScaleUp, Note3ScaleDown, AuxiliaryDown, RunDown, LHPUpDown, ReturnDownUp, CrazyDriverDownUp, ParkourBounce2R, VaultUp7, RollDownUp, DoubleNeighbor2, Double3rd1, LeapingScale8, LeapingAuxUpLower4, LeapingAuxLowerDown4, CambiataUpDown4, ZigZagDownLeapUp5, MysteryCountdown}");
     }
 
     fn test_figure_match(melody_str: &str) -> (usize, BTreeSet<MelodicFigure>) {
