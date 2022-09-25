@@ -327,18 +327,17 @@ impl MelodyMaker {
         self.chain_variation_creator(original, 1.0, |s, m| s.randomized_figure_chain(m, p_pick), Self::pick_figure)
     }
 
-    // TODO: Set up a probability for each committed mapping to be replaced.
-    // pick_remembered_figure() could be a good place to do this.
-    pub fn create_variation_4(&mut self, original: &Melody) -> Melody {
+    pub fn create_variation_4(&mut self, original: &Melody, p_remap: f64) -> Melody {
+        assert_prob(p_remap);
         self.reset_figure_mappings();
         self.chain_variation_creator(original, 1.0, |s, m| s.locked_in_figures(m),
-                                     Self::pick_remembered_figure)
+                                     |s, f| s.pick_remembered_figure(f, p_remap))
     }
 
-    fn pick_remembered_figure(&mut self, figure: MelodicFigure) -> MelodicFigure {
+    fn pick_remembered_figure(&mut self, figure: MelodicFigure, p_remap: f64) -> MelodicFigure {
         match self.figure_mappings.get(&figure) {
             None => {
-                let r = self.pick_figure(figure);
+                let r = if rand::random::<f64>() < p_remap {self.pick_figure(figure)} else {figure};
                 self.figure_mappings.insert(figure, r);
                 r
             }
@@ -962,6 +961,14 @@ mod tests {
         assert_eq!(&chain, expected);
     }
 
+    #[test]
+    fn test_variation_4_no_change() {
+        let expected = "[[66, 0.42, 1],[73, 0.17, 1],[71, 0.13, 0.77],[73, 0.45, 0.41],[66, 0.85, 0.8],[74, 0.16, 1],[74, 0.37, 0.87],[73, 0.2, 1],[71, 0.03, 0.06],[71, 0.93, 1],[74, 0.16, 1],[73, 0.13, 1],[74, 0.45, 1],[66, 0.58, 0.8],[71, 0.15, 0.75],[71, 0.13, 0.81],[71, 0.21, 1],[69, 0.24, 0.94],[68, 0.22, 0.65],[71, 0.24, 1],[69, 0.68, 1],[73, 0.16, 1],[71, 0.14, 0.91],[73, 0.29, 1],[66, 0.61, 0.64],[74, 0.15, 0.87],[74, 0.14, 0.83],[74, 0.2, 1],[73, 0.29, 0.96],[72, 0.04, 0.49],[71, 1.01, 1],[74, 0.14, 0.94],[73, 0.13, 0.8],[74, 0.49, 1],[66, 0.93, 0.54],[71, 0.16, 0.81],[71, 0.13, 0.79],[71, 0.21, 0.87],[69, 0.24, 0.86],[68, 0.24, 0.67],[71, 0.24, 1],[69, 0.75, 0.86],[68, 0.18, 0.71],[69, 0.16, 0.89],[71, 0.02, 0.99],[83, 0.01, 1],[71, 0.56, 0.98],[69, 0.19, 1],[71, 0.2, 1],[73, 0.24, 1],[72, 0.03, 0.62],[71, 0.2, 0.91],[69, 0.01, 0.06],[69, 0.18, 0.73],[68, 0.19, 0.46],[66, 0.51, 0.76],[74, 0.56, 1],[73, 1.09, 0.79],[75, 0.16, 0.9],[73, 0.16, 0.84],[71, 0.18, 0.57],[73, 0.78, 0.64],[73, 0.14, 0.91],[73, 0.14, 0.87],[73, 0.26, 0.81],[71, 0.23, 0.91],[69, 0.19, 0.98],[68, 0.23, 0.59],[66, 1.22, 0.68]]";
+        let melody = Melody::from(COUNTDOWN_MELODY).without_silence();
+        let mut maker = MelodyMaker::new();
+        let v = maker.create_variation_4(&melody, 0.0);
+        assert_eq!(v.sonic_pi_list().as_str(), expected);
+    }
 
     #[test]
     fn study_figures() {
