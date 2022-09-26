@@ -177,6 +177,18 @@ impl MelodyMaker {
         None
     }
 
+    pub fn is_chain(chain: &VecDeque<(usize,Option<MelodicFigure>)>) -> bool {
+        let mut current = 0;
+        for (i,f) in chain.iter() {
+            if *i != current {
+                return false;
+            } else {
+                current += f.map_or(1, |f| f.len());
+            }
+        }
+        true
+    }
+
     pub fn greedy_figure_chain(&self, melody: &Melody) -> VecDeque<(usize,Option<MelodicFigure>)> {
         let mut start = 0;
         let mut figures = VecDeque::new();
@@ -619,8 +631,9 @@ impl MelodicFigure {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeSet, VecDeque};
+    use std::collections::{BTreeSet, HashMap, VecDeque};
     use bare_metal_modulo::ModNumC;
+    use histogram_macros::*;
     use crate::notes::{DIATONIC_SCALE_SIZE, MelodicFigure, Melody, MelodyMaker, MusicMode};
     use crate::notes::MelodicFigure::{LeapingScale3, MysteryCountdown};
 
@@ -958,6 +971,7 @@ mod tests {
         let maker = MelodyMaker::new();
         let pauses = melody.find_pause_indices();
         let chain = maker.emphasis_figure_chain(&melody, &pauses);
+        assert!(MelodyMaker::is_chain(&chain));
         assert_eq!(&chain, expected);
     }
 
@@ -966,7 +980,17 @@ mod tests {
         let expected = "[[66, 0.42, 1],[73, 0.17, 1],[71, 0.13, 0.77],[73, 0.45, 0.41],[66, 0.85, 0.8],[74, 0.16, 1],[74, 0.37, 0.87],[73, 0.2, 1],[71, 0.03, 0.06],[71, 0.93, 1],[74, 0.16, 1],[73, 0.13, 1],[74, 0.45, 1],[66, 0.58, 0.8],[71, 0.15, 0.75],[71, 0.13, 0.81],[71, 0.21, 1],[69, 0.24, 0.94],[68, 0.22, 0.65],[71, 0.24, 1],[69, 0.68, 1],[73, 0.16, 1],[71, 0.14, 0.91],[73, 0.29, 1],[66, 0.61, 0.64],[74, 0.15, 0.87],[74, 0.14, 0.83],[74, 0.2, 1],[73, 0.29, 0.96],[72, 0.04, 0.49],[71, 1.01, 1],[74, 0.14, 0.94],[73, 0.13, 0.8],[74, 0.49, 1],[66, 0.93, 0.54],[71, 0.16, 0.81],[71, 0.13, 0.79],[71, 0.21, 0.87],[69, 0.24, 0.86],[68, 0.24, 0.67],[71, 0.24, 1],[69, 0.75, 0.86],[68, 0.18, 0.71],[69, 0.16, 0.89],[71, 0.02, 0.99],[83, 0.01, 1],[71, 0.56, 0.98],[69, 0.19, 1],[71, 0.2, 1],[73, 0.24, 1],[72, 0.03, 0.62],[71, 0.2, 0.91],[69, 0.01, 0.06],[69, 0.18, 0.73],[68, 0.19, 0.46],[66, 0.51, 0.76],[74, 0.56, 1],[73, 1.09, 0.79],[75, 0.16, 0.9],[73, 0.16, 0.84],[71, 0.18, 0.57],[73, 0.78, 0.64],[73, 0.14, 0.91],[73, 0.14, 0.87],[73, 0.26, 0.81],[71, 0.23, 0.91],[69, 0.19, 0.98],[68, 0.23, 0.59],[66, 1.22, 0.68]]";
         let melody = Melody::from(COUNTDOWN_MELODY).without_silence();
         let mut maker = MelodyMaker::new();
+        let all_figs = maker.all_figure_matches(&melody);
+        let counts: HashMap<MelodicFigure,usize> = collect_from_into!(all_figs.iter().map(|(_, b)| b).copied(), HashMap::new());
+        println!("{:?}", ranking!(counts));
+        let locked_figs = maker.locked_in_figures(&melody);
+        assert_eq!(locked_figs.len(), melody.len());
+        for i in 0..all_figs.len() {
+            let j = all_figs[i].0;
+            println!("{}: all: {:?}\tlocked: {:?}", j, all_figs[i].1, locked_figs[j]);
+        }
         let v = maker.create_variation_4(&melody, 0.0);
+        assert_eq!(v.len(), melody.len());
         assert_eq!(v.sonic_pi_list().as_str(), expected);
     }
 
