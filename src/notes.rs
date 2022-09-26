@@ -183,7 +183,7 @@ impl MelodyMaker {
             if *i != current {
                 return false;
             } else {
-                current += f.map_or(1, |f| f.len());
+                current += f.map_or(1, |f| f.len() - 1);
             }
         }
         true
@@ -234,7 +234,7 @@ impl MelodyMaker {
         self.add_if_clear(&all_matched, &mut keepers, |s, f| emphasized_indices.contains(&(s + f.len() - 1)));
         self.add_if_clear(&all_matched, &mut keepers, |s, _f| emphasized_indices.contains(&s));
         self.add_if_clear(&all_matched, &mut keepers, |_s, _f| true);
-        (0..melody.len()).map(|i| (i, keepers.get(&i).copied())).collect()
+        Self::keepers2chain(&keepers, melody)
     }
 
     pub fn locked_in_figures(&self, melody: &Melody) -> VecDeque<(usize,Option<MelodicFigure>)> {
@@ -258,7 +258,26 @@ impl MelodyMaker {
                 }
             }
         }
-        (0..melody.len()).map(|i| (i, keepers.get(&i).copied())).collect()
+        Self::keepers2chain(&keepers, melody)
+    }
+
+    fn keepers2chain(keepers: &BTreeMap<usize,MelodicFigure>, melody: &Melody) -> VecDeque<(usize,Option<MelodicFigure>)> {
+        let mut covered = HashSet::new();
+        let mut result = VecDeque::new();
+        for i in 0..melody.len() {
+            if !covered.contains(&i) {
+                result.push_back((i, match keepers.get(&i) {
+                    None => {covered.insert(i); None}
+                    Some(f) => {
+                        for c in 0..(f.len() - 1) {
+                            covered.insert(i + c);
+                        }
+                        Some(*f)
+                    }
+                }));
+            }
+        }
+        result
     }
 
     fn add_if_clear<P:Fn(usize,MelodicFigure)->bool>(&self, all_matched: &Vec<(usize, MelodicFigure)>, keepers: &mut BTreeMap<usize,MelodicFigure>, filter: P) {
@@ -288,6 +307,7 @@ impl MelodyMaker {
         let original = original.without_silence();
         let scale = original.best_scale_for();
         let mut figure_chain = chain_maker(self, &original);
+        assert!(Self::is_chain(&figure_chain));
         let mut notes = vec![];
         let mut next_already_added = false;
         loop {
@@ -870,28 +890,18 @@ mod tests {
         let expected = vec![
             (0, None),
             (1, Some(MelodicFigure::LeapingAuxLowerDown4)),
-            (2, None),
-            (3, None),
             (4, None),
             (5, None),
             (6, Some(MelodicFigure::Note3ScaleDown)),
-            (7, None),
             (8, None),
             (9, Some(MelodicFigure::LHPUpDown)),
-            (10, None),
             (11, Some(MelodicFigure::MysteryCountdown)),
-            (12, None),
-            (13, None),
             (14, None),
             (15, None),
             (16, None),
             (17, Some(MelodicFigure::DoubleNeighbor2)),
-            (18, None),
-            (19, None),
             (20, None),
             (21, Some(MelodicFigure::LeapingAuxLowerDown4)),
-            (22, None),
-            (23, None),
             (24, None),
             (25, None),
             (26, None),
@@ -899,42 +909,28 @@ mod tests {
             (28, None),
             (29, None),
             (30, Some(MelodicFigure::LHPUpDown)),
-            (31, None),
             (32, Some(MysteryCountdown)),
-            (33, None),
-            (34, None),
             (35, None),
             (36, None),
             (37, None),
             (38, Some(MelodicFigure::DoubleNeighbor2)),
-            (39, None),
-            (40, None),
             (41, Some(MelodicFigure::CrazyDriverDownUp)),
-            (42, None),
-            (43, None),
             (44, None),
             (45, None),
             (46, Some(MelodicFigure::CrazyDriverDownUp)),
-            (47, None),
-            (48, None),
             (49, None),
             (50, None),
             (51, None),
             (52, None),
             (53, None),
             (54, Some(MelodicFigure::ZigZagDownLeapUp5)),
-            (55, None),
-            (56, None),
             (57, None),
             (58, None),
             (59, Some(MelodicFigure::AuxiliaryDown)),
-            (60, None),
             (61, None),
             (62, None),
             (63, None),
             (64, Some(MelodicFigure::RunDown)),
-            (65, None),
-            (66, None),
             (67, None),
             (68, None)].iter().copied().collect();
         test_emphasized(COUNTDOWN_MELODY, &expected);
@@ -944,17 +940,15 @@ mod tests {
     fn test_emphasized_1() {
         let expected = vec![
             (0, Some(MelodicFigure::LeapingScale3)),
-            (1, None), (2, None),
             (3, Some(MelodicFigure::LeapingAuxDownUpper4)),
-            (4, None), (5, None), (6, Some(MelodicFigure::ReturnDownUp)), (7, None), (8, None),
-            (9, None), (10, None), (11, Some(MelodicFigure::LeapingScale3)), (12, None), (13, None),
-            (14, None), (15, None), (16, Some(MelodicFigure::LeapingScale2)), (17, None), (18, None),
-            (19, None), (20, Some(LeapingScale3)), (21, None), (22, None), (23, None),
-            (24, Some(MelodicFigure::CrazyDriverUpDown)), (25, None), (26, None),
-            (27, Some(MelodicFigure::AuxiliaryDown)), (28, None), (29, None), (30, None), (31, None),
+            (6, Some(MelodicFigure::ReturnDownUp)),
+            (9, None), (10, None), (11, Some(MelodicFigure::LeapingScale3)),
+            (14, None), (15, None), (16, Some(MelodicFigure::LeapingScale2)),
+            (19, None), (20, Some(LeapingScale3)), (23, None),
+            (24, Some(MelodicFigure::CrazyDriverUpDown)),
+            (27, Some(MelodicFigure::AuxiliaryDown)), (29, None), (30, None), (31, None),
             (32, Some(MelodicFigure::RunDown)),
-            (33, None), (34, None),
-            (35, Some(MelodicFigure::Trill1Up)), (36, None), (37, None), (38, None), (39, None),
+            (35, Some(MelodicFigure::Trill1Up)), (38, None), (39, None),
             (40, None), (41, None)
         ].iter().copied().collect();
         test_emphasized(EXAMPLE_MELODY, &expected);
@@ -984,10 +978,8 @@ mod tests {
         let counts: HashMap<MelodicFigure,usize> = collect_from_into!(all_figs.iter().map(|(_, b)| b).copied(), HashMap::new());
         println!("{:?}", ranking!(counts));
         let locked_figs = maker.locked_in_figures(&melody);
-        assert_eq!(locked_figs.len(), melody.len());
-        for i in 0..all_figs.len() {
-            let j = all_figs[i].0;
-            println!("{}: all: {:?}\tlocked: {:?}", j, all_figs[i].1, locked_figs[j]);
+        for i in 0..locked_figs.len() {
+            println!("{:?}", locked_figs[i]);
         }
         let v = maker.create_variation_4(&melody, 0.0);
         assert_eq!(v.len(), melody.len());
