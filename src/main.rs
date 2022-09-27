@@ -57,8 +57,6 @@ fn handle_client(stream: &mut TcpStream, maker: &mut MelodyMaker) -> std::io::Re
         invoke_variation_func(stream, maker, &melody, &cmd_params, |mk, m, p| mk.create_variation_1(m, p))
     } else if cmd_params.len() == 2 && cmd_params[0] == "create_variation_2" {
         invoke_variation_func(stream, maker, &melody, &cmd_params, |mk, m, p| mk.create_variation_2(m, p))
-    } else if cmd_params.len() == 2 && cmd_params[0] == "create_variation_3" {
-        invoke_variation_func(stream, maker, &melody, &cmd_params, |mk, m, p| mk.create_variation_3(m, p))
     } else if cmd_params.len() == 2 && cmd_params[0] == "create_variation_4" {
         invoke_variation_func(stream, maker, &melody, &cmd_params, |mk, m, p| mk.create_variation_4(m, p))?;
         maker.print_figure_mappings();

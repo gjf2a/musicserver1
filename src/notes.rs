@@ -204,22 +204,6 @@ impl MelodyMaker {
         figures
     }
 
-    pub fn randomized_figure_chain(&self, melody: &Melody, p_pick: f64) -> VecDeque<(usize,Option<MelodicFigure>)> {
-        assert_prob(p_pick);
-        let all_matched = self.all_figure_matches(melody);
-        let mut v_i = 0;
-        let mut result = VecDeque::new();
-        let mut min_safe_i = 0;
-        for i in 0..melody.len() {
-            result.push_back((i, if v_i < all_matched.len() && i == all_matched[v_i].0 {
-                let figure = all_matched[v_i].1;
-                v_i += 1;
-                if i >= min_safe_i && rand::random::<f64>() < p_pick {min_safe_i = i + figure.len() - 1; Some(figure)} else {None}
-            } else {None}));
-        }
-        result
-    }
-
     pub fn all_figure_matches(&self, melody: &Melody) -> Vec<(usize,MelodicFigure)> {
         (0..melody.len())
             .filter_map(|i| self.matching_figure(melody, i)
@@ -353,10 +337,6 @@ impl MelodyMaker {
 
     pub fn create_variation_2(&mut self, original: &Melody, p_rewrite: f64) -> Melody {
         self.chain_variation_creator(original, p_rewrite, |s, m| s.emphasis_figure_chain(m, &m.find_pause_indices()), Self::pick_figure)
-    }
-
-    pub fn create_variation_3(&mut self, original: &Melody, p_pick: f64) -> Melody {
-        self.chain_variation_creator(original, 1.0, |s, m| s.randomized_figure_chain(m, p_pick), Self::pick_figure)
     }
 
     pub fn create_variation_4(&mut self, original: &Melody, p_remap: f64) -> Melody {
@@ -651,9 +631,10 @@ impl MelodicFigure {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeSet, HashMap, VecDeque};
+    use std::cmp::{max, min};
+    use std::collections::{BTreeSet, VecDeque};
     use bare_metal_modulo::ModNumC;
-    use histogram_macros::*;
+    use ordered_float::OrderedFloat;
     use crate::notes::{DIATONIC_SCALE_SIZE, MelodicFigure, Melody, MelodyMaker, MusicMode};
     use crate::notes::MelodicFigure::{LeapingScale3, MysteryCountdown};
 
@@ -969,21 +950,59 @@ mod tests {
         assert_eq!(&chain, expected);
     }
 
-    #[test]
-    fn test_variation_4_no_change() {
+    fn test_variation_unchanged<V:Fn(&mut MelodyMaker,&Melody,f64)->Melody>(v_func: V) {
         let expected = "[[66, 0.42, 1],[73, 0.17, 1],[71, 0.13, 0.77],[73, 0.45, 0.41],[66, 0.85, 0.8],[74, 0.16, 1],[74, 0.37, 0.87],[73, 0.2, 1],[71, 0.03, 0.06],[71, 0.93, 1],[74, 0.16, 1],[73, 0.13, 1],[74, 0.45, 1],[66, 0.58, 0.8],[71, 0.15, 0.75],[71, 0.13, 0.81],[71, 0.21, 1],[69, 0.24, 0.94],[68, 0.22, 0.65],[71, 0.24, 1],[69, 0.68, 1],[73, 0.16, 1],[71, 0.14, 0.91],[73, 0.29, 1],[66, 0.61, 0.64],[74, 0.15, 0.87],[74, 0.14, 0.83],[74, 0.2, 1],[73, 0.29, 0.96],[72, 0.04, 0.49],[71, 1.01, 1],[74, 0.14, 0.94],[73, 0.13, 0.8],[74, 0.49, 1],[66, 0.93, 0.54],[71, 0.16, 0.81],[71, 0.13, 0.79],[71, 0.21, 0.87],[69, 0.24, 0.86],[68, 0.24, 0.67],[71, 0.24, 1],[69, 0.75, 0.86],[68, 0.18, 0.71],[69, 0.16, 0.89],[71, 0.02, 0.99],[83, 0.01, 1],[71, 0.56, 0.98],[69, 0.19, 1],[71, 0.2, 1],[73, 0.24, 1],[72, 0.03, 0.62],[71, 0.2, 0.91],[69, 0.01, 0.06],[69, 0.18, 0.73],[68, 0.19, 0.46],[66, 0.51, 0.76],[74, 0.56, 1],[73, 1.09, 0.79],[75, 0.16, 0.9],[73, 0.16, 0.84],[71, 0.18, 0.57],[73, 0.78, 0.64],[73, 0.14, 0.91],[73, 0.14, 0.87],[73, 0.26, 0.81],[71, 0.23, 0.91],[69, 0.19, 0.98],[68, 0.23, 0.59],[66, 1.22, 0.68]]";
         let melody = Melody::from(COUNTDOWN_MELODY).without_silence();
         let mut maker = MelodyMaker::new();
-        let all_figs = maker.all_figure_matches(&melody);
-        let counts: HashMap<MelodicFigure,usize> = collect_from_into!(all_figs.iter().map(|(_, b)| b).copied(), HashMap::new());
-        println!("{:?}", ranking!(counts));
-        let locked_figs = maker.locked_in_figures(&melody);
-        for i in 0..locked_figs.len() {
-            println!("{:?}", locked_figs[i]);
-        }
-        let v = maker.create_variation_4(&melody, 0.0);
+        let v = v_func(&mut maker, &melody, 0.0);
         assert_eq!(v.len(), melody.len());
         assert_eq!(v.sonic_pi_list().as_str(), expected);
+    }
+
+    fn test_variation_changed<V:Fn(&mut MelodyMaker,&Melody,f64)->Melody>(v_func: V, expected_lo: f64, expected_hi: f64) {
+        let melody = Melody::from(COUNTDOWN_MELODY).without_silence();
+        let scale = melody.best_scale_for();
+        let mut maker = MelodyMaker::new();
+        let mut lo = OrderedFloat(1.0);
+        let mut hi = OrderedFloat(0.0);
+        for _ in 0..20 {
+            let var = v_func(&mut maker, &melody, 1.0);
+            assert_eq!(var.len(), melody.len());
+
+            let mut different_count = 0;
+            for i in 0..var.len() {
+                assert_eq!(var[i].duration, melody[i].duration);
+                assert_eq!(var[i].intensity, melody[i].intensity);
+                assert!(!scale.contains(melody[i].pitch) || scale.contains(var[i].pitch));
+                if var[i].pitch != melody[i].pitch {
+                    different_count += 1;
+                }
+            }
+            let portion_changed = different_count as f64 / var.len() as f64;
+            lo = min(lo, OrderedFloat(portion_changed));
+            hi = max(hi, OrderedFloat(portion_changed));
+        }
+        println!("lo: {:.2} hi: {:.2}", lo.into_inner(), hi.into_inner());
+        assert!(lo > OrderedFloat(expected_lo));
+        assert!(hi < OrderedFloat(expected_hi));
+    }
+
+    #[test]
+    fn test_variation_1() {
+        test_variation_unchanged(MelodyMaker::create_variation_1);
+        test_variation_changed(MelodyMaker::create_variation_1, 0.25, 0.4);
+    }
+
+    #[test]
+    fn test_variation_2() {
+        test_variation_unchanged(MelodyMaker::create_variation_2);
+        test_variation_changed(MelodyMaker::create_variation_2, 0.23, 0.35);
+    }
+
+    #[test]
+    fn test_variation_4() {
+        test_variation_unchanged(MelodyMaker::create_variation_4);
+        test_variation_changed(MelodyMaker::create_variation_4, 0.18, 0.37);
     }
 
     #[test]
