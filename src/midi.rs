@@ -26,16 +26,17 @@ impl MidiBytes {
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum MidiMsg {
-    NoteVelocity(u8, u8), PitchBend(u16), AftertouchNotePressure(u8,u8), ControlChangeNumValue(u8,u8)
+    NoteOn(u8, u8), NoteOff(u8, u8), PitchBend(u16), AftertouchNotePressure(u8,u8), ControlChangeNumValue(u8,u8)
 }
 
 impl MidiMsg {
     pub fn from_bytes(input: MidiBytes) -> Option<Self> {
         match input.cmd {
-            NOTE_ON | NOTE_OFF => Some(MidiMsg::NoteVelocity(input.arg1, input.arg2)),
-            PITCH_BEND         => Some(MidiMsg::PitchBend(Self::pitch_bend_value(input.arg1, input.arg2))),
-            AFTERTOUCH         => Some(MidiMsg::AftertouchNotePressure(input.arg1, input.arg2)),
-            CONTROL_CHANGE     => Some(MidiMsg::ControlChangeNumValue(input.arg1, input.arg2)),
+            NOTE_ON        => Some(MidiMsg::NoteOn(input.arg1, input.arg2)),
+            NOTE_OFF       => Some(MidiMsg::NoteOff(input.arg1, input.arg2)),
+            PITCH_BEND     => Some(MidiMsg::PitchBend(Self::pitch_bend_value(input.arg1, input.arg2))),
+            AFTERTOUCH     => Some(MidiMsg::AftertouchNotePressure(input.arg1, input.arg2)),
+            CONTROL_CHANGE => Some(MidiMsg::ControlChangeNumValue(input.arg1, input.arg2)),
             _ => None
         }
     }

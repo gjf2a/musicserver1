@@ -21,6 +21,49 @@
 // Endpoint Transfer Type: Bulk
 // Endpoint Usage Type:    Data
 
+// Sonuus on Windows: Bus 002 Device 011 ID 231c:0001
+// # configurations: 1
+// # interfaces: 4
+// Interface #0
+// # endpoints: 1
+// Endpoint #4
+// Endpoint Address:       132
+// Endpoint Direction:     In
+// Endpoint Sync:          NoSync
+// Endpoint Transfer Type: Interrupt
+// Endpoint Usage Type:    Data
+// Interface #1
+// # endpoints: 0
+// # endpoints: 1
+// Endpoint #1
+// Endpoint Address:       129
+// Endpoint Direction:     In
+// Endpoint Sync:          Asynchronous
+// Endpoint Transfer Type: Isochronous
+// Endpoint Usage Type:    Data
+// Interface #2
+// # endpoints: 2
+// Endpoint #2
+// Endpoint Address:       2
+// Endpoint Direction:     Out
+// Endpoint Sync:          NoSync
+// Endpoint Transfer Type: Bulk
+// Endpoint Usage Type:    Data
+// Endpoint #2
+// Endpoint Address:       130
+// Endpoint Direction:     In
+// Endpoint Sync:          NoSync
+// Endpoint Transfer Type: Bulk
+// Endpoint Usage Type:    Data
+// Interface #3
+// # endpoints: 1
+// Endpoint #3
+// Endpoint Address:       131
+// Endpoint Direction:     In
+// Endpoint Sync:          NoSync
+// Endpoint Transfer Type: Interrupt
+// Endpoint Usage Type:    Data
+
 use std::time::Duration;
 use musicserver1::midi::{MidiBytes, MidiMsg};
 
