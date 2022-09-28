@@ -457,36 +457,24 @@ impl MusicMode {
 // can jump just about anywhere:
 // * Arch, LeapingScale, LeapingAux, PendulumAux, ZigZag
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Sequence, Hash, Ord, PartialOrd)]
-pub enum MelodicFigure {
-    Note3ScaleUp, Note3ScaleDown, AuxiliaryDown, AuxiliaryUp,
-    ArpeggioUp, ArpeggioDown, RunUp, RunDown,
-    Trill1Up, Trill2Up, Trill1Down, Trill2Down,
-    Arch1, Arch2, Arch3, Arch4,
-    NP3DownGS, NP3DownSG, NP3UpGS, NP3UpSG,
-    PivotUpDown, PivotDownUp,
-    LHPUpDown, LHPDownUp,
-    ReturnUpDown, ReturnDownUp,
-    CrazyDriverDownUp, CrazyDriverUpDown,
-    ArpeggioPlusUpDown, ArpeggioPlusDownUp,
-    ParkourBounce1, ParkourBounce2, ParkourPounce1, ParkourPounce2,
-    ParkourBounce1R, ParkourBounce2R, ParkourPounce1R, ParkourPounce2R,
-    VaultDown4, VaultUp4, VaultDown5, VaultUp5, VaultDown6, VaultUp6,
-    VaultDown4R, VaultUp4R, VaultDown5R, VaultUp5R, VaultDown6R, VaultUp6R, VaultUp7, VaultUp7R,
-    RollUpDown, RollDownUp, DoubleNeighbor1, DoubleNeighbor2,
-    Double3rd1, Double3rd2,
-    PendulumUpDown43, PendulumDownUp43, PendulumUpDown54, PendulumDownUp54,
-    LeapingScale1, LeapingScale2, LeapingScale3, LeapingScale4,
-    LeapingScale5, LeapingScale6, LeapingScale7, LeapingScale8,
-    LeapingAuxLowerUp4, LeapingAuxUpperUp4, LeapingAuxUpLower4, LeapingAuxUpUpper4,
-    LeapingAuxLowerDown4, LeapingAuxUpperDown4, LeapingAuxDownLower4, LeapingAuxDownUpper4,
-    PendulumUpDownAuxDown4, PendulumUpDownAuxUp4, PendulumDownUpAuxDown4, PendulumDownUpAuxUp4,
-    FunnelUp, FunnelDown,
-    CambiataUpUp2, CambiataUpDown4, CambiataDownDown2, CambiataDownUp4,
-    ZigZagUp, ZigZagDown, ZigZagDownLeapUp5, ZigZagUpLeapDown5,
-    MysteryCountdown
+pub struct MelodicFigure {
+    shape: MelodicFigureShape, polarity: FigurePolarity, direction: FigureDirection
 }
 
 impl MelodicFigure {
+    pub fn pattern(&self) -> Vec<i16> {
+        let mut result = self.shape.pattern();
+        if self.polarity == FigurePolarity::Negative {
+            for n in result.iter_mut() {
+                *n = -*n;
+            }
+        }
+        if self.direction == FigureDirection::Reverse {
+            result.reverse();
+        }
+        result
+    }
+
     pub fn len(&self) -> usize {self.pattern().len() + 1}
 
     /// Returns the net change of diatonic steps from the start to the end of this `MelodicFigure`.
@@ -529,102 +517,63 @@ impl MelodicFigure {
         }
         result
     }
+}
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Sequence, Hash, Ord, PartialOrd)]
+pub enum FigurePolarity {
+    Positive, Negative
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Sequence, Hash, Ord, PartialOrd)]
+pub enum FigureDirection {
+    Forward, Reverse
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Sequence, Hash, Ord, PartialOrd)]
+pub enum MelodicFigureShape {
+    Note3Scale, Auxiliary, Arpeggio, Run, Trill1, Trill2, Arch, NP3, PivotLHP, ReturnCrazyDriver,
+    ArpeggioPlus, Parkour1, ParkourBounce2, ParkourPounce2, Vault4, Vault5, Vault6, Vault7, Roll,
+    DoubleNeighbor, Double3rd, Pendulum43, Pendulum54, LeapingScale, LeapingAux1, LeapingAux2,
+    PendulumAux1, PendulumAux2, Funnel, Cambiata1, Cambiata2, ZigZag1, ZigZag2, MysteryCountdown
+}
+
+impl MelodicFigureShape {
     pub fn pattern(&self) -> Vec<i16> {
         match self {
-            MelodicFigure::Note3ScaleUp           => vec![1, 1],
-            MelodicFigure::Note3ScaleDown         => vec![-1, -1],
-            MelodicFigure::AuxiliaryDown          => vec![-1, 1],
-            MelodicFigure::AuxiliaryUp            => vec![1, -1],
-            MelodicFigure::ArpeggioUp             => vec![2, 2],
-            MelodicFigure::ArpeggioDown           => vec![-2, -2],
-            MelodicFigure::RunUp                  => vec![1, 1, 1],
-            MelodicFigure::RunDown                => vec![-1, -1, -1],
-            MelodicFigure::Trill1Up               => vec![1, -1, 1],
-            MelodicFigure::Trill2Up               => vec![2, -2, 2],
-            MelodicFigure::Trill1Down             => vec![-1, 1, -1],
-            MelodicFigure::Trill2Down             => vec![-2, 2, -2],
-            MelodicFigure::Arch1                  => vec![2, 2, -2],
-            MelodicFigure::Arch2                  => vec![-2, -2, 2],
-            MelodicFigure::Arch3                  => vec![2, -2, -2],
-            MelodicFigure::Arch4                  => vec![-2, 2, 2],
-            MelodicFigure::NP3DownGS              => vec![-2, -1],
-            MelodicFigure::NP3DownSG              => vec![-1, -2],
-            MelodicFigure::NP3UpGS                => vec![2, 1],
-            MelodicFigure::NP3UpSG                => vec![1, 2],
-            MelodicFigure::PivotUpDown            => vec![1, -2],
-            MelodicFigure::PivotDownUp            => vec![-1, 2],
-            MelodicFigure::LHPUpDown              => vec![2, -1],
-            MelodicFigure::LHPDownUp              => vec![-2, 1],
-            MelodicFigure::ReturnUpDown           => vec![1, 1, -1],
-            MelodicFigure::ReturnDownUp           => vec![-1, -1, 1],
-            MelodicFigure::CrazyDriverDownUp      => vec![-1, 1, 1],
-            MelodicFigure::CrazyDriverUpDown      => vec![1, -1, -1],
-            MelodicFigure::ArpeggioPlusUpDown     => vec![2, 2, -1],
-            MelodicFigure::ArpeggioPlusDownUp     => vec![-2, -2, 1],
-            MelodicFigure::ParkourPounce1         => vec![-1, 3],
-            MelodicFigure::ParkourPounce2         => vec![1, -6],
-            MelodicFigure::ParkourBounce1         => vec![3, -1],
-            MelodicFigure::ParkourBounce2         => vec![-5, 1],
-            MelodicFigure::ParkourPounce1R        => vec![1, -3],
-            MelodicFigure::ParkourPounce2R        => vec![-1, 6],
-            MelodicFigure::ParkourBounce1R        => vec![-3, 1],
-            MelodicFigure::ParkourBounce2R        => vec![5, -1],
-            MelodicFigure::VaultDown4             => vec![4, 1],
-            MelodicFigure::VaultUp4               => vec![1, 4],
-            MelodicFigure::VaultDown5             => vec![5, 1],
-            MelodicFigure::VaultUp5               => vec![1, 5],
-            MelodicFigure::VaultDown6             => vec![6, 1],
-            MelodicFigure::VaultUp6               => vec![1, 6],
-            MelodicFigure::VaultUp7               => vec![1, 7],
-            MelodicFigure::VaultDown4R            => vec![-4, -1],
-            MelodicFigure::VaultUp4R              => vec![-1, -4],
-            MelodicFigure::VaultDown5R            => vec![-5, -1],
-            MelodicFigure::VaultUp5R              => vec![-1, -5],
-            MelodicFigure::VaultDown6R            => vec![-6, -1],
-            MelodicFigure::VaultUp6R              => vec![-1, -6],
-            MelodicFigure::VaultUp7R              => vec![-1, -7],
-            MelodicFigure::RollUpDown             => vec![1, 1, -2],
-            MelodicFigure::RollDownUp             => vec![-1, -1, 2],
-            MelodicFigure::DoubleNeighbor1        => vec![1, -2, 1],
-            MelodicFigure::DoubleNeighbor2        => vec![-1, 2, -1],
-            MelodicFigure::Double3rd1             => vec![2, -1, 2],
-            MelodicFigure::Double3rd2             => vec![-2, 1, -2],
-            MelodicFigure::PendulumUpDown43       => vec![4, -3],
-            MelodicFigure::PendulumDownUp43       => vec![-4, 3],
-            MelodicFigure::PendulumUpDown54       => vec![5, -4],
-            MelodicFigure::PendulumDownUp54       => vec![-5, 4],
-            MelodicFigure::LeapingScale1          => vec![1, 1, 2],
-            MelodicFigure::LeapingScale2          => vec![-1, -1, -2],
-            MelodicFigure::LeapingScale3          => vec![2, 1, 1],
-            MelodicFigure::LeapingScale4          => vec![-2, -1, -1],
-            MelodicFigure::LeapingScale5          => vec![1, 1, -2],
-            MelodicFigure::LeapingScale6          => vec![-1, -1, 2],
-            MelodicFigure::LeapingScale7          => vec![-2, 1, 1],
-            MelodicFigure::LeapingScale8          => vec![2, -1, -1],
-            MelodicFigure::LeapingAuxLowerUp4     => vec![-1, 1, 4],
-            MelodicFigure::LeapingAuxUpperUp4     => vec![1, -1, 4],
-            MelodicFigure::LeapingAuxUpLower4     => vec![4, -1, 1],
-            MelodicFigure::LeapingAuxUpUpper4     => vec![4, 1, -1],
-            MelodicFigure::LeapingAuxLowerDown4   => vec![-1, 1, -4],
-            MelodicFigure::LeapingAuxUpperDown4   => vec![1, -1, -4],
-            MelodicFigure::LeapingAuxDownLower4   => vec![-4, -1, 1],
-            MelodicFigure::LeapingAuxDownUpper4   => vec![-4, 1, -1],
-            MelodicFigure::PendulumUpDownAuxDown4 => vec![4, -5, 1],
-            MelodicFigure::PendulumUpDownAuxUp4   => vec![4, -3, -1],
-            MelodicFigure::PendulumDownUpAuxDown4 => vec![-4, 3, 1],
-            MelodicFigure::PendulumDownUpAuxUp4   => vec![-4, 5, -1],
-            MelodicFigure::FunnelUp               => vec![3, -2, 1],
-            MelodicFigure::FunnelDown             => vec![-3, 2, -1],
-            MelodicFigure::CambiataUpUp2          => vec![1, 2, -1],
-            MelodicFigure::CambiataDownDown2      => vec![-1, -2, 1],
-            MelodicFigure::CambiataUpDown4        => vec![1, -4, 5],
-            MelodicFigure::CambiataDownUp4        => vec![-1, 4, -5],
-            MelodicFigure::ZigZagUp               => vec![4, -2, 5],
-            MelodicFigure::ZigZagDown             => vec![-4, 2, -5],
-            MelodicFigure::ZigZagDownLeapUp5      => vec![-1, 5, -1],
-            MelodicFigure::ZigZagUpLeapDown5      => vec![1, -5, 1],
-            MelodicFigure::MysteryCountdown       => vec![1, -5, 3]
+            MelodicFigureShape::Note3Scale        => vec![1, 1],
+            MelodicFigureShape::Auxiliary         => vec![-1, 1],
+            MelodicFigureShape::Arpeggio          => vec![2, 2],
+            MelodicFigureShape::Run               => vec![1, 1, 1],
+            MelodicFigureShape::Trill1            => vec![1, -1, 1],
+            MelodicFigureShape::Trill2            => vec![2, -2, 2],
+            MelodicFigureShape::Arch              => vec![2, 2, -2],
+            MelodicFigureShape::NP3               => vec![-2, -1],
+            MelodicFigureShape::PivotLHP          => vec![1, -2],
+            MelodicFigureShape::ReturnCrazyDriver => vec![1, 1, -1],
+            MelodicFigureShape::ArpeggioPlus      => vec![2, 2, -1],
+            MelodicFigureShape::Parkour1          => vec![-1, 3],
+            MelodicFigureShape::ParkourPounce2    => vec![1, -6],
+            MelodicFigureShape::ParkourBounce2    => vec![-5, 1],
+            MelodicFigureShape::Vault4            => vec![4, 1],
+            MelodicFigureShape::Vault5            => vec![5, 1],
+            MelodicFigureShape::Vault6            => vec![6, 1],
+            MelodicFigureShape::Vault7            => vec![1, 7],
+            MelodicFigureShape::Roll              => vec![1, 1, -2],
+            MelodicFigureShape::DoubleNeighbor    => vec![1, -2, 1],
+            MelodicFigureShape::Double3rd         => vec![2, -1, 2],
+            MelodicFigureShape::Pendulum43        => vec![4, -3],
+            MelodicFigureShape::Pendulum54        => vec![5, -4],
+            MelodicFigureShape::LeapingScale      => vec![1, 1, 2],
+            MelodicFigureShape::LeapingAux1       => vec![-1, 1, 4],
+            MelodicFigureShape::LeapingAux2       => vec![1, -1, 4],
+            MelodicFigureShape::PendulumAux1      => vec![4, -5, 1],
+            MelodicFigureShape::PendulumAux2      => vec![4, -3, -1],
+            MelodicFigureShape::Funnel            => vec![3, -2, 1],
+            MelodicFigureShape::Cambiata1         => vec![1, 2, -1],
+            MelodicFigureShape::Cambiata2         => vec![1, -4, 5],
+            MelodicFigureShape::ZigZag1           => vec![4, -2, 5],
+            MelodicFigureShape::ZigZag2           => vec![-1, 5, -1],
+            MelodicFigureShape::MysteryCountdown  => vec![1, -5, 3]
         }
     }
 }
@@ -636,7 +585,9 @@ mod tests {
     use bare_metal_modulo::ModNumC;
     use ordered_float::OrderedFloat;
     use crate::notes::{DIATONIC_SCALE_SIZE, MelodicFigure, Melody, MelodyMaker, MusicMode};
-    use crate::notes::MelodicFigure::{LeapingScale3, MysteryCountdown};
+    use crate::notes::MelodicFigureShape::*;
+    use crate::notes::FigurePolarity::*;
+    use crate::notes::FigureDirection::*;
 
     const EXAMPLE_MELODY: &str = "55,0.39,0.91,55,0.04,0.0,59,0.33,0.73,60,0.06,0.44,62,0.02,0.87,59,0.05,0.0,60,0.16,0.0,62,0.2,0.0,55,0.39,0.61,55,0.01,0.0,57,0.34,0.98,57,0.05,0.0,55,0.39,0.78,54,0.02,0.98,55,0.19,0.0,54,0.12,0.0,52,0.11,0.74,52,0.0,0.0,54,0.12,0.46,54,0.03,0.0,50,0.1,0.84,50,0.27,0.0,55,0.27,0.74,55,0.1,0.0,59,0.27,0.44,60,0.07,0.54,62,0.04,0.91,59,0.09,0.0,60,0.11,0.0,62,0.19,0.0,55,0.29,0.67,55,0.07,0.0,57,0.32,0.76,57,0.06,0.0,55,0.23,0.7,55,0.05,0.0,54,0.12,0.93,54,0.07,0.0,50,0.37,0.8,50,0.5,0.0,55,0.36,0.76,55,0.05,0.0,59,0.28,0.76,60,0.05,0.7,62,0.01,0.91,59,0.07,0.0,60,0.15,0.0,62,0.2,0.0,55,0.33,0.67,55,0.02,0.0,57,0.29,0.8,57,0.1,0.0,55,0.29,0.9,55,0.08,0.0,54,0.16,1.0,54,0.12,0.0,52,0.12,0.72,54,0.01,0.71,52,0.14,0.0,54,0.07,0.0,50,0.1,0.76,50,0.23,0.0,55,0.22,0.65,55,0.13,0.0,57,0.29,0.64,57,0.08,0.0,55,0.23,0.76,55,0.07,0.0,54,0.12,0.99,54,0.04,0.0,52,0.24,0.95,52,0.19,0.0,54,0.13,1.0,54,0.15,0.0,52,0.12,0.72,52,0.03,0.0,54,0.19,0.83,54,0.13,0.0,50,0.06,0.69,50,0.15,0.0,55,0.01,0.73,57,0.07,0.66,57,0.55,0.0,55,1.5,0.0";
     const COUNTDOWN_MELODY: &str = "66,0.42,1.0,66,0.55,0.0,73,0.17,1.0,73,0.01,0.0,71,0.13,0.77,71,0.0,0.0,73,0.45,0.41,73,0.13,0.0,66,0.85,0.8,66,0.32,0.0,74,0.16,1.0,74,0.0,0.0,74,0.37,0.87,74,0.03,0.0,73,0.2,1.0,73,0.03,0.0,71,0.03,0.06,71,0.04,0.0,71,0.93,1.0,71,0.27,0.0,74,0.16,1.0,74,0.03,0.0,73,0.13,1.0,73,0.03,0.0,74,0.45,1.0,74,0.12,0.0,66,0.58,0.8,66,0.5,0.0,71,0.15,0.75,71,0.02,0.0,71,0.13,0.81,71,0.03,0.0,71,0.21,1.0,71,0.08,0.0,69,0.24,0.94,69,0.08,0.0,68,0.22,0.65,68,0.07,0.0,71,0.24,1.0,71,0.06,0.0,69,0.68,1.0,69,0.15,0.0,73,0.16,1.0,73,0.03,0.0,71,0.14,0.91,71,0.03,0.0,73,0.29,1.0,73,0.22,0.0,66,0.61,0.64,66,0.45,0.0,74,0.15,0.87,74,0.04,0.0,74,0.14,0.83,74,0.02,0.0,74,0.2,1.0,74,0.13,0.0,73,0.29,0.96,73,0.0,0.0,72,0.04,0.49,72,0.03,0.0,71,1.01,1.0,71,0.41,0.0,74,0.14,0.94,74,0.04,0.0,73,0.13,0.8,73,0.03,0.0,74,0.49,1.0,74,0.12,0.0,66,0.93,0.54,66,0.19,0.0,71,0.16,0.81,71,0.02,0.0,71,0.13,0.79,71,0.03,0.0,71,0.21,0.87,71,0.11,0.0,69,0.24,0.86,69,0.08,0.0,68,0.24,0.67,68,0.07,0.0,71,0.24,1.0,71,0.11,0.0,69,0.75,0.86,69,0.05,0.0,68,0.18,0.71,68,0.02,0.0,69,0.16,0.89,69,0.04,0.0,71,0.02,0.99,71,0.0,0.0,83,0.01,1.0,83,0.0,0.0,71,0.56,0.98,71,0.16,0.0,69,0.19,1.0,69,0.04,0.0,71,0.2,1.0,71,0.05,0.0,73,0.24,1.0,73,0.0,0.0,72,0.03,0.62,72,0.07,0.0,71,0.2,0.91,71,0.03,0.0,69,0.01,0.06,69,0.06,0.0,69,0.18,0.73,69,0.11,0.0,68,0.19,0.46,68,0.18,0.0,66,0.51,0.76,66,0.17,0.0,74,0.56,1.0,74,0.01,0.0,73,1.09,0.79,73,0.07,0.0,75,0.16,0.9,75,0.03,0.0,73,0.16,0.84,73,0.03,0.0,71,0.18,0.57,71,0.03,0.0,73,0.78,0.64,73,0.06,0.0,73,0.14,0.91,73,0.04,0.0,73,0.14,0.87,73,0.04,0.0,73,0.26,0.81,73,0.1,0.0,71,0.23,0.91,71,0.07,0.0,69,0.19,0.98,69,0.1,0.0,68,0.23,0.59,68,0.15,0.0,66,1.22,0.68,66,2.0,0.0";
@@ -822,15 +773,14 @@ mod tests {
         let (figure_count, figure_set) = test_figure_match(EXAMPLE_MELODY);
         assert_eq!(figure_count, 29);
         assert_eq!(figure_set.len(), 12);
-        assert_eq!(format!("{:?}", figure_set), "{Note3ScaleUp, AuxiliaryDown, RunDown, Trill1Up, Trill1Down, NP3DownSG, PivotUpDown, ReturnDownUp, CrazyDriverUpDown, LeapingScale2, LeapingScale3, LeapingAuxDownUpper4}");
-    }
+        assert_eq!(format!("{:?}", figure_set), "{MelodicFigure { shape: Note3Scale, polarity: Positive, direction: Forward }, MelodicFigure { shape: Auxiliary, polarity: Positive, direction: Forward }, MelodicFigure { shape: Run, polarity: Negative, direction: Forward }, MelodicFigure { shape: Trill1, polarity: Positive, direction: Forward }, MelodicFigure { shape: Trill1, polarity: Negative, direction: Forward }, MelodicFigure { shape: NP3, polarity: Positive, direction: Reverse }, MelodicFigure { shape: ReturnCrazyDriver, polarity: Negative, direction: Forward }, MelodicFigure { shape: ReturnCrazyDriver, polarity: Negative, direction: Reverse }, MelodicFigure { shape: LeapingScale, polarity: Positive, direction: Reverse }, MelodicFigure { shape: LeapingScale, polarity: Negative, direction: Forward }, MelodicFigure { shape: LeapingAux2, polarity: Negative, direction: Reverse }, MelodicFigure { shape: Funnel, polarity: Positive, direction: Reverse }}");    }
 
     #[test]
     fn test_figure_match_countdown() {
         let (figure_count, figure_set) = test_figure_match(COUNTDOWN_MELODY);
-        assert_eq!(figure_count, 33);
-        assert_eq!(figure_set.len(), 18);
-        assert_eq!(format!("{:?}", figure_set), "{Note3ScaleUp, Note3ScaleDown, AuxiliaryDown, RunDown, LHPUpDown, ReturnDownUp, CrazyDriverDownUp, ParkourBounce2R, VaultUp7, RollDownUp, DoubleNeighbor2, Double3rd1, LeapingScale8, LeapingAuxUpLower4, LeapingAuxLowerDown4, CambiataUpDown4, ZigZagDownLeapUp5, MysteryCountdown}");
+        assert_eq!(figure_count, 36);
+        assert_eq!(figure_set.len(), 20);
+        assert_eq!(format!("{:?}", figure_set), "{MelodicFigure { shape: Note3Scale, polarity: Positive, direction: Forward }, MelodicFigure { shape: Note3Scale, polarity: Negative, direction: Forward }, MelodicFigure { shape: Auxiliary, polarity: Positive, direction: Forward }, MelodicFigure { shape: Run, polarity: Negative, direction: Forward }, MelodicFigure { shape: PivotLHP, polarity: Negative, direction: Reverse }, MelodicFigure { shape: ReturnCrazyDriver, polarity: Positive, direction: Reverse }, MelodicFigure { shape: ReturnCrazyDriver, polarity: Negative, direction: Forward }, MelodicFigure { shape: ParkourBounce2, polarity: Negative, direction: Forward }, MelodicFigure { shape: Vault7, polarity: Positive, direction: Forward }, MelodicFigure { shape: Vault7, polarity: Negative, direction: Reverse }, MelodicFigure { shape: Roll, polarity: Negative, direction: Forward }, MelodicFigure { shape: Roll, polarity: Negative, direction: Reverse }, MelodicFigure { shape: DoubleNeighbor, polarity: Negative, direction: Forward }, MelodicFigure { shape: Double3rd, polarity: Positive, direction: Forward }, MelodicFigure { shape: Pendulum54, polarity: Positive, direction: Reverse }, MelodicFigure { shape: LeapingAux2, polarity: Positive, direction: Reverse }, MelodicFigure { shape: LeapingAux2, polarity: Negative, direction: Forward }, MelodicFigure { shape: Cambiata2, polarity: Positive, direction: Forward }, MelodicFigure { shape: ZigZag2, polarity: Positive, direction: Forward }, MelodicFigure { shape: MysteryCountdown, polarity: Positive, direction: Forward }}");
     }
 
     fn test_figure_match(melody_str: &str) -> (usize, BTreeSet<MelodicFigure>) {
@@ -870,76 +820,58 @@ mod tests {
     fn test_emphasized_countdown() {
         let expected = vec![
             (0, None),
-            (1, Some(MelodicFigure::LeapingAuxLowerDown4)),
-            (4, None),
-            (5, None),
-            (6, Some(MelodicFigure::Note3ScaleDown)),
+            (1, Some(MelodicFigure { shape: LeapingAux2, polarity: Negative, direction: Forward })),
+            (4, None), (5, None),
+            (6, Some(MelodicFigure { shape: Note3Scale, polarity: Negative, direction: Forward })),
             (8, None),
-            (9, Some(MelodicFigure::LHPUpDown)),
-            (11, Some(MelodicFigure::MysteryCountdown)),
-            (14, None),
-            (15, None),
-            (16, None),
-            (17, Some(MelodicFigure::DoubleNeighbor2)),
+            (9, Some(MelodicFigure { shape: PivotLHP, polarity: Negative, direction: Reverse })),
+            (11, Some(MelodicFigure { shape: MysteryCountdown, polarity: Positive, direction: Forward })),
+            (14, None), (15, None), (16, None),
+            (17, Some(MelodicFigure { shape: DoubleNeighbor, polarity: Negative, direction: Forward })),
             (20, None),
-            (21, Some(MelodicFigure::LeapingAuxLowerDown4)),
-            (24, None),
-            (25, None),
-            (26, None),
-            (27, None),
-            (28, None),
-            (29, None),
-            (30, Some(MelodicFigure::LHPUpDown)),
-            (32, Some(MysteryCountdown)),
-            (35, None),
-            (36, None),
-            (37, None),
-            (38, Some(MelodicFigure::DoubleNeighbor2)),
-            (41, Some(MelodicFigure::CrazyDriverDownUp)),
-            (44, None),
-            (45, None),
-            (46, Some(MelodicFigure::CrazyDriverDownUp)),
-            (49, None),
-            (50, None),
-            (51, None),
-            (52, None),
-            (53, None),
-            (54, Some(MelodicFigure::ZigZagDownLeapUp5)),
-            (57, None),
-            (58, None),
-            (59, Some(MelodicFigure::AuxiliaryDown)),
-            (61, None),
-            (62, None),
-            (63, None),
-            (64, Some(MelodicFigure::RunDown)),
-            (67, None),
-            (68, None)].iter().copied().collect();
+            (21, Some(MelodicFigure { shape: LeapingAux2, polarity: Negative, direction: Forward })),
+            (24, None), (25, None), (26, None), (27, None), (28, None), (29, None),
+            (30, Some(MelodicFigure { shape: PivotLHP, polarity: Negative, direction: Reverse })),
+            (32, Some(MelodicFigure { shape: MysteryCountdown, polarity: Positive, direction: Forward })),
+            (35, None), (36, None), (37, None),
+            (38, Some(MelodicFigure { shape: DoubleNeighbor, polarity: Negative, direction: Forward })),
+            (41, Some(MelodicFigure { shape: ReturnCrazyDriver, polarity: Positive, direction: Reverse })),
+            (44, None), (45, None),
+            (46, Some(MelodicFigure { shape: ReturnCrazyDriver, polarity: Positive, direction: Reverse })),
+            (49, None), (50, None), (51, None), (52, None), (53, None),
+            (54, Some(MelodicFigure { shape: ZigZag2, polarity: Positive, direction: Forward })),
+            (57, None), (58, None),
+            (59, Some(MelodicFigure { shape: Auxiliary, polarity: Positive, direction: Forward })),
+            (61, None), (62, None), (63, None),
+            (64, Some(MelodicFigure { shape: Run, polarity: Negative, direction: Forward })),
+            (67, None), (68, None)].iter().copied().collect();
         test_emphasized(COUNTDOWN_MELODY, &expected);
     }
 
     #[test]
     fn test_emphasized_1() {
         let expected = vec![
-            (0, Some(MelodicFigure::LeapingScale3)),
-            (3, Some(MelodicFigure::LeapingAuxDownUpper4)),
-            (6, Some(MelodicFigure::ReturnDownUp)),
-            (9, None), (10, None), (11, Some(MelodicFigure::LeapingScale3)),
-            (14, None), (15, None), (16, Some(MelodicFigure::LeapingScale2)),
-            (19, None), (20, Some(LeapingScale3)), (23, None),
-            (24, Some(MelodicFigure::CrazyDriverUpDown)),
-            (27, Some(MelodicFigure::AuxiliaryDown)), (29, None), (30, None), (31, None),
-            (32, Some(MelodicFigure::RunDown)),
-            (35, Some(MelodicFigure::Trill1Up)), (38, None), (39, None),
-            (40, None), (41, None)
+            (0, Some(MelodicFigure { shape: LeapingScale, polarity: Positive, direction: Reverse })),
+            (3, Some(MelodicFigure { shape: LeapingAux2, polarity: Negative, direction: Reverse })),
+            (6, Some(MelodicFigure { shape: ReturnCrazyDriver, polarity: Negative, direction: Forward })),
+            (9, None), (10, None),
+            (11, Some(MelodicFigure { shape: LeapingScale, polarity: Positive, direction: Reverse })),
+            (14, None), (15, None),
+            (16, Some(MelodicFigure { shape: LeapingScale, polarity: Negative, direction: Forward })),
+            (19, None),
+            (20, Some(MelodicFigure { shape: LeapingScale, polarity: Positive, direction: Reverse })),
+            (23, None),
+            (24, Some(MelodicFigure { shape: ReturnCrazyDriver, polarity: Negative, direction: Reverse })),
+            (27, Some(MelodicFigure { shape: Auxiliary, polarity: Positive, direction: Forward })),
+            (29, None), (30, None), (31, None),
+            (32, Some(MelodicFigure { shape: Run, polarity: Negative, direction: Forward })),
+            (35, Some(MelodicFigure { shape: Trill1, polarity: Positive, direction: Forward })),
+            (38, None), (39, None), (40, None), (41, None)
         ].iter().copied().collect();
+
         test_emphasized(EXAMPLE_MELODY, &expected);
     }
 
-    #[test]
-    fn test_interfere() {
-        assert!(!MelodicFigure::DoubleNeighbor2.interfere(17, MelodicFigure::LHPUpDown, 20));
-        assert!(MelodicFigure::CrazyDriverDownUp.interfere(46, MelodicFigure::Note3ScaleUp, 47));
-    }
 
     fn test_emphasized(melody_str: &str, expected: &VecDeque<(usize,Option<MelodicFigure>)>) {
         let melody = Melody::from(melody_str).without_silence();
@@ -990,19 +922,19 @@ mod tests {
     #[test]
     fn test_variation_1() {
         test_variation_unchanged(MelodyMaker::create_variation_1);
-        test_variation_changed(MelodyMaker::create_variation_1, 0.25, 0.4);
+        test_variation_changed(MelodyMaker::create_variation_1, 0.25, 0.43);
     }
 
     #[test]
     fn test_variation_2() {
         test_variation_unchanged(MelodyMaker::create_variation_2);
-        test_variation_changed(MelodyMaker::create_variation_2, 0.23, 0.35);
+        test_variation_changed(MelodyMaker::create_variation_2, 0.20, 0.35);
     }
 
     #[test]
     fn test_variation_4() {
         test_variation_unchanged(MelodyMaker::create_variation_4);
-        test_variation_changed(MelodyMaker::create_variation_4, 0.18, 0.37);
+        test_variation_changed(MelodyMaker::create_variation_4, 0.10, 0.37);
     }
 
     #[test]
