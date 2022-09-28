@@ -1,5 +1,3 @@
-pub mod notes;
-
 // Example Sonic Pi code that communicates with this:
 /*
 # There is a melody named 'countdown'
@@ -26,7 +24,7 @@ play_melody reply, :additive_2
 
 use std::io::{Write, BufReader, BufRead};
 use std::net::{TcpListener, TcpStream};
-use crate::notes::{Melody, MelodyMaker};
+use musicserver1::{Melody, MelodyMaker};
 
 fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:8888")?;
