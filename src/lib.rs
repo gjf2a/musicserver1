@@ -1,3 +1,5 @@
+pub mod midi;
+
 use std::cmp::max;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use bare_metal_modulo::{MNum, ModNumC};

@@ -2,6 +2,7 @@
 // Left keyboard on Mac:  Bus 020 Device 007 ID 1c75:0289
 
 use std::time::Duration;
+use musicserver1::midi::{MidiBytes, MidiMsg};
 
 const XFER_INTERFACE: u8 = 1;
 const MAX_INPUT_BYTES: usize = 128;
@@ -41,8 +42,10 @@ fn main() -> std::io::Result<()> {
         let input_wait = Duration::from_millis(INPUT_TIMEOUT_MS);
         loop {
             match handle.read_bulk(INPUT_ENDPOINT, &mut buf, input_wait) {
-                Ok(n) => {
-                    println!("Read {} bytes: {:?}", n, &buf[0..n]);
+                Ok(_) => {
+                    let bytes = MidiBytes::from(&buf);
+                    let msg = MidiMsg::from_bytes(bytes);
+                    println!("{:?} ({:?})", msg, bytes);
                 }
                 Err(e) => match e {
                     rusb::Error::Timeout => {}
