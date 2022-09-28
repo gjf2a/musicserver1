@@ -1,5 +1,25 @@
 // Right keyboard on Mac: Bus 020 Device 006 ID 1c75:0289
 // Left keyboard on Mac:  Bus 020 Device 007 ID 1c75:0289
+//
+// Keyboard info:
+// # configurations: 1
+// # interfaces: 2
+// Interface #0
+// # endpoints: 0
+// Interface #1
+// # endpoints: 2
+// Endpoint #1
+// Endpoint Address:       1
+// Endpoint Direction:     Out
+// Endpoint Sync:          NoSync
+// Endpoint Transfer Type: Bulk
+// Endpoint Usage Type:    Data
+// Endpoint #1
+// Endpoint Address:       129
+// Endpoint Direction:     In
+// Endpoint Sync:          NoSync
+// Endpoint Transfer Type: Bulk
+// Endpoint Usage Type:    Data
 
 use std::time::Duration;
 use musicserver1::midi::{MidiBytes, MidiMsg};

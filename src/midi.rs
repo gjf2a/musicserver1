@@ -1,4 +1,9 @@
-use crate::midi::MidiMsg::{AftertouchNotePressure, ControlChangeNumValue, NoteVelocity, PitchBend};
+// I experimented with several exising MIDI crates, but none were suitable:
+// * midly and midi-msg both crashed on my USB inputs.
+// * helgoboss-midi was incomprehensible
+// * midi-control is LGPL
+// * midi-types is poorly documented
+// * apres is more about files than live events
 
 // Midi message types: http://www.music.mcgill.ca/~ich/classes/mumt306/StandardMIDIfileformat.html#BMA1_1
 
@@ -27,10 +32,10 @@ pub enum MidiMsg {
 impl MidiMsg {
     pub fn from_bytes(input: MidiBytes) -> Option<Self> {
         match input.cmd {
-            NOTE_ON | NOTE_OFF => Some(NoteVelocity(input.arg1, input.arg2)),
-            PITCH_BEND         => Some(PitchBend(Self::pitch_bend_value(input.arg1, input.arg2))),
-            AFTERTOUCH         => Some(AftertouchNotePressure(input.arg1, input.arg2)),
-            CONTROL_CHANGE     => Some(ControlChangeNumValue(input.arg1, input.arg2)),
+            NOTE_ON | NOTE_OFF => Some(MidiMsg::NoteVelocity(input.arg1, input.arg2)),
+            PITCH_BEND         => Some(MidiMsg::PitchBend(Self::pitch_bend_value(input.arg1, input.arg2))),
+            AFTERTOUCH         => Some(MidiMsg::AftertouchNotePressure(input.arg1, input.arg2)),
+            CONTROL_CHANGE     => Some(MidiMsg::ControlChangeNumValue(input.arg1, input.arg2)),
             _ => None
         }
     }

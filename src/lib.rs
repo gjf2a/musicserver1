@@ -8,7 +8,7 @@ use histogram_macros::*;
 use enum_iterator::{Sequence, all};
 use rand::prelude::SliceRandom;
 
-const MAX_USABLE_PITCH: i16 = 200;
+const MAX_USABLE_PITCH: i16 = 127;
 const NOTES_PER_OCTAVE: i16 = 12;
 const USIZE_NOTES_PER_OCTAVE: usize = NOTES_PER_OCTAVE as usize;
 const DIATONIC_SCALE_SIZE: usize = 7;
