@@ -8,11 +8,10 @@ use rand::prelude::SliceRandom;
 use std::io;
 use std::io::Write;
 
-const MAX_USABLE_PITCH: i16 = 127;
-const NOTES_PER_OCTAVE: i16 = 12;
+const NOTES_PER_OCTAVE: i8 = 12;
 const USIZE_NOTES_PER_OCTAVE: usize = NOTES_PER_OCTAVE as usize;
 const DIATONIC_SCALE_SIZE: usize = 7;
-const DIATONIC_SCALE_HOPS: [i16; DIATONIC_SCALE_SIZE] = [2, 2, 1, 2, 2, 2, 1];
+const DIATONIC_SCALE_HOPS: [i8; DIATONIC_SCALE_SIZE] = [2, 2, 1, 2, 2, 2, 1];
 const NOTE_NAMES: [&str; NOTES_PER_OCTAVE as usize] = ["C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab", "A", "A#/Bb", "B"];
 const MODE_NAMES: [&str; DIATONIC_SCALE_SIZE] = ["ionian", "dorian", "phrygian", "lydian", "mixolydian", "aeolian", "locrian"];
 
@@ -20,17 +19,21 @@ fn assert_prob(p: f64) {
     assert!(0.0 <= p && p <= 1.0);
 }
 
+pub fn midi2hz(midi_note: i8) -> f64 {
+    440.0 * 2.0_f64.powf((midi_note - 69) as f64 / 12.0)
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Note {
-    pitch: i16,
+    pitch: i8,
     duration: OrderedFloat<f64>,
     intensity: OrderedFloat<f64>
 }
 
 impl Note {
-    pub fn pitch(&self) -> i16 {self.pitch}
+    pub fn pitch(&self) -> i8 {self.pitch}
 
-    pub fn repitched(&self, new_pitch: i16) -> Note {
+    pub fn repitched(&self, new_pitch: i8) -> Note {
         Note {pitch: new_pitch, duration: self.duration, intensity: self.intensity}
     }
 
@@ -90,7 +93,7 @@ impl Melody {
         Melody {notes: self.notes.iter().filter(|n| n.intensity > OrderedFloat(0.0)).copied().collect()}
     }
 
-    pub fn find_root_pitch(&self) -> i16 {
+    pub fn find_root_pitch(&self) -> i8 {
         let note_iter = self.notes.iter().map(|n| (n.pitch % NOTES_PER_OCTAVE, n.duration));
         let note_weights = collect_from_by_into!(note_iter, HashMap::new());
         mode_by_weight!(note_weights).unwrap()
@@ -146,7 +149,7 @@ impl std::ops::Index<usize> for Melody {
 }
 
 pub struct MelodyMaker {
-    figure_tables: BTreeMap<usize, BTreeMap<i16, Vec<MelodicFigure>>>,
+    figure_tables: BTreeMap<usize, BTreeMap<i8, Vec<MelodicFigure>>>,
     figure_mappings: HashMap<MelodicFigure,MelodicFigure>
 }
 
@@ -321,7 +324,7 @@ impl MelodyMaker {
         Melody {notes}
     }
 
-    fn find_jump<P:Fn(&i16)->bool>(scale: &MusicMode, start_pitch: i16, notes_to_use: &VecDeque<Note>, end_jump_index: usize, filter: P) -> Option<i16> {
+    fn find_jump<P:Fn(&i8)->bool>(scale: &MusicMode, start_pitch: i8, notes_to_use: &VecDeque<Note>, end_jump_index: usize, filter: P) -> Option<i8> {
         notes_to_use.get(end_jump_index)
             .and_then(|n| scale.diatonic_steps_between(n.pitch, start_pitch))
             .filter(|p| p.abs() < 8 && filter(p))
@@ -373,11 +376,11 @@ impl MelodyMaker {
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct MusicMode {
     root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>,
-    octave_notes: [ModNumC<i16,USIZE_NOTES_PER_OCTAVE>; DIATONIC_SCALE_SIZE]
+    octave_notes: [ModNumC<i8,USIZE_NOTES_PER_OCTAVE>; DIATONIC_SCALE_SIZE]
 }
 
 impl MusicMode {
-    pub fn all_modes_for(root_note: i16) -> Vec<Self> {
+    pub fn all_modes_for(root_note: i8) -> Vec<Self> {
         (0..DIATONIC_SCALE_SIZE)
             .map(|i| Self::new(ModNumC::new(i), root_note))
             .collect()
@@ -387,7 +390,7 @@ impl MusicMode {
         format!("{} {}", NOTE_NAMES[self.root() as usize], MODE_NAMES[self.root_pos.a()])
     }
 
-    pub fn new(root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>, root_note: i16) -> Self {
+    pub fn new(root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>, root_note: i8) -> Self {
         let mut octave_notes = [ModNumC::new(root_note); DIATONIC_SCALE_SIZE];
         let mut offset = DIATONIC_SCALE_HOPS[root_pos.a()];
         for i in root_pos.iter().skip(1) {
@@ -397,8 +400,8 @@ impl MusicMode {
         MusicMode {root_pos, octave_notes}
     }
 
-    pub fn diatonic_steps_between(&self, pitch1: i16, pitch2: i16) -> Option<i16> {
-        assert!(pitch1 < MAX_USABLE_PITCH);
+    pub fn diatonic_steps_between(&self, pitch1: i8, pitch2: i8) -> Option<i8> {
+        assert!(pitch1 < i8::MAX);
         if pitch1 > pitch2 {
             self.diatonic_steps_between(pitch2, pitch1).map(|steps| -steps)
         } else if !self.contains(pitch1) || !self.contains(pitch2) {
@@ -417,14 +420,14 @@ impl MusicMode {
 
     /// Returns the diatonic pitch `scale_steps_away` from `reference_pitch`.
     /// Panics if `reference_pitch` is not part of `self`'s scale.
-    pub fn next_pitch(&self, reference_pitch: i16, scale_steps_away: i16) -> i16 {
-        assert!(reference_pitch < MAX_USABLE_PITCH);
+    pub fn next_pitch(&self, reference_pitch: i8, scale_steps_away: i8) -> i8 {
+        assert!(reference_pitch < i8::MAX);
         let mut octaves_up = reference_pitch / NOTES_PER_OCTAVE;
         self.octave_notes.iter()
             .position(|p| *p == reference_pitch)
             .map(|i| {
                 let ref_octave_basis = self.octave_notes[i].a();
-                let j: ModNumC<i16, DIATONIC_SCALE_SIZE> = ModNumC::new(i as i16 + scale_steps_away);
+                let j: ModNumC<i8, DIATONIC_SCALE_SIZE> = ModNumC::new(i as i8 + scale_steps_away);
                 let next_octave_basis = self.octave_notes[j.a() as usize].a();
                 if scale_steps_away > 0 && ref_octave_basis > next_octave_basis {
                     octaves_up += 1
@@ -437,15 +440,15 @@ impl MusicMode {
             .unwrap()
     }
 
-    fn root(&self) -> i16 {
+    fn root(&self) -> i8 {
         self.octave_notes[self.root_pos.a()].a()
     }
 
-    pub fn contains(&self, pitch: i16) -> bool {
+    pub fn contains(&self, pitch: i8) -> bool {
         self.octave_notes.contains(&(ModNumC::new(pitch)))
     }
 
-    pub fn diatonic_degree(&self, pitch: i16) -> Option<i16> {
+    pub fn diatonic_degree(&self, pitch: i8) -> Option<i8> {
         let mut pertinent_root = self.root();
         while pertinent_root + NOTES_PER_OCTAVE <= pitch {
             pertinent_root += NOTES_PER_OCTAVE;
@@ -461,7 +464,7 @@ pub struct MelodicFigure {
 }
 
 impl MelodicFigure {
-    pub fn pattern(&self) -> Vec<i16> {
+    pub fn pattern(&self) -> Vec<i8> {
         let mut result = self.shape.pattern();
         if self.polarity == FigurePolarity::Negative {
             for n in result.iter_mut() {
@@ -477,7 +480,7 @@ impl MelodicFigure {
     pub fn len(&self) -> usize {self.pattern().len() + 1}
 
     /// Returns the net change of diatonic steps from the start to the end of this `MelodicFigure`.
-    pub fn total_change(&self) -> i16 {self.pattern().iter().sum()}
+    pub fn total_change(&self) -> i8 {self.pattern().iter().sum()}
 
     /// Two `MelodicFigure` objects `interfere()` if they overlap anywhere except at their endpoints.
     pub fn interfere(&self, self_start: usize, other: MelodicFigure, other_start: usize) -> bool {
@@ -495,7 +498,7 @@ impl MelodicFigure {
 
     /// Generates a sequence of diatonic pitches derived from `scale` corresponding to
     /// `self.pattern()`. The sequence starts at `start_pitch` (which is included in the result).
-    pub fn make_pitches(&self, start_pitch: i16, scale: &MusicMode) -> Vec<i16> {
+    pub fn make_pitches(&self, start_pitch: i8, scale: &MusicMode) -> Vec<i8> {
         let mut result = vec![start_pitch];
         for interval in self.pattern() {
             result.push(scale.next_pitch(*result.last().unwrap(), interval));
@@ -503,7 +506,7 @@ impl MelodicFigure {
         result
     }
 
-    pub fn interval2figures(figure_length: usize) -> BTreeMap<i16, Vec<Self>> {
+    pub fn interval2figures(figure_length: usize) -> BTreeMap<i8, Vec<Self>> {
         let mut result = BTreeMap::new();
         for m in all::<MelodicFigure>() {
             if m.len() == figure_length {
@@ -537,7 +540,7 @@ pub enum MelodicFigureShape {
 }
 
 impl MelodicFigureShape {
-    pub fn pattern(&self) -> Vec<i16> {
+    pub fn pattern(&self) -> Vec<i8> {
         match self {
             MelodicFigureShape::Note3Scale        => vec![1, 1],
             MelodicFigureShape::Auxiliary         => vec![-1, 1],
@@ -587,9 +590,22 @@ mod tests {
     use crate::MelodicFigureShape::*;
     use crate::FigurePolarity::*;
     use crate::FigureDirection::*;
+    use crate::midi2hz;
+    use float_cmp::assert_approx_eq;
 
     const EXAMPLE_MELODY: &str = "55,0.39,0.91,55,0.04,0.0,59,0.33,0.73,60,0.06,0.44,62,0.02,0.87,59,0.05,0.0,60,0.16,0.0,62,0.2,0.0,55,0.39,0.61,55,0.01,0.0,57,0.34,0.98,57,0.05,0.0,55,0.39,0.78,54,0.02,0.98,55,0.19,0.0,54,0.12,0.0,52,0.11,0.74,52,0.0,0.0,54,0.12,0.46,54,0.03,0.0,50,0.1,0.84,50,0.27,0.0,55,0.27,0.74,55,0.1,0.0,59,0.27,0.44,60,0.07,0.54,62,0.04,0.91,59,0.09,0.0,60,0.11,0.0,62,0.19,0.0,55,0.29,0.67,55,0.07,0.0,57,0.32,0.76,57,0.06,0.0,55,0.23,0.7,55,0.05,0.0,54,0.12,0.93,54,0.07,0.0,50,0.37,0.8,50,0.5,0.0,55,0.36,0.76,55,0.05,0.0,59,0.28,0.76,60,0.05,0.7,62,0.01,0.91,59,0.07,0.0,60,0.15,0.0,62,0.2,0.0,55,0.33,0.67,55,0.02,0.0,57,0.29,0.8,57,0.1,0.0,55,0.29,0.9,55,0.08,0.0,54,0.16,1.0,54,0.12,0.0,52,0.12,0.72,54,0.01,0.71,52,0.14,0.0,54,0.07,0.0,50,0.1,0.76,50,0.23,0.0,55,0.22,0.65,55,0.13,0.0,57,0.29,0.64,57,0.08,0.0,55,0.23,0.76,55,0.07,0.0,54,0.12,0.99,54,0.04,0.0,52,0.24,0.95,52,0.19,0.0,54,0.13,1.0,54,0.15,0.0,52,0.12,0.72,52,0.03,0.0,54,0.19,0.83,54,0.13,0.0,50,0.06,0.69,50,0.15,0.0,55,0.01,0.73,57,0.07,0.66,57,0.55,0.0,55,1.5,0.0";
     const COUNTDOWN_MELODY: &str = "66,0.42,1.0,66,0.55,0.0,73,0.17,1.0,73,0.01,0.0,71,0.13,0.77,71,0.0,0.0,73,0.45,0.41,73,0.13,0.0,66,0.85,0.8,66,0.32,0.0,74,0.16,1.0,74,0.0,0.0,74,0.37,0.87,74,0.03,0.0,73,0.2,1.0,73,0.03,0.0,71,0.03,0.06,71,0.04,0.0,71,0.93,1.0,71,0.27,0.0,74,0.16,1.0,74,0.03,0.0,73,0.13,1.0,73,0.03,0.0,74,0.45,1.0,74,0.12,0.0,66,0.58,0.8,66,0.5,0.0,71,0.15,0.75,71,0.02,0.0,71,0.13,0.81,71,0.03,0.0,71,0.21,1.0,71,0.08,0.0,69,0.24,0.94,69,0.08,0.0,68,0.22,0.65,68,0.07,0.0,71,0.24,1.0,71,0.06,0.0,69,0.68,1.0,69,0.15,0.0,73,0.16,1.0,73,0.03,0.0,71,0.14,0.91,71,0.03,0.0,73,0.29,1.0,73,0.22,0.0,66,0.61,0.64,66,0.45,0.0,74,0.15,0.87,74,0.04,0.0,74,0.14,0.83,74,0.02,0.0,74,0.2,1.0,74,0.13,0.0,73,0.29,0.96,73,0.0,0.0,72,0.04,0.49,72,0.03,0.0,71,1.01,1.0,71,0.41,0.0,74,0.14,0.94,74,0.04,0.0,73,0.13,0.8,73,0.03,0.0,74,0.49,1.0,74,0.12,0.0,66,0.93,0.54,66,0.19,0.0,71,0.16,0.81,71,0.02,0.0,71,0.13,0.79,71,0.03,0.0,71,0.21,0.87,71,0.11,0.0,69,0.24,0.86,69,0.08,0.0,68,0.24,0.67,68,0.07,0.0,71,0.24,1.0,71,0.11,0.0,69,0.75,0.86,69,0.05,0.0,68,0.18,0.71,68,0.02,0.0,69,0.16,0.89,69,0.04,0.0,71,0.02,0.99,71,0.0,0.0,83,0.01,1.0,83,0.0,0.0,71,0.56,0.98,71,0.16,0.0,69,0.19,1.0,69,0.04,0.0,71,0.2,1.0,71,0.05,0.0,73,0.24,1.0,73,0.0,0.0,72,0.03,0.62,72,0.07,0.0,71,0.2,0.91,71,0.03,0.0,69,0.01,0.06,69,0.06,0.0,69,0.18,0.73,69,0.11,0.0,68,0.19,0.46,68,0.18,0.0,66,0.51,0.76,66,0.17,0.0,74,0.56,1.0,74,0.01,0.0,73,1.09,0.79,73,0.07,0.0,75,0.16,0.9,75,0.03,0.0,73,0.16,0.84,73,0.03,0.0,71,0.18,0.57,71,0.03,0.0,73,0.78,0.64,73,0.06,0.0,73,0.14,0.91,73,0.04,0.0,73,0.14,0.87,73,0.04,0.0,73,0.26,0.81,73,0.1,0.0,71,0.23,0.91,71,0.07,0.0,69,0.19,0.98,69,0.1,0.0,68,0.23,0.59,68,0.15,0.0,66,1.22,0.68,66,2.0,0.0";
+
+    #[test]
+    fn test_midi2hz() {
+        for (m, h) in [
+            (93, 1760.0), (81, 880.0), (69, 440.0), (57, 220.0), (45, 110.0), (33, 55.0), (21, 27.50),
+            (91, 1567.98), (79, 783.99), (67, 392.0), (55, 196.0), (43, 98.0),
+            (68, 415.30), (56, 207.65), (44, 103.83)
+        ] {
+            assert_approx_eq!(f64, midi2hz(m), h, epsilon = 0.01);
+        }
+    }
 
     #[test]
     fn test_parse_melody() {
@@ -599,11 +615,11 @@ mod tests {
         assert_eq!(format!("{:?}", notes), "Melody { notes: [Note { pitch: 69, duration: OrderedFloat(0.24), intensity: OrderedFloat(1.0) }, Note { pitch: 69, duration: OrderedFloat(0.09), intensity: OrderedFloat(0.0) }, Note { pitch: 72, duration: OrderedFloat(0.31), intensity: OrderedFloat(1.0) }, Note { pitch: 72, duration: OrderedFloat(0.08), intensity: OrderedFloat(0.0) }, Note { pitch: 71, duration: OrderedFloat(0.29), intensity: OrderedFloat(0.69) }] }");
     }
 
-    fn test_natural_mode(root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>, notes: [i16; 15]) {
+    fn test_natural_mode(root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>, notes: [i8; 15]) {
         let mode = MusicMode::new(root_pos, notes[0]);
         println!("{} {:?}", mode.name(), mode);
         for (i, n) in notes.iter().enumerate() {
-            let i = i as i16;
+            let i = i as i8;
             let next = mode.next_pitch(notes[0], i);
             assert_eq!(next, *n);
             assert!(mode.contains(*n));
@@ -619,7 +635,7 @@ mod tests {
             prev = next;
         }
 
-        let not_c_notes: [i16; 5] = [73, 75, 78, 80, 82];
+        let not_c_notes: [i8; 5] = [73, 75, 78, 80, 82];
         for n in not_c_notes.iter() {
             assert!(!mode.contains(*n));
         }
@@ -638,7 +654,7 @@ mod tests {
     #[test]
     fn test_modes() {
         let modes = MusicMode::all_modes_for(72);
-        let expected: [[i16; DIATONIC_SCALE_SIZE]; DIATONIC_SCALE_SIZE] = [
+        let expected: [[i8; DIATONIC_SCALE_SIZE]; DIATONIC_SCALE_SIZE] = [
             [0, 2, 4, 5, 7, 9, 11],
             [10, 0, 2, 3, 5, 7, 9],
             [8, 10, 0, 1, 3, 5, 7],
@@ -715,7 +731,7 @@ mod tests {
             (84, 1, 86), (86, 1, 88), (88, 1, 90), (90, 1, 91), (103, 1, 105), (105, 1, 107),
             (107, 1, 108), (96, 1, 98), (98, 1, 100), (100, 1, 102), (102, 1, 103), (115, 1, 117),
             (117, 1, 119), (108, 1, 110), (110, 1, 112), (112, 1, 114), (114, 1, 115),
-            (127, 1, 129), (129, 1, 131), (131, 1, 132), (120, 1, 122), (122, 1, 124)
+            (120, 1, 122), (122, 1, 124)
         ];
         for (reference_pitch, scale_steps_away, expected) in tests {
             let np = mode.next_pitch(reference_pitch, scale_steps_away);
@@ -763,7 +779,7 @@ mod tests {
         let scale = melody.best_scale_for();
         assert_eq!(scale.name(), "G ionian");
         for (i, pitch) in [67, 69, 71, 72, 74, 76, 78, 79, 81, 83, 84, 86, 88, 90, 91].iter().enumerate() {
-            assert_eq!((i % DIATONIC_SCALE_SIZE) as i16 + 1, scale.diatonic_degree(*pitch).unwrap());
+            assert_eq!((i % DIATONIC_SCALE_SIZE) as i8 + 1, scale.diatonic_degree(*pitch).unwrap());
         }
     }
 

@@ -74,6 +74,9 @@ fn run<T>(incoming: Arc<SegQueue<MidiMsg>>, device: &cpal::Device, config: &cpal
         loop {
             if let Some(msg) = incoming.pop() {
                 println!("Received {:?}", msg);
+                let c = lfo(|t| {
+
+                });
             }
         }
     });
