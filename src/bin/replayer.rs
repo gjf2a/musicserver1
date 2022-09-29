@@ -1,8 +1,8 @@
 use std::sync::Arc;
 use anyhow::bail;
-use midir::{MidiInput, Ignore, MidiInputPort};
-use musicserver1::input_cmd;
-use midi_msg::MidiMsg;
+use midir::{MidiInput, Ignore};
+use musicserver1::{input_cmd, midi2hz};
+use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use fundsp::hacker::*;
 use crossbeam_queue::SegQueue;
@@ -41,9 +41,9 @@ fn main() -> anyhow::Result<()> {
     let config = device.default_output_config().unwrap();
 
     match config.sample_format() {
-        cpal::SampleFormat::F32 => run::<f32>(midi_queue.clone(), &device, &config.into()).unwrap(),
-        cpal::SampleFormat::I16 => run::<i16>(midi_queue.clone(), &device, &config.into()).unwrap(),
-        cpal::SampleFormat::U16 => run::<u16>(midi_queue.clone(), &device, &config.into()).unwrap(),
+        cpal::SampleFormat::F32 => run::<f32>(midi_queue.clone(), device, config.into()).unwrap(),
+        cpal::SampleFormat::I16 => run::<i16>(midi_queue.clone(), device, config.into()).unwrap(),
+        cpal::SampleFormat::U16 => run::<u16>(midi_queue.clone(), device, config.into()).unwrap(),
     }
 
     println!("\nOpening connection");
@@ -63,7 +63,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run<T>(incoming: Arc<SegQueue<MidiMsg>>, device: &cpal::Device, config: &cpal::StreamConfig) -> anyhow::Result<()>
+fn run<T>(incoming: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config: cpal::StreamConfig) -> anyhow::Result<()>
     where
         T: cpal::Sample,
 {
@@ -72,11 +72,32 @@ fn run<T>(incoming: Arc<SegQueue<MidiMsg>>, device: &cpal::Device, config: &cpal
 
     std::thread::spawn(move || {
         loop {
-            if let Some(msg) = incoming.pop() {
-                println!("Received {:?}", msg);
-                let c = lfo(|t| {
-
-                });
+            if let Some(m) = incoming.pop() {
+                println!("Received {:?}", m);
+                if let MidiMsg::ChannelVoice { channel:_, msg} = m {
+                    match msg {
+                        ChannelVoiceMsg::NoteOn {note, velocity:_} => {
+                            println!("synth");
+                            let mut c = lfo(move |t| {
+                                (midi2hz(note as i8), lerp11(0.01, 0.99, sin_hz(0.05, t)))
+                            }) >> pulse();
+                            c.reset(Some(sample_rate));
+                            let mut next_value = move || c.get_stereo();
+                            let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
+                            let stream = device.build_output_stream(
+                                &config,
+                                move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
+                                    write_data(data, channels, &mut next_value)
+                                },
+                                err_fn,
+                            ).unwrap();
+                            stream.play().unwrap();
+                            std::thread::sleep(std::time::Duration::from_millis(500));
+                            println!("synth done");
+                        }
+                        _ => {}
+                    }
+                }
             }
         }
     });
