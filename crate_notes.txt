@@ -3,11 +3,15 @@
 ## Worked well
 * enum_iterator
 * rusb
+  * Worked great, but I no longer need it thanks to midir.
 * midir
   * Caveat - the first time I ran it on Windows, it failed due to a driver problem. But later, I rebooted my
     computer and it worked great.
 * fundsp
   * Works great after adding in csp and anyhow crates.
+* midi_msg
+  * I had trouble with it initially because the USB input bytes
+    had a normally-omitted channel byte that threw it off.
 
 
 ## Did not work well
