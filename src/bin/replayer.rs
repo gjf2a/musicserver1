@@ -64,13 +64,16 @@
 // Endpoint Transfer Type: Interrupt
 // Endpoint Usage Type:    Data
 
+use nannou::prelude::*;
+use nannou_audio as audio;
+use nannou_audio::Buffer;
+use std::f64::consts::PI;
+
 use std::time::Duration;
 use musicserver1::midi::{MidiBytes, MidiMsg};
 use musicserver1::usb_midi::user_select_device;
 
-const XFER_INTERFACE: u8 = 1;
 const MAX_INPUT_BYTES: usize = 128;
-const INPUT_ENDPOINT: u8 = 129;
 const INPUT_TIMEOUT_MS: u64 = 1;
 
 fn main() -> std::io::Result<()> {
