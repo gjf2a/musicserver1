@@ -6,8 +6,10 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use bare_metal_modulo::{MNum, ModNumC};
 use ordered_float::OrderedFloat;
 use histogram_macros::*;
-use enum_iterator::{Sequence, all};
+use enum_iterator::{all, Sequence};
 use rand::prelude::SliceRandom;
+use std::io;
+use std::io::Write;
 
 const MAX_USABLE_PITCH: i16 = 127;
 const NOTES_PER_OCTAVE: i16 = 12;
@@ -975,4 +977,12 @@ mod tests {
                 .unwrap_or(String::from("chromatic")));
         }
     }
+}
+
+pub fn input_cmd(prompt: &str) -> io::Result<String> {
+    print!("{} ", prompt);
+    io::stdout().flush()?;
+    let mut line = String::new();
+    io::stdin().read_line(&mut line)?;
+    Ok(line.trim().to_owned())
 }

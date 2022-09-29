@@ -19,6 +19,7 @@
 * cpal
   * Documentation absolutely sucks - their demo is silence!
   * I tried experimenting but still couldn't get a sound.
+  * It did work fine with fundsp
 * fon/twang, glicol_synth
   * Makes no sound
 * oscen

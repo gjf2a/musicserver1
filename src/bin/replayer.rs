@@ -1,104 +1,45 @@
-// Right keyboard on Mac: Bus 020 Device 006 ID 1c75:0289
-// Left keyboard on Mac:  Bus 020 Device 007 ID 1c75:0289
-//
-// Keyboard info:
-// # configurations: 1
-// # interfaces: 2
-// Interface #0
-// # endpoints: 0
-// Interface #1
-// # endpoints: 2
-// Endpoint #1
-// Endpoint Address:       1
-// Endpoint Direction:     Out
-// Endpoint Sync:          NoSync
-// Endpoint Transfer Type: Bulk
-// Endpoint Usage Type:    Data
-// Endpoint #1
-// Endpoint Address:       129
-// Endpoint Direction:     In
-// Endpoint Sync:          NoSync
-// Endpoint Transfer Type: Bulk
-// Endpoint Usage Type:    Data
+use anyhow::bail;
+use midir::{MidiInput, Ignore, MidiInputPort};
+use musicserver1::input_cmd;
+use midi_msg::MidiMsg;
 
-// Sonuus on Windows: Bus 002 Device 011 ID 231c:0001
-// # configurations: 1
-// # interfaces: 4
-// Interface #0
-// # endpoints: 1
-// Endpoint #4
-// Endpoint Address:       132
-// Endpoint Direction:     In
-// Endpoint Sync:          NoSync
-// Endpoint Transfer Type: Interrupt
-// Endpoint Usage Type:    Data
-// Interface #1
-// # endpoints: 0
-// # endpoints: 1
-// Endpoint #1
-// Endpoint Address:       129
-// Endpoint Direction:     In
-// Endpoint Sync:          Asynchronous
-// Endpoint Transfer Type: Isochronous
-// Endpoint Usage Type:    Data
-// Interface #2
-// # endpoints: 2
-// Endpoint #2
-// Endpoint Address:       2
-// Endpoint Direction:     Out
-// Endpoint Sync:          NoSync
-// Endpoint Transfer Type: Bulk
-// Endpoint Usage Type:    Data
-// Endpoint #2
-// Endpoint Address:       130
-// Endpoint Direction:     In
-// Endpoint Sync:          NoSync
-// Endpoint Transfer Type: Bulk
-// Endpoint Usage Type:    Data
-// Interface #3
-// # endpoints: 1
-// Endpoint #3
-// Endpoint Address:       131
-// Endpoint Direction:     In
-// Endpoint Sync:          NoSync
-// Endpoint Transfer Type: Interrupt
-// Endpoint Usage Type:    Data
+fn main() -> anyhow::Result<()> {
+    let mut midi_in = MidiInput::new("midir reading input")?;
+    midi_in.ignore(Ignore::None);
 
-use std::time::Duration;
-use musicserver1::midi::{MidiBytes, MidiMsg};
-use musicserver1::usb_midi::user_select_device;
-
-const MAX_INPUT_BYTES: usize = 128;
-const INPUT_TIMEOUT_MS: u64 = 1;
-
-fn main() -> std::io::Result<()> {
-    let (device, interface, endpoint_addr) = user_select_device()?;
-    let device_desc = device.device_descriptor().unwrap();
-    println!("Bus {:03} Device {:03} ID {:04x}:{:04x}",
-             device.bus_number(),
-             device.address(),
-             device_desc.vendor_id(),
-             device_desc.product_id());
-    let mut handle = device.open().unwrap();
-    println!("Claiming interface {}", interface);
-    handle.claim_interface(interface).unwrap();
-    let mut buf = [0; MAX_INPUT_BYTES];
-    let input_wait = Duration::from_millis(INPUT_TIMEOUT_MS);
-    loop {
-        match handle.read_bulk(endpoint_addr, &mut buf, input_wait) {
-            Ok(_) => {
-                let bytes = MidiBytes::from(&buf);
-                let msg = MidiMsg::from_bytes(bytes);
-                println!("{:?} ({:?})", msg, bytes);
+    let in_ports = midi_in.ports();
+    let in_port = match in_ports.len() {
+        0 => bail!("no input port found"),
+        1 => {
+            println!("Choosing the only available input port: {}", midi_in.port_name(&in_ports[0]).unwrap());
+            &in_ports[0]
+        },
+        _ => {
+            println!("\nAvailable input ports:");
+            for (i, p) in in_ports.iter().enumerate() {
+                println!("{}: {}", i, midi_in.port_name(p).unwrap());
             }
-            Err(e) => match e {
-                rusb::Error::Timeout => {}
-                _ => {
-                    println!("Error: {:?}", e);
-                    break;
-                }
+            let input = input_cmd("Please select input port: ")?;
+            match in_ports.get(input.trim().parse::<usize>()?) {
+                None => bail!("invalid input port selected"),
+                Some(p) => p
             }
         }
-    }
+    };
+
+    println!("\nOpening connection");
+    let in_port_name = midi_in.port_name(in_port)?;
+
+    // _conn_in needs to be a named parameter, because it needs to be kept alive until the end of the scope
+    let _conn_in = midi_in.connect(in_port, "midir-read-input", move |stamp, message, _| {
+        println!("{}: {:?} (len = {})", stamp, message, message.len());
+        let (msg, len) = MidiMsg::from_midi(&message).unwrap();
+        println!("msg: {:?} len: {}", msg, len);
+    }, ())?;
+
+    println!("Connection open, reading input from '{}'", in_port_name);
+
+    let input = input_cmd("(press enter to exit)...")?;
+    println!("Closing connection");
     Ok(())
 }

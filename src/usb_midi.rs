@@ -5,14 +5,6 @@ use std::io::{BufRead, BufReader, Write};
 use std::str::SplitWhitespace;
 use rusb::{Device, Direction, GlobalContext, SyncType, TransferType, UsageType};
 
-pub fn input_cmd(prompt: &str) -> io::Result<String> {
-    print!("{} ", prompt);
-    io::stdout().flush()?;
-    let mut line = String::new();
-    io::stdin().read_line(&mut line)?;
-    Ok(line.trim().to_owned())
-}
-
 pub fn get_device_names(table: &VendorProductTable, device: &Device<GlobalContext>) -> (String,String) {
     let device_desc = device.device_descriptor().unwrap();
     let vid = device_desc.vendor_id();
@@ -50,7 +42,7 @@ pub fn user_select_device() -> io::Result<(Device<GlobalContext>, u8, u8)> {
             let (vendor, product) = get_device_names(&table, device);
             println!("{}) {} {}", i+1, vendor, product)
         }
-        let choice = input_cmd("Enter device number to use:")?;
+        let choice = crate::input_cmd("Enter device number to use:")?;
         if let Ok(num) = choice.trim().parse::<usize>() {
             if num >= 1 && num <= good_devices.len() {
                 return Ok(good_devices[num - 1].clone());
