@@ -5,15 +5,6 @@
 // Downloadable list:
 // http://www.linux-usb.org/usb.ids
 
-use std::time::Duration;
-use musicserver1::midi::{MidiBytes, MidiMsg};
-use musicserver1::usb_midi::print_device_list;
-
-const XFER_INTERFACE: u8 = 1;
-const MAX_INPUT_BYTES: usize = 128;
-const INPUT_ENDPOINT: u8 = 129;
-const INPUT_TIMEOUT_MS: u64 = 1;
-
 fn main() -> std::io::Result<()> {
     for device in rusb::devices().unwrap().iter() {
         let device_desc = device.device_descriptor().unwrap();
@@ -43,7 +34,5 @@ fn main() -> std::io::Result<()> {
         println!();
     }
 
-    let choice = print_device_list()?;
-    println!("You chose {:?}", choice);
     Ok(())
 }

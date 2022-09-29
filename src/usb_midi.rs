@@ -3,32 +3,60 @@ use std::fs::File;
 use std::io;
 use std::io::{BufRead, BufReader, Write};
 use std::str::SplitWhitespace;
-use rusb::{Device, GlobalContext};
+use rusb::{Device, Direction, GlobalContext, SyncType, TransferType, UsageType};
 
-pub fn print_device_list() -> io::Result<(Device<GlobalContext>)> {
+pub fn input_cmd(prompt: &str) -> io::Result<String> {
+    print!("{} ", prompt);
+    io::stdout().flush()?;
+    let mut line = String::new();
+    io::stdin().read_line(&mut line)?;
+    Ok(line.trim().to_owned())
+}
+
+pub fn get_device_names(table: &VendorProductTable, device: &Device<GlobalContext>) -> (String,String) {
+    let device_desc = device.device_descriptor().unwrap();
+    let vid = device_desc.vendor_id();
+    let pid = device_desc.product_id();
+    (table.get_vendor_name(vid).unwrap_or("Unknown vendor".to_owned()),
+     table.get_product_name(vid, pid).unwrap_or("Unknown product".to_owned()))
+}
+
+pub fn user_select_device() -> io::Result<(Device<GlobalContext>, u8, u8)> {
     let table = VendorProductTable::new().unwrap();
-    let mut devices = vec![];
-    for (i, device) in rusb::devices().unwrap().iter().enumerate() {
-        let device_desc = device.device_descriptor().unwrap();
-        let vid = device_desc.vendor_id();
-        let pid = device_desc.product_id();
-        let vname = table.get_vendor_name(vid).unwrap_or("Unknown vendor".to_owned());
-        let pname = table.get_product_name(vid, pid).unwrap_or("Unknown product".to_owned());
-        println!("{}) {} {}", i+1, vname, pname);
-        devices.push(device);
-    }
-    let stdin = io::stdin();
-    loop {
-        print!("Enter number of preferred device: ");
-        io::stdout().flush()?;
-        let mut line = String::new();
-        stdin.read_line(&mut line)?;
-        if let Ok(num) = line.trim().parse::<usize>() {
-            if num >= 1 && num <= devices.len() {
-                return Ok(devices[num - 1].clone());
+    let mut good_devices = vec![];
+    let mut other_devices = vec![];
+    for device in rusb::devices().unwrap().iter() {
+        match interface_endpoint_no_sync_bulk_input(&device) {
+            None => {other_devices.push(device);}
+            Some((interface, endpoint_addr)) => {
+                good_devices.push((device, interface, endpoint_addr));
             }
         }
-        println!("'{}' was not a valid input. Try again.", line);
+    }
+
+    if other_devices.len() > 0 {
+        println!("Non-MIDI devices");
+        for device in other_devices.iter() {
+            let (vendor, product) = get_device_names(&table, device);
+            println!("{} {}", vendor, product);
+        }
+        println!();
+    }
+
+    assert!(good_devices.len() > 0); // Make this an 'if' eventually...
+    loop {
+        println!("Potential MIDI devices");
+        for (i, (device,_,_)) in good_devices.iter().enumerate() {
+            let (vendor, product) = get_device_names(&table, device);
+            println!("{}) {} {}", i+1, vendor, product)
+        }
+        let choice = input_cmd("Enter device number to use:")?;
+        if let Ok(num) = choice.trim().parse::<usize>() {
+            if num >= 1 && num <= good_devices.len() {
+                return Ok(good_devices[num - 1].clone());
+            }
+        }
+        println!("'{}' was not a valid input. Try again.", choice);
     }
 }
 
@@ -51,24 +79,21 @@ pub fn hex2u16(input: &str) -> Option<u16> {
 }
 
 pub fn digit2value(digit: char) -> Option<u16> {
-    if ('0'..='9').contains(&digit) {
-        Some(digit as u16 - '0' as u16)
-    } else if ('a'..='f').contains(&digit) {
-        Some(digit as u16 - 'a' as u16 + 10)
-    } else {
-        None
+    match digit {
+        '0'..='9' => Some(digit as u16 - '0' as u16),
+        'a'..='f' => Some(digit as u16 - 'a' as u16 + 10),
+        _ => None
     }
 }
 
 pub struct VendorProductTable {
-    vendor2products: BTreeMap<u16,Vec<u16>>,
     vendor_names: BTreeMap<u16, String>,
     product_names: BTreeMap<(u16,u16), String>
 }
 
 impl VendorProductTable {
     pub fn new() -> std::io::Result<Self> {
-        let mut result = VendorProductTable {vendor_names: BTreeMap::new(), vendor2products: BTreeMap::new(), product_names: BTreeMap::new()};
+        let mut result = VendorProductTable {vendor_names: BTreeMap::new(), product_names: BTreeMap::new()};
         result.add_file_entries("usb.ids.txt")?;
         result.add_file_entries("usb_supplement.ids.txt")?;
         Ok(result)
@@ -97,14 +122,10 @@ impl VendorProductTable {
                     '0'..='9' | 'a'..='f' => {
                         let (vendor_id, vendor_name) = id_and_name_from(line.split_whitespace());
                         self.vendor_names.insert(vendor_id, vendor_name);
-                        if !self.vendor2products.contains_key(&vendor_id) {
-                            self.vendor2products.insert(vendor_id, vec![]);
-                        }
                         current_vendor = Some(vendor_id);
                     }
                     '\t' => {
                         let (product_id, product_name) = id_and_name_from(line.trim().split_whitespace());
-                        self.vendor2products.get_mut(&current_vendor.unwrap()).unwrap().push(product_id);
                         self.product_names.insert((current_vendor.unwrap(), product_id), product_name);
                     }
                     _ => {}
@@ -119,6 +140,24 @@ fn id_and_name_from(mut parts: SplitWhitespace) -> (u16, String) {
     let id_num = hex2u16(parts.next().unwrap()).unwrap();
     let name = parts.map(|s| s.to_owned() + " ").collect::<String>();
     (id_num, name.trim().to_owned())
+}
+
+pub fn interface_endpoint_no_sync_bulk_input(device: &Device<GlobalContext>) -> Option<(u8, u8)> {
+    if let Ok(config) = device.active_config_descriptor() {
+        for interface in config.interfaces() {
+            for interface_desc in interface.descriptors() {
+                for endpoint_desc in interface_desc.endpoint_descriptors() {
+                    if endpoint_desc.direction() == Direction::In &&
+                        endpoint_desc.sync_type() == SyncType::NoSync &&
+                        endpoint_desc.transfer_type() == TransferType::Bulk &&
+                        endpoint_desc.usage_type() == UsageType::Data {
+                        return Some((interface.number(), endpoint_desc.address()));
+                    }
+                }
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]
