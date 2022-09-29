@@ -12,3 +12,5 @@ histogram_macros = {git = "https://github.com/gjf2a/histogram_macros"}
 rand = "0.8.5"
 enum-iterator = "1.2.0"
 rusb = "0.9"
+nannou = "0.18.1"
+nannou_audio = "0.18.0"
