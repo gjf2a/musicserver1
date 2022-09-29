@@ -52,11 +52,10 @@ fn main() -> anyhow::Result<()> {
     // _conn_in needs to be a named parameter, because it needs to be kept alive until the end of the scope
     let _conn_in = midi_in.connect(in_port, "midir-read-input", move |stamp, message, _| {
         let (msg, len) = MidiMsg::from_midi(&message).unwrap();
-        println!("msg: {:?} len: {}", msg, len);
         midi_queue.push(msg);
     }, ())?;
 
-    println!("Connection open, reading input from '{}'", in_port_name);
+    println!("Connection open, reading input from '{in_port_name}'");
 
     let _ = input_cmd("(press enter to exit)...")?;
     println!("Closing connection");
@@ -69,31 +68,37 @@ fn run<T>(incoming: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config: cpal::
 {
     let sample_rate = config.sample_rate.0 as f64;
     let channels = config.channels as usize;
+    let device = Arc::new(device);
+    let config = Arc::new(config);
 
     std::thread::spawn(move || {
         loop {
             if let Some(m) = incoming.pop() {
-                println!("Received {:?}", m);
                 if let MidiMsg::ChannelVoice { channel:_, msg} = m {
+                    println!("{msg:?}");
                     match msg {
                         ChannelVoiceMsg::NoteOn {note, velocity:_} => {
-                            println!("synth");
                             let mut c = lfo(move |t| {
                                 (midi2hz(note as i8), lerp11(0.01, 0.99, sin_hz(0.05, t)))
                             }) >> pulse();
                             c.reset(Some(sample_rate));
                             let mut next_value = move || c.get_stereo();
-                            let err_fn = |err| eprintln!("an error occurred on stream: {}", err);
-                            let stream = device.build_output_stream(
-                                &config,
-                                move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
-                                    write_data(data, channels, &mut next_value)
-                                },
-                                err_fn,
-                            ).unwrap();
-                            stream.play().unwrap();
-                            std::thread::sleep(std::time::Duration::from_millis(500));
-                            println!("synth done");
+                            let err_fn = |err| eprintln!("an error occurred on stream: {err}");
+
+                            let device = device.clone();
+                            let config = config.clone();
+                            std::thread::spawn(move || {
+                                let stream = device.build_output_stream(
+                                    &config,
+                                    move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
+                                        write_data(data, channels, &mut next_value)
+                                    },
+                                    err_fn,
+                                ).unwrap();
+
+                                stream.play().unwrap();
+                                loop {}
+                            });
                         }
                         _ => {}
                     }
