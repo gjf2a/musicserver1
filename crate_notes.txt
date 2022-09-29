@@ -1,0 +1,26 @@
+# Notes on Crates I have used in this project
+
+## Worked well
+* enum_iterator
+* rusb
+* midir
+  * Caveat - the first time I ran it on Windows, it failed due to a driver problem. But later, I rebooted my
+    computer and it worked great.
+* fundsp
+  * Works great after adding in csp and anyhow crates.
+
+
+## Did not work well
+* mvp_audio, alto
+  * Panic on run
+* nannou
+  * Works great on Mac
+  * Won't compile on Windows
+* cpal
+  * Documentation absolutely sucks - their demo is silence!
+  * I tried experimenting but still couldn't get a sound.
+* fon/twang, glicol_synth
+  * Makes no sound
+* oscen
+  * Example won't compile
+* monotron-synth, surge-synthesizer

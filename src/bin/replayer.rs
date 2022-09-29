@@ -64,11 +64,6 @@
 // Endpoint Transfer Type: Interrupt
 // Endpoint Usage Type:    Data
 
-use nannou::prelude::*;
-use nannou_audio as audio;
-use nannou_audio::Buffer;
-use std::f64::consts::PI;
-
 use std::time::Duration;
 use musicserver1::midi::{MidiBytes, MidiMsg};
 use musicserver1::usb_midi::user_select_device;
@@ -78,7 +73,14 @@ const INPUT_TIMEOUT_MS: u64 = 1;
 
 fn main() -> std::io::Result<()> {
     let (device, interface, endpoint_addr) = user_select_device()?;
+    let device_desc = device.device_descriptor().unwrap();
+    println!("Bus {:03} Device {:03} ID {:04x}:{:04x}",
+             device.bus_number(),
+             device.address(),
+             device_desc.vendor_id(),
+             device_desc.product_id());
     let mut handle = device.open().unwrap();
+    println!("Claiming interface {}", interface);
     handle.claim_interface(interface).unwrap();
     let mut buf = [0; MAX_INPUT_BYTES];
     let input_wait = Duration::from_millis(INPUT_TIMEOUT_MS);
