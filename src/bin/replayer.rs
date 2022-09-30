@@ -13,35 +13,9 @@ fn main() -> anyhow::Result<()> {
     let mut midi_in = MidiInput::new("midir reading input")?;
     let in_port = get_midi_device(&mut midi_in)?;
 
-    let host = cpal::default_host();
-    let device = host
-        .default_output_device()
-        .expect("failed to find a default output device");
-    let config = device.default_output_config().unwrap();
-
-    let synth = SynthSound::pick_synth()?;
     let midi_queue = Arc::new(SegQueue::new());
-
-    match config.sample_format() {
-        cpal::SampleFormat::F32 => run::<f32>(midi_queue.clone(), device, config.into(), synth).unwrap(),
-        cpal::SampleFormat::I16 => run::<i16>(midi_queue.clone(), device, config.into(), synth).unwrap(),
-        cpal::SampleFormat::U16 => run::<u16>(midi_queue.clone(), device, config.into(), synth).unwrap(),
-    }
-
-    println!("\nOpening connection");
-    let in_port_name = midi_in.port_name(&in_port)?;
-
-    // _conn_in needs to be a named parameter, because it needs to be kept alive until the end of the scope
-    let _conn_in = midi_in.connect(&in_port, "midir-read-input", move |_stamp, message, _| {
-        let (msg, _len) = MidiMsg::from_midi(&message).unwrap();
-        midi_queue.push(msg);
-    }, ()).unwrap();
-
-    println!("Connection open, reading input from '{in_port_name}'");
-
-    let _ = input_cmd("(press enter to exit)...\n")?;
-    println!("Closing connection");
-    Ok(())
+    start_output(midi_queue.clone())?;
+    start_input(midi_queue, midi_in, in_port)
 }
 
 fn get_midi_device(midi_in: &mut MidiInput) -> anyhow::Result<MidiInputPort> {
@@ -66,6 +40,40 @@ fn get_midi_device(midi_in: &mut MidiInput) -> anyhow::Result<MidiInputPort> {
             }
         }
     }
+}
+
+fn start_output(midi_queue: Arc<SegQueue<MidiMsg>>) -> anyhow::Result<()> {
+    let host = cpal::default_host();
+    let device = host
+        .default_output_device()
+        .expect("failed to find a default output device");
+    let config = device.default_output_config().unwrap();
+
+    let synth = SynthSound::pick_synth()?;
+
+    match config.sample_format() {
+        cpal::SampleFormat::F32 => run::<f32>(midi_queue.clone(), device, config.into(), synth).unwrap(),
+        cpal::SampleFormat::I16 => run::<i16>(midi_queue.clone(), device, config.into(), synth).unwrap(),
+        cpal::SampleFormat::U16 => run::<u16>(midi_queue.clone(), device, config.into(), synth).unwrap(),
+    }
+    Ok(())
+}
+
+fn start_input(midi_queue: Arc<SegQueue<MidiMsg>>, mut midi_in: MidiInput, in_port: MidiInputPort) -> anyhow::Result<()> {
+    println!("\nOpening connection");
+    let in_port_name = midi_in.port_name(&in_port)?;
+
+    // _conn_in needs to be a named parameter, because it needs to be kept alive until the end of the scope
+    let _conn_in = midi_in.connect(&in_port, "midir-read-input", move |_stamp, message, _| {
+        let (msg, _len) = MidiMsg::from_midi(&message).unwrap();
+        midi_queue.push(msg);
+    }, ()).unwrap();
+
+    println!("Connection open, reading input from '{in_port_name}'");
+
+    let _ = input_cmd("(press enter to exit)...\n")?;
+    println!("Closing connection");
+    Ok(())
 }
 
 #[derive(Copy,Clone,Sequence,Debug)]
