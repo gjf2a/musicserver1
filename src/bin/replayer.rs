@@ -1,12 +1,13 @@
 use std::sync::Arc;
 use anyhow::bail;
 use midir::{MidiInput, Ignore};
-use musicserver1::input_cmd;
+use musicserver1::{input_cmd, usize_input};
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use fundsp::hacker::*;
 use crossbeam_queue::SegQueue;
 use dashmap::DashSet;
+use enum_iterator::{all, Sequence};
 
 fn main() -> anyhow::Result<()> {
     let mut midi_in = MidiInput::new("midir reading input")?;
@@ -40,7 +41,7 @@ fn main() -> anyhow::Result<()> {
         .expect("failed to find a default output device");
     let config = device.default_output_config().unwrap();
 
-    let synth = SynthSound::SimpleTri;
+    let synth = SynthSound::pick_synth()?;
 
     match config.sample_format() {
         cpal::SampleFormat::F32 => run::<f32>(midi_queue.clone(), device, config.into(), synth).unwrap(),
@@ -64,7 +65,7 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[derive(Copy,Clone)]
+#[derive(Copy,Clone,Sequence,Debug)]
 enum SynthSound {
     SinPulse, SimpleTri
 }
@@ -78,11 +79,20 @@ impl SynthSound {
                 }) >> pulse() * (velocity as f64 / 127.0))
             }
             SynthSound::SimpleTri => {
-                Box::new(lfo(move |t| {
+                Box::new(lfo(move |_t| {
                     midi_hz(note as f64)
                 }) >> triangle() * (velocity as f64 / 127.0))
             }
         }
+    }
+
+    fn pick_synth() -> std::io::Result<Self> {
+        let synths: Vec<Self> = all::<Self>().collect();
+        for (i, s) in synths.iter().enumerate() {
+            println!("{}) {s:?}", i+1);
+        }
+        let choice = usize_input("Enter choice:", 1..=synths.len())?;
+        Ok(synths[choice - 1])
     }
 }
 
@@ -107,9 +117,6 @@ fn run<T>(incoming: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config: cpal::
                             notes_in_use.remove(&note);
                         }
                         ChannelVoiceMsg::NoteOn {note, velocity} => {
-                            /*let mut c = lfo(move |t| {
-                                (midi_hz(note as f64), lerp11(0.01, 0.99, sin_hz(0.05, t)))
-                            }) >> pulse() * (velocity as f64 / 127.0);*/
                             let mut c = synth.sound(note, velocity);
                             c.reset(Some(sample_rate));
                             println!("{:?}", c.get_stereo());
