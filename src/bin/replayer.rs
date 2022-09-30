@@ -40,10 +40,12 @@ fn main() -> anyhow::Result<()> {
         .expect("failed to find a default output device");
     let config = device.default_output_config().unwrap();
 
+    let synth = SynthSound::SimpleTri;
+
     match config.sample_format() {
-        cpal::SampleFormat::F32 => run::<f32>(midi_queue.clone(), device, config.into()).unwrap(),
-        cpal::SampleFormat::I16 => run::<i16>(midi_queue.clone(), device, config.into()).unwrap(),
-        cpal::SampleFormat::U16 => run::<u16>(midi_queue.clone(), device, config.into()).unwrap(),
+        cpal::SampleFormat::F32 => run::<f32>(midi_queue.clone(), device, config.into(), synth).unwrap(),
+        cpal::SampleFormat::I16 => run::<i16>(midi_queue.clone(), device, config.into(), synth).unwrap(),
+        cpal::SampleFormat::U16 => run::<u16>(midi_queue.clone(), device, config.into(), synth).unwrap(),
     }
 
     println!("\nOpening connection");
@@ -51,7 +53,7 @@ fn main() -> anyhow::Result<()> {
 
     // _conn_in needs to be a named parameter, because it needs to be kept alive until the end of the scope
     let _conn_in = midi_in.connect(in_port, "midir-read-input", move |_stamp, message, _| {
-        let (msg, len) = MidiMsg::from_midi(&message).unwrap();
+        let (msg, _len) = MidiMsg::from_midi(&message).unwrap();
         midi_queue.push(msg);
     }, ()).unwrap();
 
@@ -62,7 +64,30 @@ fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn run<T>(incoming: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config: cpal::StreamConfig) -> anyhow::Result<()>
+#[derive(Copy,Clone)]
+enum SynthSound {
+    SinPulse, SimpleTri
+}
+
+impl SynthSound {
+    fn sound(&self, note: u8, velocity: u8) -> Box<dyn AudioUnit64> {
+        match self {
+            SynthSound::SinPulse => {
+                Box::new(lfo(move |t| {
+                    (midi_hz(note as f64), lerp11(0.01, 0.99, sin_hz(0.05, t)))
+                }) >> pulse() * (velocity as f64 / 127.0))
+            }
+            SynthSound::SimpleTri => {
+                Box::new(lfo(move |t| {
+                    midi_hz(note as f64)
+                }) >> triangle() * (velocity as f64 / 127.0))
+            }
+        }
+    }
+}
+
+
+fn run<T>(incoming: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config: cpal::StreamConfig, synth: SynthSound) -> anyhow::Result<()>
     where
         T: cpal::Sample,
 {
@@ -81,11 +106,13 @@ fn run<T>(incoming: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config: cpal::
                         ChannelVoiceMsg::NoteOff {note, velocity:_} => {
                             notes_in_use.remove(&note);
                         }
-                        ChannelVoiceMsg::NoteOn {note, velocity:_} => {
-                            let mut c = lfo(move |t| {
+                        ChannelVoiceMsg::NoteOn {note, velocity} => {
+                            /*let mut c = lfo(move |t| {
                                 (midi_hz(note as f64), lerp11(0.01, 0.99, sin_hz(0.05, t)))
-                            }) >> pulse();
+                            }) >> pulse() * (velocity as f64 / 127.0);*/
+                            let mut c = synth.sound(note, velocity);
                             c.reset(Some(sample_rate));
+                            println!("{:?}", c.get_stereo());
                             let mut next_value = move || c.get_stereo();
                             let err_fn = |err| eprintln!("an error occurred on stream: {err}");
                             let notes_in_use = notes_in_use.clone();
