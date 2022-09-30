@@ -60,6 +60,8 @@ fn start_output(midi_queue: Arc<SegQueue<MidiMsg>>) {
         .expect("failed to find a default output device");
     let config = device.default_output_config().unwrap();
 
+
+
     let synth = SynthSound::pick_synth();
 
     match config.sample_format() {
@@ -86,23 +88,23 @@ fn start_input(midi_queue: Arc<SegQueue<MidiMsg>>, midi_in: MidiInput, in_port: 
     Ok(())
 }
 
+// If I want to refactor this into function objects at some point, read this first:
+// https://stackoverflow.com/a/59442384/906268
 #[derive(Copy,Clone,Sequence,Debug)]
 enum SynthSound {
     SinPulse, SimpleTri
 }
 
 impl SynthSound {
-    fn sound(&self, note: u8, velocity: u8) -> Box<dyn AudioUnit64> {
-        let note = midi_hz(note as f64);
-        let volume = velocity as f64 / i8::MAX as f64;
+    fn sound(&self, pitch: f64, volume: f64) -> Box<dyn AudioUnit64> {
         match self {
             SynthSound::SinPulse => {
                 Box::new(lfo(move |t| {
-                    (note, lerp11(0.01, 0.99, sin_hz(0.05, t)))
+                    (pitch, lerp11(0.01, 0.99, sin_hz(0.05, t)))
                 }) >> pulse() * volume)
             }
             SynthSound::SimpleTri => {
-                Box::new(lfo(move |_t| {note}) >> triangle() * volume)
+                Box::new(lfo(move |_t| pitch) >> triangle() * volume)
             }
         }
     }
@@ -156,7 +158,9 @@ impl RunInstance {
                         }
                         ChannelVoiceMsg::NoteOn {note, velocity} => {
                             self.notes_in_use.insert(note);
-                            let mut c = self.synth.sound(note, velocity);
+                            let pitch = midi_hz(note as f64);
+                            let volume = velocity as f64 / i8::MAX as f64;
+                            let mut c = self.synth.sound(pitch, volume);
                             c.reset(Some(self.sample_rate));
                             println!("{:?}", c.get_stereo());
                             self.play_sound::<T>(note, c);
