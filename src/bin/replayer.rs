@@ -1,21 +1,35 @@
+use std::fmt::Debug;
 use std::sync::Arc;
 use anyhow::bail;
 use midir::{MidiInput, Ignore, MidiInputPort};
-use musicserver1::{input_cmd, usize_input};
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use fundsp::hacker::*;
 use crossbeam_queue::SegQueue;
 use dashmap::DashSet;
 use enum_iterator::{all, Sequence};
+use read_input::prelude::*;
+
+// MIDI input code based on:
+//   https://github.com/Boddlnagg/midir/blob/master/examples/test_read_input.rs
+// Synthesizer output code based on:
+//   https://github.com/SamiPerttu/fundsp/blob/master/examples/beep.rs
 
 fn main() -> anyhow::Result<()> {
     let mut midi_in = MidiInput::new("midir reading input")?;
     let in_port = get_midi_device(&mut midi_in)?;
 
     let midi_queue = Arc::new(SegQueue::new());
-    start_output(midi_queue.clone())?;
+    start_output(midi_queue.clone());
     start_input(midi_queue, midi_in, in_port)
+}
+
+fn user_pick_element<T: Clone, S: Fn(&T) -> String>(choices: &Vec<T>, show: S) -> T {
+    for (i, item) in choices.iter().enumerate() {
+        println!("{}) {}", i+1, show(item));
+    }
+    let choice = input::<usize>().msg("Enter choice: ").inside(1..=choices.len()).get();
+    choices[choice - 1].clone()
 }
 
 fn get_midi_device(midi_in: &mut MidiInput) -> anyhow::Result<MidiInputPort> {
@@ -30,36 +44,28 @@ fn get_midi_device(midi_in: &mut MidiInput) -> anyhow::Result<MidiInputPort> {
         },
         _ => {
             println!("\nAvailable input ports:");
-            for (i, p) in in_ports.iter().enumerate() {
-                println!("{}: {}", i, midi_in.port_name(p).unwrap());
-            }
-            let input = input_cmd("Please select input port: ")?;
-            match in_ports.get(input.trim().parse::<usize>()?) {
-                None => bail!("invalid input port selected"),
-                Some(p) => Ok(p.clone())
-            }
+            Ok(user_pick_element(&in_ports.iter().cloned().collect(), |p| midi_in.port_name(p).unwrap()))
         }
     }
 }
 
-fn start_output(midi_queue: Arc<SegQueue<MidiMsg>>) -> anyhow::Result<()> {
+fn start_output(midi_queue: Arc<SegQueue<MidiMsg>>) {
     let host = cpal::default_host();
     let device = host
         .default_output_device()
         .expect("failed to find a default output device");
     let config = device.default_output_config().unwrap();
 
-    let synth = SynthSound::pick_synth()?;
+    let synth = SynthSound::pick_synth();
 
     match config.sample_format() {
         cpal::SampleFormat::F32 => run::<f32>(midi_queue.clone(), device, config.into(), synth).unwrap(),
         cpal::SampleFormat::I16 => run::<i16>(midi_queue.clone(), device, config.into(), synth).unwrap(),
         cpal::SampleFormat::U16 => run::<u16>(midi_queue.clone(), device, config.into(), synth).unwrap(),
     }
-    Ok(())
 }
 
-fn start_input(midi_queue: Arc<SegQueue<MidiMsg>>, mut midi_in: MidiInput, in_port: MidiInputPort) -> anyhow::Result<()> {
+fn start_input(midi_queue: Arc<SegQueue<MidiMsg>>, midi_in: MidiInput, in_port: MidiInputPort) -> anyhow::Result<()> {
     println!("\nOpening connection");
     let in_port_name = midi_in.port_name(&in_port)?;
 
@@ -71,7 +77,7 @@ fn start_input(midi_queue: Arc<SegQueue<MidiMsg>>, mut midi_in: MidiInput, in_po
 
     println!("Connection open, reading input from '{in_port_name}'");
 
-    let _ = input_cmd("(press enter to exit)...\n")?;
+    let _ = input::<String>().msg("(press enter to exit)...\n").get();
     println!("Closing connection");
     Ok(())
 }
@@ -83,27 +89,22 @@ enum SynthSound {
 
 impl SynthSound {
     fn sound(&self, note: u8, velocity: u8) -> Box<dyn AudioUnit64> {
+        let note = midi_hz(note as f64);
+        let volume = velocity as f64 / i8::MAX as f64;
         match self {
             SynthSound::SinPulse => {
                 Box::new(lfo(move |t| {
-                    (midi_hz(note as f64), lerp11(0.01, 0.99, sin_hz(0.05, t)))
-                }) >> pulse() * (velocity as f64 / 127.0))
+                    (note, lerp11(0.01, 0.99, sin_hz(0.05, t)))
+                }) >> pulse() * volume)
             }
             SynthSound::SimpleTri => {
-                Box::new(lfo(move |_t| {
-                    midi_hz(note as f64)
-                }) >> triangle() * (velocity as f64 / 127.0))
+                Box::new(lfo(move |_t| {note}) >> triangle() * volume)
             }
         }
     }
 
-    fn pick_synth() -> std::io::Result<Self> {
-        let synths: Vec<Self> = all::<Self>().collect();
-        for (i, s) in synths.iter().enumerate() {
-            println!("{}) {s:?}", i+1);
-        }
-        let choice = usize_input("Enter choice:", 1..=synths.len())?;
-        Ok(synths[choice - 1])
+    fn pick_synth() -> Self {
+        user_pick_element(&all::<Self>().collect(), |s| format!("{:?}", s))
     }
 }
 
@@ -185,6 +186,7 @@ impl RunInstance {
     }
 }
 
+// Borrowed unchanged from https://github.com/SamiPerttu/fundsp/blob/master/examples/beep.rs
 fn write_data<T>(output: &mut [T], channels: usize, next_sample: &mut dyn FnMut() -> (f64, f64))
     where
         T: cpal::Sample,

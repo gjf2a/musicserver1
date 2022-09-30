@@ -5,9 +5,6 @@ use ordered_float::OrderedFloat;
 use histogram_macros::*;
 use enum_iterator::{all, Sequence};
 use rand::prelude::SliceRandom;
-use std::io;
-use std::io::Write;
-use std::ops::RangeInclusive;
 
 const NOTES_PER_OCTAVE: i16 = 12;
 const USIZE_NOTES_PER_OCTAVE: usize = NOTES_PER_OCTAVE as usize;
@@ -985,32 +982,6 @@ mod tests {
             println!("Degree: {}", scale.diatonic_degree(end)
                 .map(|d| format!("{}", d))
                 .unwrap_or(String::from("chromatic")));
-        }
-    }
-}
-
-pub fn input_cmd(prompt: &str) -> io::Result<String> {
-    print!("{} ", prompt);
-    io::stdout().flush()?;
-    let mut line = String::new();
-    io::stdin().read_line(&mut line)?;
-    Ok(line.trim().to_owned())
-}
-
-pub fn usize_input(prompt: &str, allowed: RangeInclusive<usize>) -> io::Result<usize> {
-    loop {
-        let answer = input_cmd(prompt)?;
-        match answer.parse::<usize>() {
-            Err(_) => {
-                println!("That's not a number. Try again.");
-            }
-            Ok(n) => {
-                if allowed.contains(&n) {
-                    return Ok(n);
-                } else {
-                    println!("The number {n} is out of range. Try again.");
-                }
-            }
         }
     }
 }
