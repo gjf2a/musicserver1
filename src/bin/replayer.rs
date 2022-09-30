@@ -24,11 +24,15 @@ fn main() -> anyhow::Result<()> {
     start_input(midi_queue, midi_in, in_port)
 }
 
-fn user_pick_element<T: Clone, S: Fn(&T) -> String>(choices: &Vec<T>, show: S) -> T {
+fn user_pick_element<T: Clone, S: Fn(&T) -> String>(choices: impl Iterator<Item=T>, show: S) -> T {
+    let choices = choices.collect::<Vec<_>>();
     for (i, item) in choices.iter().enumerate() {
         println!("{}) {}", i+1, show(item));
     }
-    let choice = input::<usize>().msg("Enter choice: ").inside(1..=choices.len()).get();
+    let choice: usize = input()
+        .msg("Enter choice: ")
+        .inside(1..=choices.len())
+        .get();
     choices[choice - 1].clone()
 }
 
@@ -44,7 +48,7 @@ fn get_midi_device(midi_in: &mut MidiInput) -> anyhow::Result<MidiInputPort> {
         },
         _ => {
             println!("\nAvailable input ports:");
-            Ok(user_pick_element(&in_ports.iter().cloned().collect(), |p| midi_in.port_name(p).unwrap()))
+            Ok(user_pick_element(in_ports.iter().cloned(), |p| midi_in.port_name(p).unwrap()))
         }
     }
 }
@@ -104,7 +108,7 @@ impl SynthSound {
     }
 
     fn pick_synth() -> Self {
-        user_pick_element(&all::<Self>().collect(), |s| format!("{:?}", s))
+        user_pick_element(all::<Self>(), |s| format!("{:?}", s))
     }
 }
 
