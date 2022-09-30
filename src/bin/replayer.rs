@@ -96,37 +96,39 @@ impl SynthSound {
     }
 }
 
+#[derive(Clone)]
+struct RunInstance {
+    synth: SynthSound,
+    sample_rate: f64,
+    channels: usize,
+    incoming: Arc<SegQueue<MidiMsg>>,
+    device: Arc<cpal::Device>,
+    config: Arc<cpal::StreamConfig>,
+    notes_in_use: Arc<DashSet<u8>>
+}
 
-fn run<T>(incoming: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config: cpal::StreamConfig, synth: SynthSound) -> anyhow::Result<()>
-    where
-        T: cpal::Sample,
-{
-    let sample_rate = config.sample_rate.0 as f64;
-    let channels = config.channels as usize;
-    let device = Arc::new(device);
-    let config = Arc::new(config);
-    let notes_in_use = Arc::new(DashSet::new());
-
-    std::thread::spawn(move || {
+impl RunInstance {
+    fn listen_play_loop<T: cpal::Sample>(&self) {
         loop {
-            if let Some(m) = incoming.pop() {
+            if let Some(m) = self.incoming.pop() {
                 if let MidiMsg::ChannelVoice { channel:_, msg} = m {
                     println!("{msg:?}");
                     match msg {
                         ChannelVoiceMsg::NoteOff {note, velocity:_} => {
-                            notes_in_use.remove(&note);
+                            self.notes_in_use.remove(&note);
                         }
                         ChannelVoiceMsg::NoteOn {note, velocity} => {
-                            let mut c = synth.sound(note, velocity);
-                            c.reset(Some(sample_rate));
+                            let mut c = self.synth.sound(note, velocity);
+                            c.reset(Some(self.sample_rate));
                             println!("{:?}", c.get_stereo());
                             let mut next_value = move || c.get_stereo();
                             let err_fn = |err| eprintln!("an error occurred on stream: {err}");
-                            let notes_in_use = notes_in_use.clone();
-                            notes_in_use.insert(note);
+                            self.notes_in_use.insert(note);
 
-                            let device = device.clone();
-                            let config = config.clone();
+                            let notes_in_use = self.notes_in_use.clone();
+                            let device = self.device.clone();
+                            let config = self.config.clone();
+                            let channels = self.channels;
                             std::thread::spawn(move || {
                                 let stream = device.build_output_stream(
                                     &config,
@@ -145,6 +147,25 @@ fn run<T>(incoming: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config: cpal::
                 }
             }
         }
+    }
+}
+
+fn run<T>(incoming: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config: cpal::StreamConfig, synth: SynthSound) -> anyhow::Result<()>
+    where
+        T: cpal::Sample,
+{
+    let run_inst = RunInstance {
+        synth,
+        sample_rate: config.sample_rate.0 as f64,
+        channels: config.channels as usize,
+        incoming: incoming.clone(),
+        device: Arc::new(device),
+        config: Arc::new(config),
+        notes_in_use: Arc::new(DashSet::new())
+    };
+
+    std::thread::spawn(move || {
+        run_inst.listen_play_loop::<T>();
     });
 
     Ok(())
