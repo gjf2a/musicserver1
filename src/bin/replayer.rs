@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use anyhow::bail;
 use midir::{MidiInput, Ignore};
-use musicserver1::{input_cmd, midi2hz};
+use musicserver1::input_cmd;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use fundsp::hacker::*;
@@ -50,10 +50,10 @@ fn main() -> anyhow::Result<()> {
     let in_port_name = midi_in.port_name(in_port)?;
 
     // _conn_in needs to be a named parameter, because it needs to be kept alive until the end of the scope
-    let _conn_in = midi_in.connect(in_port, "midir-read-input", move |stamp, message, _| {
+    let _conn_in = midi_in.connect(in_port, "midir-read-input", move |_stamp, message, _| {
         let (msg, len) = MidiMsg::from_midi(&message).unwrap();
         midi_queue.push(msg);
-    }, ())?;
+    }, ()).unwrap();
 
     println!("Connection open, reading input from '{in_port_name}'");
 
@@ -79,7 +79,7 @@ fn run<T>(incoming: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config: cpal::
                     match msg {
                         ChannelVoiceMsg::NoteOn {note, velocity:_} => {
                             let mut c = lfo(move |t| {
-                                (midi2hz(note as i8), lerp11(0.01, 0.99, sin_hz(0.05, t)))
+                                (midi_hz(note as f64), lerp11(0.01, 0.99, sin_hz(0.05, t)))
                             }) >> pulse();
                             c.reset(Some(sample_rate));
                             let mut next_value = move || c.get_stereo();
