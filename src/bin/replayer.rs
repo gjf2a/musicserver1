@@ -61,16 +61,16 @@ fn start_output(midi_queue: Arc<SegQueue<MidiMsg>>) {
     let config = device.default_output_config().unwrap();
 
     let synth_funcs = vec![
-        SynthFunc {name: "Sine Pulse".to_owned(), func: Arc::new(sine_pulse)},
-        SynthFunc {name: "Simple Triangle".to_owned(), func: Arc::new(simple_tri)}
+        SynthFunc {name: "Sine Pulse".to_owned(), sound: Arc::new(sine_pulse)},
+        SynthFunc {name: "Simple Triangle".to_owned(), sound: Arc::new(simple_tri)}
     ];
 
-    let synth_func = pick_synth_func(&synth_funcs);
+    let synth = pick_synth_func(&synth_funcs);
 
     match config.sample_format() {
-        cpal::SampleFormat::F32 => run::<f32>(midi_queue.clone(), device, config.into(), synth_func).unwrap(),
-        cpal::SampleFormat::I16 => run::<i16>(midi_queue.clone(), device, config.into(), synth_func).unwrap(),
-        cpal::SampleFormat::U16 => run::<u16>(midi_queue.clone(), device, config.into(), synth_func).unwrap(),
+        cpal::SampleFormat::F32 => run::<f32>(midi_queue.clone(), device, config.into(), synth).unwrap(),
+        cpal::SampleFormat::I16 => run::<i16>(midi_queue.clone(), device, config.into(), synth).unwrap(),
+        cpal::SampleFormat::U16 => run::<u16>(midi_queue.clone(), device, config.into(), synth).unwrap(),
     }
 }
 
@@ -91,40 +91,15 @@ fn start_input(midi_queue: Arc<SegQueue<MidiMsg>>, midi_in: MidiInput, in_port: 
     Ok(())
 }
 
+// Invaluable help with the function type: https://stackoverflow.com/a/59442384/906268
 #[derive(Clone)]
 struct SynthFunc {
     name: String,
-    func: Arc<dyn Fn(f64,f64) -> Box<dyn AudioUnit64> + Sync + Send>
+    sound: Arc<dyn Fn(f64,f64) -> Box<dyn AudioUnit64> + Sync + Send>
 }
 
 fn pick_synth_func(funcs: &Vec<SynthFunc>) -> SynthFunc {
     user_pick_element(funcs.iter().cloned(), |sf| sf.name.clone())
-}
-
-// If I want to refactor this into function objects at some point, read this first:
-// https://stackoverflow.com/a/59442384/906268
-#[derive(Copy,Clone,Sequence,Debug)]
-enum SynthSound {
-    SinPulse, SimpleTri
-}
-
-impl SynthSound {
-    fn sound(&self, pitch: f64, volume: f64) -> Box<dyn AudioUnit64> {
-        match self {
-            SynthSound::SinPulse => {
-                Box::new(lfo(move |t| {
-                    (pitch, lerp11(0.01, 0.99, sin_hz(0.05, t)))
-                }) >> pulse() * volume)
-            }
-            SynthSound::SimpleTri => {
-                Box::new(lfo(move |_t| pitch) >> triangle() * volume)
-            }
-        }
-    }
-
-    fn pick_synth() -> Self {
-        user_pick_element(all::<Self>(), |s| format!("{:?}", s))
-    }
 }
 
 fn sine_pulse(pitch: f64, volume: f64) -> Box<dyn AudioUnit64> {
@@ -183,7 +158,7 @@ impl RunInstance {
                             self.notes_in_use.insert(note);
                             let pitch = midi_hz(note as f64);
                             let volume = velocity as f64 / i8::MAX as f64;
-                            let mut c = (self.synth.func)(pitch, volume);
+                            let mut c = (self.synth.sound)(pitch, volume);
                             c.reset(Some(self.sample_rate));
                             println!("{:?}", c.get_stereo());
                             self.play_sound::<T>(note, c);
