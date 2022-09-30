@@ -1,14 +1,12 @@
-use std::fmt::Debug;
 use std::sync::Arc;
 use anyhow::bail;
 use midir::{MidiInput, Ignore, MidiInputPort};
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use fundsp::hacker::*;
-use crossbeam_queue::SegQueue;
 use dashmap::DashSet;
-use enum_iterator::{all, Sequence};
 use read_input::prelude::*;
+use crossbeam_channel::{Receiver, Sender, unbounded};
 
 // MIDI input code based on:
 //   https://github.com/Boddlnagg/midir/blob/master/examples/test_read_input.rs
@@ -19,9 +17,11 @@ fn main() -> anyhow::Result<()> {
     let mut midi_in = MidiInput::new("midir reading input")?;
     let in_port = get_midi_device(&mut midi_in)?;
 
-    let midi_queue = Arc::new(SegQueue::new());
-    start_output(midi_queue.clone());
-    start_input(midi_queue, midi_in, in_port)
+    let (midi_sender, midi_receiver) = unbounded();
+    let midi_sender = Arc::new(midi_sender);
+    let midi_receiver = Arc::new(midi_receiver);
+    start_output(midi_receiver);
+    start_input(midi_sender, midi_in, in_port)
 }
 
 fn user_pick_element<T: Clone, S: Fn(&T) -> String>(choices: impl Iterator<Item=T>, show: S) -> T {
@@ -53,7 +53,7 @@ fn get_midi_device(midi_in: &mut MidiInput) -> anyhow::Result<MidiInputPort> {
     }
 }
 
-fn start_output(midi_queue: Arc<SegQueue<MidiMsg>>) {
+fn start_output(midi_receiver: Arc<Receiver<MidiMsg>>) {
     let host = cpal::default_host();
     let device = host
         .default_output_device()
@@ -68,20 +68,20 @@ fn start_output(midi_queue: Arc<SegQueue<MidiMsg>>) {
     let synth = pick_synth_func(&synth_funcs);
 
     match config.sample_format() {
-        cpal::SampleFormat::F32 => run::<f32>(midi_queue.clone(), device, config.into(), synth).unwrap(),
-        cpal::SampleFormat::I16 => run::<i16>(midi_queue.clone(), device, config.into(), synth).unwrap(),
-        cpal::SampleFormat::U16 => run::<u16>(midi_queue.clone(), device, config.into(), synth).unwrap(),
+        cpal::SampleFormat::F32 => run::<f32>(midi_receiver.clone(), device, config.into(), synth).unwrap(),
+        cpal::SampleFormat::I16 => run::<i16>(midi_receiver.clone(), device, config.into(), synth).unwrap(),
+        cpal::SampleFormat::U16 => run::<u16>(midi_receiver.clone(), device, config.into(), synth).unwrap(),
     }
 }
 
-fn start_input(midi_queue: Arc<SegQueue<MidiMsg>>, midi_in: MidiInput, in_port: MidiInputPort) -> anyhow::Result<()> {
+fn start_input(midi_sender: Arc<Sender<MidiMsg>>, midi_in: MidiInput, in_port: MidiInputPort) -> anyhow::Result<()> {
     println!("\nOpening connection");
     let in_port_name = midi_in.port_name(&in_port)?;
 
     // _conn_in needs to be a named parameter, because it needs to be kept alive until the end of the scope
     let _conn_in = midi_in.connect(&in_port, "midir-read-input", move |_stamp, message, _| {
         let (msg, _len) = MidiMsg::from_midi(&message).unwrap();
-        midi_queue.push(msg);
+        midi_sender.send(msg).unwrap();
     }, ()).unwrap();
 
     println!("Connection open, reading input from '{in_port_name}'");
@@ -112,7 +112,7 @@ fn simple_tri(pitch: f64, volume: f64) -> Box<dyn AudioUnit64> {
     Box::new(lfo(move |_t| pitch) >> triangle() * volume)
 }
 
-fn run<T>(incoming: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config: cpal::StreamConfig, synth: SynthFunc) -> anyhow::Result<()>
+fn run<T>(incoming: Arc<Receiver<MidiMsg>>, device: cpal::Device, config: cpal::StreamConfig, synth: SynthFunc) -> anyhow::Result<()>
     where
         T: cpal::Sample,
 {
@@ -138,7 +138,7 @@ struct RunInstance {
     synth: SynthFunc,
     sample_rate: f64,
     channels: usize,
-    incoming: Arc<SegQueue<MidiMsg>>,
+    incoming: Arc<Receiver<MidiMsg>>,
     device: Arc<cpal::Device>,
     config: Arc<cpal::StreamConfig>,
     notes_in_use: Arc<DashSet<u8>>
@@ -147,7 +147,7 @@ struct RunInstance {
 impl RunInstance {
     fn listen_play_loop<T: cpal::Sample>(&self) {
         loop {
-            if let Some(m) = self.incoming.pop() {
+            if let Ok(m) = self.incoming.recv() {
                 if let MidiMsg::ChannelVoice { channel:_, msg} = m {
                     println!("{msg:?}");
                     match msg {
@@ -166,6 +166,8 @@ impl RunInstance {
                         _ => {}
                     }
                 }
+            } else {
+                break;
             }
         }
     }
