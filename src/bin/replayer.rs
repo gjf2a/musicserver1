@@ -6,7 +6,7 @@ use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use fundsp::hacker::*;
 use crossbeam_queue::SegQueue;
-
+use dashmap::DashSet;
 
 fn main() -> anyhow::Result<()> {
     let mut midi_in = MidiInput::new("midir reading input")?;
@@ -57,7 +57,7 @@ fn main() -> anyhow::Result<()> {
 
     println!("Connection open, reading input from '{in_port_name}'");
 
-    let _ = input_cmd("(press enter to exit)...")?;
+    let _ = input_cmd("(press enter to exit)...\n")?;
     println!("Closing connection");
     Ok(())
 }
@@ -70,6 +70,7 @@ fn run<T>(incoming: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config: cpal::
     let channels = config.channels as usize;
     let device = Arc::new(device);
     let config = Arc::new(config);
+    let notes_in_use = Arc::new(DashSet::new());
 
     std::thread::spawn(move || {
         loop {
@@ -77,6 +78,9 @@ fn run<T>(incoming: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config: cpal::
                 if let MidiMsg::ChannelVoice { channel:_, msg} = m {
                     println!("{msg:?}");
                     match msg {
+                        ChannelVoiceMsg::NoteOff {note, velocity:_} => {
+                            notes_in_use.remove(&note);
+                        }
                         ChannelVoiceMsg::NoteOn {note, velocity:_} => {
                             let mut c = lfo(move |t| {
                                 (midi_hz(note as f64), lerp11(0.01, 0.99, sin_hz(0.05, t)))
@@ -84,6 +88,8 @@ fn run<T>(incoming: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config: cpal::
                             c.reset(Some(sample_rate));
                             let mut next_value = move || c.get_stereo();
                             let err_fn = |err| eprintln!("an error occurred on stream: {err}");
+                            let notes_in_use = notes_in_use.clone();
+                            notes_in_use.insert(note);
 
                             let device = device.clone();
                             let config = config.clone();
@@ -97,7 +103,7 @@ fn run<T>(incoming: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config: cpal::
                                 ).unwrap();
 
                                 stream.play().unwrap();
-                                loop {}
+                                while notes_in_use.contains(&note) {}
                             });
                         }
                         _ => {}
