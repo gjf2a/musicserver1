@@ -4,6 +4,7 @@ use bare_metal_modulo::{MNum, ModNumC};
 use ordered_float::OrderedFloat;
 use histogram_macros::*;
 use enum_iterator::{all, Sequence};
+use float_cmp::{ApproxEq, F64Margin};
 use rand::prelude::SliceRandom;
 
 const MAX_MIDI_VALUE: i16 = i8::MAX as i16;
@@ -29,11 +30,30 @@ pub struct Note {
     intensity: OrderedFloat<f64>
 }
 
+impl ApproxEq for Note {
+    type Margin = F64Margin;
+
+    fn approx_eq<M: Into<Self::Margin>>(self, other: Self, margin: M) -> bool {
+        let margin = margin.into();
+        self.pitch == other.pitch &&
+            self.duration.into_inner().approx_eq(other.duration.into_inner(), margin) &&
+            self.intensity.into_inner().approx_eq(other.intensity.into_inner(), margin)
+    }
+}
+
 impl Note {
     pub fn pitch(&self) -> i16 {self.pitch}
 
+    pub fn is_rest(&self) -> bool {self.intensity == OrderedFloat(0.0)}
+
     pub fn repitched(&self, new_pitch: i16) -> Note {
         Note {pitch: new_pitch, duration: self.duration, intensity: self.intensity}
+    }
+
+    pub fn reweigh(&mut self, extra_duration: OrderedFloat<f64>, extra_intensity: OrderedFloat<f64>) {
+        let durations = self.duration + extra_duration;
+        self.intensity = (self.duration * self.intensity + extra_duration * extra_intensity) / durations;
+        self.duration = durations;
     }
 
     pub fn sonic_pi_list(&self) -> String {
@@ -120,10 +140,33 @@ impl Melody {
         no_zeros.subdivide_using(&pauses)
     }
 
+    /// Returns a Vec containing consolidated `Note` objects.
+    /// Two or more `Note` objects are consolidated when they
+    /// are consecutive in sequence with the same pitch. The `usize`
+    /// is the index of the first note in the consecutive subsequence.
+    pub fn get_consolidated_notes(&self) -> Vec<(usize,Note)> {
+        if self.notes.len() == 0 {
+            vec![]
+        } else {
+            let mut result = vec![(0, self.notes[0])];
+            for (i, note) in self.notes.iter().enumerate().skip(1) {
+                if result.last().unwrap().1.pitch == note.pitch {
+                    result.last_mut().unwrap().1.reweigh(note.duration, note.intensity);
+                } else {
+                    result.push((i, note.clone()));
+                }
+            }
+            result
+        }
+    }
+
     pub fn find_pause_indices(&self) -> Vec<usize> {
-        (1..(self.notes.len() - 1))
-            .filter(|i| self[*i-1].duration < self[*i].duration &&
-                self[*i].duration > self[*i+1].duration)
+        let consolidated = self.get_consolidated_notes();
+
+        (1..(consolidated.len() - 1))
+            .filter(|i| consolidated[*i-1].1.duration < consolidated[*i].1.duration &&
+                consolidated[*i].1.duration > consolidated[*i+1].1.duration)
+            .map(|i| consolidated[i].0)
             .collect()
     }
 
@@ -495,10 +538,19 @@ impl MelodicFigure {
     }
 
     pub fn matches(&self, melody: &Melody, scale: &MusicMode, start: usize) -> bool {
-        melody.notes_left_from(start) >= self.len() &&
-            self.pattern().iter().enumerate()
-                .all(|(i, interval)| scale.diatonic_steps_between(melody[start + i].pitch, melody[start + i + 1].pitch)
-                    .map_or(false, |actual| actual == *interval))
+        let mut p = 0;
+        let mut m = start;
+        while p < self.pattern().len() && m + 1 < melody.len() {
+            if melody[m] != melody[m + 1] {
+                match scale.diatonic_steps_between(melody[m].pitch, melody[m + 1].pitch) {
+                    None => return false,
+                    Some(actual) => if actual != self.pattern()[p] {return false;}
+                }
+                p += 1;
+            }
+            m += 1;
+        }
+        true
     }
 
     /// Generates a sequence of diatonic pitches derived from `scale` corresponding to
@@ -595,22 +647,10 @@ mod tests {
     use crate::MelodicFigureShape::*;
     use crate::FigurePolarity::*;
     use crate::FigureDirection::*;
-    use crate::midi2hz;
     use float_cmp::assert_approx_eq;
 
     const EXAMPLE_MELODY: &str = "55,0.39,0.91,55,0.04,0.0,59,0.33,0.73,60,0.06,0.44,62,0.02,0.87,59,0.05,0.0,60,0.16,0.0,62,0.2,0.0,55,0.39,0.61,55,0.01,0.0,57,0.34,0.98,57,0.05,0.0,55,0.39,0.78,54,0.02,0.98,55,0.19,0.0,54,0.12,0.0,52,0.11,0.74,52,0.0,0.0,54,0.12,0.46,54,0.03,0.0,50,0.1,0.84,50,0.27,0.0,55,0.27,0.74,55,0.1,0.0,59,0.27,0.44,60,0.07,0.54,62,0.04,0.91,59,0.09,0.0,60,0.11,0.0,62,0.19,0.0,55,0.29,0.67,55,0.07,0.0,57,0.32,0.76,57,0.06,0.0,55,0.23,0.7,55,0.05,0.0,54,0.12,0.93,54,0.07,0.0,50,0.37,0.8,50,0.5,0.0,55,0.36,0.76,55,0.05,0.0,59,0.28,0.76,60,0.05,0.7,62,0.01,0.91,59,0.07,0.0,60,0.15,0.0,62,0.2,0.0,55,0.33,0.67,55,0.02,0.0,57,0.29,0.8,57,0.1,0.0,55,0.29,0.9,55,0.08,0.0,54,0.16,1.0,54,0.12,0.0,52,0.12,0.72,54,0.01,0.71,52,0.14,0.0,54,0.07,0.0,50,0.1,0.76,50,0.23,0.0,55,0.22,0.65,55,0.13,0.0,57,0.29,0.64,57,0.08,0.0,55,0.23,0.76,55,0.07,0.0,54,0.12,0.99,54,0.04,0.0,52,0.24,0.95,52,0.19,0.0,54,0.13,1.0,54,0.15,0.0,52,0.12,0.72,52,0.03,0.0,54,0.19,0.83,54,0.13,0.0,50,0.06,0.69,50,0.15,0.0,55,0.01,0.73,57,0.07,0.66,57,0.55,0.0,55,1.5,0.0";
     const COUNTDOWN_MELODY: &str = "66,0.42,1.0,66,0.55,0.0,73,0.17,1.0,73,0.01,0.0,71,0.13,0.77,71,0.0,0.0,73,0.45,0.41,73,0.13,0.0,66,0.85,0.8,66,0.32,0.0,74,0.16,1.0,74,0.0,0.0,74,0.37,0.87,74,0.03,0.0,73,0.2,1.0,73,0.03,0.0,71,0.03,0.06,71,0.04,0.0,71,0.93,1.0,71,0.27,0.0,74,0.16,1.0,74,0.03,0.0,73,0.13,1.0,73,0.03,0.0,74,0.45,1.0,74,0.12,0.0,66,0.58,0.8,66,0.5,0.0,71,0.15,0.75,71,0.02,0.0,71,0.13,0.81,71,0.03,0.0,71,0.21,1.0,71,0.08,0.0,69,0.24,0.94,69,0.08,0.0,68,0.22,0.65,68,0.07,0.0,71,0.24,1.0,71,0.06,0.0,69,0.68,1.0,69,0.15,0.0,73,0.16,1.0,73,0.03,0.0,71,0.14,0.91,71,0.03,0.0,73,0.29,1.0,73,0.22,0.0,66,0.61,0.64,66,0.45,0.0,74,0.15,0.87,74,0.04,0.0,74,0.14,0.83,74,0.02,0.0,74,0.2,1.0,74,0.13,0.0,73,0.29,0.96,73,0.0,0.0,72,0.04,0.49,72,0.03,0.0,71,1.01,1.0,71,0.41,0.0,74,0.14,0.94,74,0.04,0.0,73,0.13,0.8,73,0.03,0.0,74,0.49,1.0,74,0.12,0.0,66,0.93,0.54,66,0.19,0.0,71,0.16,0.81,71,0.02,0.0,71,0.13,0.79,71,0.03,0.0,71,0.21,0.87,71,0.11,0.0,69,0.24,0.86,69,0.08,0.0,68,0.24,0.67,68,0.07,0.0,71,0.24,1.0,71,0.11,0.0,69,0.75,0.86,69,0.05,0.0,68,0.18,0.71,68,0.02,0.0,69,0.16,0.89,69,0.04,0.0,71,0.02,0.99,71,0.0,0.0,83,0.01,1.0,83,0.0,0.0,71,0.56,0.98,71,0.16,0.0,69,0.19,1.0,69,0.04,0.0,71,0.2,1.0,71,0.05,0.0,73,0.24,1.0,73,0.0,0.0,72,0.03,0.62,72,0.07,0.0,71,0.2,0.91,71,0.03,0.0,69,0.01,0.06,69,0.06,0.0,69,0.18,0.73,69,0.11,0.0,68,0.19,0.46,68,0.18,0.0,66,0.51,0.76,66,0.17,0.0,74,0.56,1.0,74,0.01,0.0,73,1.09,0.79,73,0.07,0.0,75,0.16,0.9,75,0.03,0.0,73,0.16,0.84,73,0.03,0.0,71,0.18,0.57,71,0.03,0.0,73,0.78,0.64,73,0.06,0.0,73,0.14,0.91,73,0.04,0.0,73,0.14,0.87,73,0.04,0.0,73,0.26,0.81,73,0.1,0.0,71,0.23,0.91,71,0.07,0.0,69,0.19,0.98,69,0.1,0.0,68,0.23,0.59,68,0.15,0.0,66,1.22,0.68,66,2.0,0.0";
-
-    #[test]
-    fn test_midi2hz() {
-        for (m, h) in [
-            (93, 1760.0), (81, 880.0), (69, 440.0), (57, 220.0), (45, 110.0), (33, 55.0), (21, 27.50),
-            (91, 1567.98), (79, 783.99), (67, 392.0), (55, 196.0), (43, 98.0),
-            (68, 415.30), (56, 207.65), (44, 103.83)
-        ] {
-            assert_approx_eq!(f64, midi2hz(m), h, epsilon = 0.01);
-        }
-    }
 
     #[test]
     fn test_parse_melody() {
@@ -897,8 +937,11 @@ mod tests {
         let melody = Melody::from(melody_str).without_silence();
         let maker = MelodyMaker::new();
         let pauses = melody.find_pause_indices();
+        println!("pauses: {pauses:?}");
         let chain = maker.emphasis_figure_chain(&melody, &pauses);
         assert!(MelodyMaker::is_chain(&chain));
+        let notes = melody.notes.iter().enumerate().collect::<Vec<_>>();
+        println!("{notes:?}");
         assert_eq!(&chain, expected);
     }
 
@@ -954,7 +997,7 @@ mod tests {
     #[test]
     fn test_variation_4() {
         test_variation_unchanged(MelodyMaker::create_variation_4);
-        test_variation_changed(MelodyMaker::create_variation_4, 0.10, 0.37);
+        test_variation_changed(MelodyMaker::create_variation_4, 0.08, 0.37);
     }
 
     #[test]
