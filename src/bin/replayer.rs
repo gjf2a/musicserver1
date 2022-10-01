@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Instant;
 use anyhow::bail;
 use midir::{MidiInput, Ignore, MidiInputPort};
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
@@ -7,6 +8,28 @@ use fundsp::hacker::*;
 use dashmap::DashSet;
 use read_input::prelude::*;
 use crossbeam_queue::SegQueue;
+use musicserver1::{Melody, MelodyMaker, velocity2volume};
+
+#[macro_export]
+macro_rules! wrap_func {
+    ($t:ident, $s:expr, $f:expr) => {
+        $t {name: $s.to_owned(), func: Arc::new($f)}
+    }
+}
+
+#[macro_export]
+macro_rules! user_func_pick {
+    ($t:ident, $( ($s:expr, $f:expr)),+ ) => {
+        {
+        let choices = vec![
+            $(
+            wrap_func!($t, $s, $f),
+            )*
+        ];
+        user_pick_element(choices.iter().cloned(), |aif| aif.name.clone())
+        }
+    }
+}
 
 // MIDI input code based on:
 //   https://github.com/Boddlnagg/midir/blob/master/examples/test_read_input.rs
@@ -20,9 +43,9 @@ fn main() -> anyhow::Result<()> {
     let input2ai = Arc::new(SegQueue::new());
     let ai2output = Arc::new(SegQueue::new());
 
-    start_output(ai2output.clone());
-    start_ai(input2ai.clone(), ai2output);
-    start_input(input2ai, midi_in, in_port)
+    run_output(ai2output.clone());
+    run_ai(input2ai.clone(), ai2output);
+    run_input(input2ai, midi_in, in_port)
 }
 
 fn user_pick_element<T: Clone, S: Fn(&T) -> String>(choices: impl Iterator<Item=T>, show: S) -> T {
@@ -54,19 +77,13 @@ fn get_midi_device(midi_in: &mut MidiInput) -> anyhow::Result<MidiInputPort> {
     }
 }
 
-fn start_output(ai2output: Arc<SegQueue<MidiMsg>>) {
+fn run_output(ai2output: Arc<SegQueue<MidiMsg>>) {
     let host = cpal::default_host();
     let device = host
         .default_output_device()
         .expect("failed to find a default output device");
     let config = device.default_output_config().unwrap();
-
-    let synth_funcs = vec![
-        SynthFunc {name: "Sine Pulse".to_owned(), sound: Arc::new(sine_pulse)},
-        SynthFunc {name: "Simple Triangle".to_owned(), sound: Arc::new(simple_tri)}
-    ];
-
-    let synth = pick_synth_func(&synth_funcs);
+    let synth = user_func_pick!(SynthFunc, ("Sine Pulse", sine_pulse), ("Simple Triangle", simple_tri));
 
     match config.sample_format() {
         cpal::SampleFormat::F32 => run::<f32>(ai2output, device, config.into(), synth).unwrap(),
@@ -75,7 +92,7 @@ fn start_output(ai2output: Arc<SegQueue<MidiMsg>>) {
     }
 }
 
-fn start_input(input2ai: Arc<SegQueue<MidiMsg>>, midi_in: MidiInput, in_port: MidiInputPort) -> anyhow::Result<()> {
+fn run_input(input2ai: Arc<SegQueue<MidiMsg>>, midi_in: MidiInput, in_port: MidiInputPort) -> anyhow::Result<()> {
     println!("\nOpening connection");
     let in_port_name = midi_in.port_name(&in_port)?;
 
@@ -92,11 +109,36 @@ fn start_input(input2ai: Arc<SegQueue<MidiMsg>>, midi_in: MidiInput, in_port: Mi
     Ok(())
 }
 
-fn start_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>) {
+#[derive(Clone)]
+struct AIFunc {
+    name: String,
+    func: Arc<dyn Fn(&mut MelodyMaker,&Melody,f64)->Melody + Send + Sync>
+}
+
+fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>) {
+    let ai_func = user_func_pick!(AIFunc,
+        ("Playback", |_, melody, _| melody.clone()),
+        ("Greedy Choice", MelodyMaker::create_variation_1),
+        ("Emphasis-Anchored Choice", MelodyMaker::create_variation_2),
+        ("Consistent Figure Replacement", MelodyMaker::create_variation_4));
+
     std::thread::spawn(move || {
+        let mut player_melody = Melody::new();
+        //let mut timestamp = None;
         loop {
             if let Some(msg) = input2ai.pop() {
                 println!("AI received {msg:?}");
+                if let MidiMsg::ChannelVoice { channel:_, msg} = msg {
+                    match msg {
+                        ChannelVoiceMsg::NoteOff {note, velocity:_} => {
+
+                        }
+                        ChannelVoiceMsg::NoteOn {note, velocity} => {
+
+                        }
+                        _ => {}
+                    }
+                }
                 ai2output.push(msg);
             }
         }
@@ -107,11 +149,7 @@ fn start_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>)
 #[derive(Clone)]
 struct SynthFunc {
     name: String,
-    sound: Arc<dyn Fn(f64,f64) -> Box<dyn AudioUnit64> + Sync + Send>
-}
-
-fn pick_synth_func(funcs: &Vec<SynthFunc>) -> SynthFunc {
-    user_pick_element(funcs.iter().cloned(), |sf| sf.name.clone())
+    func: Arc<dyn Fn(f64,f64) -> Box<dyn AudioUnit64> + Send + Sync>
 }
 
 fn sine_pulse(pitch: f64, volume: f64) -> Box<dyn AudioUnit64> {
@@ -169,8 +207,8 @@ impl RunInstance {
                         ChannelVoiceMsg::NoteOn {note, velocity} => {
                             self.notes_in_use.insert(note);
                             let pitch = midi_hz(note as f64);
-                            let volume = velocity as f64 / i8::MAX as f64;
-                            let mut c = (self.synth.sound)(pitch, volume);
+                            let volume = velocity2volume(velocity as i16);
+                            let mut c = (self.synth.func)(pitch, volume);
                             c.reset(Some(self.sample_rate));
                             println!("{:?}", c.get_stereo());
                             self.play_sound::<T>(note, c);

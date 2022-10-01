@@ -1,4 +1,4 @@
-use std::cmp::max;
+use std::cmp::{max, min};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use bare_metal_modulo::{MNum, ModNumC};
 use ordered_float::OrderedFloat;
@@ -6,6 +6,7 @@ use histogram_macros::*;
 use enum_iterator::{all, Sequence};
 use rand::prelude::SliceRandom;
 
+const MAX_MIDI_VALUE: i16 = i8::MAX as i16;
 const NOTES_PER_OCTAVE: i16 = 12;
 const USIZE_NOTES_PER_OCTAVE: usize = NOTES_PER_OCTAVE as usize;
 const DIATONIC_SCALE_SIZE: usize = 7;
@@ -15,6 +16,10 @@ const MODE_NAMES: [&str; DIATONIC_SCALE_SIZE] = ["ionian", "dorian", "phrygian",
 
 fn assert_prob(p: f64) {
     assert!(0.0 <= p && p <= 1.0);
+}
+
+pub fn velocity2volume(midi_velocity: i16) -> f64 {
+    max(0, min(MAX_MIDI_VALUE, midi_velocity)) as f64 / MAX_MIDI_VALUE as f64
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -42,6 +47,8 @@ pub struct Melody {
 }
 
 impl Melody {
+    pub fn new() -> Self {Melody {notes: vec![]}}
+
     pub fn from(s: &str) -> Self {
         let mut notes = Vec::new();
         let mut nums = s.split(",");
@@ -57,6 +64,10 @@ impl Melody {
             }
         }
         Melody {notes}
+    }
+
+    pub fn add(&mut self, n: Note) {
+        self.notes.push(n);
     }
 
     pub fn sonic_pi_list(&self) -> String {
