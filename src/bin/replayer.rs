@@ -8,7 +8,7 @@ use fundsp::hacker::*;
 use dashmap::DashSet;
 use read_input::prelude::*;
 use crossbeam_queue::SegQueue;
-use musicserver1::{Melody, MelodyMaker, velocity2volume};
+use musicserver1::{Melody, MelodyMaker, Note, velocity2volume};
 
 #[macro_export]
 macro_rules! wrap_func {
@@ -44,7 +44,7 @@ fn main() -> anyhow::Result<()> {
     let ai2output = Arc::new(SegQueue::new());
 
     run_output(ai2output.clone());
-    run_ai(input2ai.clone(), ai2output);
+    run_ai(input2ai.clone(), ai2output, 1.5, 1.0);
     run_input(input2ai, midi_in, in_port)
 }
 
@@ -115,7 +115,7 @@ struct AIFunc {
     func: Arc<dyn Fn(&mut MelodyMaker,&Melody,f64)->Melody + Send + Sync>
 }
 
-fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>) {
+fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>, replay_delay: f64, p_random: f64) {
     let ai_func = user_func_pick!(AIFunc,
         ("Playback", |_, melody, _| melody.clone()),
         ("Greedy Choice", MelodyMaker::create_variation_1),
@@ -123,24 +123,36 @@ fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>) {
         ("Consistent Figure Replacement", MelodyMaker::create_variation_4));
 
     std::thread::spawn(move || {
-        let mut player_melody = Melody::new();
-        //let mut timestamp = None;
         loop {
-            if let Some(msg) = input2ai.pop() {
-                println!("AI received {msg:?}");
-                if let MidiMsg::ChannelVoice { channel:_, msg} = msg {
-                    match msg {
-                        ChannelVoiceMsg::NoteOff {note, velocity:_} => {
-
+            let mut waiting = None;
+            let mut player_melody = Melody::new();
+            loop {
+                if let Some(msg) = input2ai.pop() {
+                    println!("AI received {msg:?}");
+                    if let MidiMsg::ChannelVoice { channel: _, msg } = msg {
+                        match msg {
+                            ChannelVoiceMsg::NoteOff { note, velocity } | ChannelVoiceMsg::NoteOn { note, velocity } => {
+                                if let Some((w_note, w_timestamp, w_velocity)) = waiting {
+                                    player_melody.add(Note::new(w_note, w_timestamp.elapsed().as_secs_f64(), w_velocity));
+                                }
+                                waiting = Some((note, Instant::now(), velocity));
+                            }
+                            _ => {}
                         }
-                        ChannelVoiceMsg::NoteOn {note, velocity} => {
+                    }
+                    ai2output.push(msg);
+                }
 
-                        }
-                        _ => {}
+                if let Some((note, timestamp, velocity)) = waiting {
+                    let elapsed = timestamp.elapsed().as_secs_f64();
+                    if velocity == 0 && elapsed > replay_delay {
+                        player_melody.add(Note::new(note, elapsed, velocity));
+                        break;
                     }
                 }
-                ai2output.push(msg);
             }
+
+            let variation = (ai_func.func)(&player_melody);
         }
     });
 }
@@ -207,7 +219,7 @@ impl RunInstance {
                         ChannelVoiceMsg::NoteOn {note, velocity} => {
                             self.notes_in_use.insert(note);
                             let pitch = midi_hz(note as f64);
-                            let volume = velocity2volume(velocity as i16);
+                            let volume = velocity2volume(velocity);
                             let mut c = (self.synth.func)(pitch, volume);
                             c.reset(Some(self.sample_rate));
                             println!("{:?}", c.get_stereo());
