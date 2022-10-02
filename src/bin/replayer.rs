@@ -1,5 +1,6 @@
 use std::sync::Arc;
-use std::time::Instant;
+use std::thread;
+use std::time::{Duration, Instant};
 use anyhow::bail;
 use midir::{MidiInput, Ignore, MidiInputPort};
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
@@ -37,6 +38,7 @@ macro_rules! user_func_pick {
 //   https://github.com/SamiPerttu/fundsp/blob/master/examples/beep.rs
 
 fn main() -> anyhow::Result<()> {
+    println!("Welcome to replayer");
     let mut midi_in = MidiInput::new("midir reading input")?;
     let in_port = get_midi_device(&mut midi_in)?;
 
@@ -121,10 +123,11 @@ fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>, r
         ("Greedy Choice", MelodyMaker::create_variation_1),
         ("Emphasis-Anchored Choice", MelodyMaker::create_variation_2),
         ("Consistent Figure Replacement", MelodyMaker::create_variation_4));
+    let mut maker = MelodyMaker::new();
 
     std::thread::spawn(move || {
         loop {
-            let mut waiting = None;
+            let mut waiting: Option<(u8, Instant, u8)> = None;
             let mut player_melody = Melody::new();
             loop {
                 if let Some(msg) = input2ai.pop() {
@@ -133,7 +136,7 @@ fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>, r
                         match msg {
                             ChannelVoiceMsg::NoteOff { note, velocity } | ChannelVoiceMsg::NoteOn { note, velocity } => {
                                 if let Some((w_note, w_timestamp, w_velocity)) = waiting {
-                                    player_melody.add(Note::new(w_note, w_timestamp.elapsed().as_secs_f64(), w_velocity));
+                                    player_melody.add(Note::from_midi(w_note, w_timestamp.elapsed().as_secs_f64(), w_velocity));
                                 }
                                 waiting = Some((note, Instant::now(), velocity));
                             }
@@ -146,13 +149,18 @@ fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>, r
                 if let Some((note, timestamp, velocity)) = waiting {
                     let elapsed = timestamp.elapsed().as_secs_f64();
                     if velocity == 0 && elapsed > replay_delay {
-                        player_melody.add(Note::new(note, elapsed, velocity));
+                        player_melody.add(Note::from_midi(note, elapsed, velocity));
                         break;
                     }
                 }
             }
 
-            let variation = (ai_func.func)(&player_melody);
+            let variation = (ai_func.func)(&mut maker, &player_melody, p_random);
+            for note in variation.iter() {
+                let (midi, duration) = note.to_midi();
+                ai2output.push(midi);
+                thread::sleep(Duration::from_secs_f64(duration));
+            }
         }
     });
 }
@@ -219,7 +227,7 @@ impl RunInstance {
                         ChannelVoiceMsg::NoteOn {note, velocity} => {
                             self.notes_in_use.insert(note);
                             let pitch = midi_hz(note as f64);
-                            let volume = velocity2volume(velocity);
+                            let volume = velocity2volume(velocity.into());
                             let mut c = (self.synth.func)(pitch, volume);
                             c.reset(Some(self.sample_rate));
                             println!("{:?}", c.get_stereo());

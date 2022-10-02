@@ -5,6 +5,8 @@ use ordered_float::OrderedFloat;
 use histogram_macros::*;
 use enum_iterator::{all, Sequence};
 use float_cmp::{ApproxEq, F64Margin};
+use midi_msg::{Channel, ChannelVoiceMsg, MidiMsg};
+use midi_msg::MidiMsg::ChannelVoice;
 use rand::prelude::SliceRandom;
 
 const MAX_MIDI_VALUE: i16 = i8::MAX as i16;
@@ -19,15 +21,15 @@ fn assert_prob(p: f64) {
     assert!(0.0 <= p && p <= 1.0);
 }
 
-pub fn velocity2volume(midi_velocity: u8) -> f64 {
-    midi_velocity as f64 / MAX_MIDI_VALUE as f64
+pub fn velocity2volume(midi_velocity: i16) -> f64 {
+    max(0, min(MAX_MIDI_VALUE, midi_velocity)) as f64 / MAX_MIDI_VALUE as f64
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Note {
     pitch: i16,
     duration: OrderedFloat<f64>,
-    velocity: u8
+    intensity: OrderedFloat<f64>
 }
 
 impl ApproxEq for Note {
@@ -36,38 +38,49 @@ impl ApproxEq for Note {
     fn approx_eq<M: Into<Self::Margin>>(self, other: Self, margin: M) -> bool {
         let margin = margin.into();
         self.pitch == other.pitch &&
-            self.velocity == other.velocity &&
-            self.duration.into_inner().approx_eq(other.duration.into_inner(), margin)
+            self.duration.into_inner().approx_eq(other.duration.into_inner(), margin) &&
+            self.intensity.into_inner().approx_eq(other.intensity.into_inner(), margin)
     }
 }
 
 impl Note {
-    pub fn from_midi(pitch: u8, duration: f64, velocity: u8) -> Self {
+    pub fn from_midi(pitch: u8, duration: f64, intensity: u8) -> Self {
         Note {
             pitch: pitch as i16,
             duration: OrderedFloat(duration),
-            velocity
+            intensity: OrderedFloat(intensity as f64 / MAX_MIDI_VALUE as f64)
         }
+    }
+
+    pub fn to_midi(&self) -> (MidiMsg, f64) {
+        let note = self.pitch as u8;
+        let midi = ChannelVoice {
+            channel: Channel::Ch1,
+            msg: if self.is_rest() {
+                ChannelVoiceMsg::NoteOff { note, velocity: 0 }
+            } else {
+                ChannelVoiceMsg::NoteOn { note, velocity: (MAX_MIDI_VALUE as f64 * self.intensity.into_inner()) as u8 }
+            },
+        };
+        (midi, self.duration.into_inner())
     }
 
     pub fn pitch(&self) -> i16 {self.pitch}
 
-    pub fn volume(&self) -> f64 {velocity2volume(self.velocity)}
-
-    pub fn is_rest(&self) -> bool {self.velocity == 0}
+    pub fn is_rest(&self) -> bool {self.intensity == OrderedFloat(0.0)}
 
     pub fn repitched(&self, new_pitch: i16) -> Note {
-        Note {pitch: new_pitch, duration: self.duration, velocity: self.velocity}
+        Note {pitch: new_pitch, duration: self.duration, intensity: self.intensity}
     }
 
-    pub fn reweigh(&mut self, extra_duration: OrderedFloat<f64>, extra_velocity: u8) {
+    pub fn reweigh(&mut self, extra_duration: OrderedFloat<f64>, extra_intensity: OrderedFloat<f64>) {
         let durations = self.duration + extra_duration;
-        self.velocity = ((self.duration * self.velocity as f64 + extra_duration * extra_velocity as f64) / durations).into_inner() as u8;
+        self.intensity = (self.duration * self.intensity + extra_duration * extra_intensity) / durations;
         self.duration = durations;
     }
 
     pub fn sonic_pi_list(&self) -> String {
-        format!("[{}, {}, {}]", self.pitch, self.duration, self.volume())
+        format!("[{}, {}, {}]", self.pitch, self.duration, self.intensity)
     }
 }
 
@@ -79,16 +92,20 @@ pub struct Melody {
 impl Melody {
     pub fn new() -> Self {Melody {notes: vec![]}}
 
+    pub fn iter(&self) -> impl Iterator<Item=&Note> {
+        self.notes.iter()
+    }
+
     pub fn from(s: &str) -> Self {
         let mut notes = Vec::new();
         let mut nums = s.split(",");
         loop {
             match nums.next() {
                 Some(note) => {
-                    let pitch = note.parse().unwrap();
+                    let note = note.parse().unwrap();
                     let duration = nums.next().unwrap().parse().unwrap();
-                    let intensity: f64 = nums.next().unwrap().parse().unwrap();
-                    notes.push(Note { pitch, duration, velocity: (MAX_MIDI_VALUE as f64 * intensity) as u8});
+                    let intensity = nums.next().unwrap().parse().unwrap();
+                    notes.push(Note { pitch: note, duration, intensity});
                 }
                 _ => {break;}
             }
@@ -119,13 +136,13 @@ impl Melody {
     pub fn view_notes(&self) -> String {
         let mut result = String::new();
         for n in self.notes.iter() {
-            result.push_str(format!("{} [({:2}) ({:2})] ", NOTE_NAMES[(n.pitch % NOTES_PER_OCTAVE) as usize], n.duration, n.volume()).as_str());
+            result.push_str(format!("{} [({:2}) ({:2})] ", NOTE_NAMES[(n.pitch % NOTES_PER_OCTAVE) as usize], n.duration, n.intensity).as_str());
         }
         result
     }
 
     pub fn without_silence(&self) -> Self {
-        Melody {notes: self.notes.iter().filter(|n| n.is_rest()).copied().collect()}
+        Melody {notes: self.notes.iter().filter(|n| n.intensity > OrderedFloat(0.0)).copied().collect()}
     }
 
     pub fn find_root_pitch(&self) -> i16 {
@@ -161,7 +178,7 @@ impl Melody {
             let mut result = vec![(0, self.notes[0])];
             for (i, note) in self.notes.iter().enumerate().skip(1) {
                 if result.last().unwrap().1.pitch == note.pitch {
-                    result.last_mut().unwrap().1.reweigh(note.duration, note.velocity);
+                    result.last_mut().unwrap().1.reweigh(note.duration, note.intensity);
                 } else {
                     result.push((i, note.clone()));
                 }
@@ -749,7 +766,7 @@ mod tests {
             let mut different_count = 0;
             for i in 0..var.len() {
                 assert_eq!(var[i].duration, tune[i].duration);
-                assert_eq!(var[i].velocity, tune[i].velocity);
+                assert_eq!(var[i].intensity, tune[i].intensity);
                 assert!(!scale.contains(tune[i].pitch) || scale.contains(var[i].pitch));
                 if var[i].pitch != tune[i].pitch {
                     different_count += 1;
@@ -977,7 +994,7 @@ mod tests {
             let mut different_count = 0;
             for i in 0..var.len() {
                 assert_eq!(var[i].duration, melody[i].duration);
-                assert_eq!(var[i].velocity, melody[i].velocity);
+                assert_eq!(var[i].intensity, melody[i].intensity);
                 assert!(!scale.contains(melody[i].pitch) || scale.contains(var[i].pitch));
                 if var[i].pitch != melody[i].pitch {
                     different_count += 1;
