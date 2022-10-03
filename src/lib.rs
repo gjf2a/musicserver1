@@ -826,16 +826,17 @@ mod tests {
     #[test]
     fn test_figure_match_1() {
         let (figure_count, figure_set) = test_figure_match(EXAMPLE_MELODY);
-        assert_eq!(figure_count, 29);
-        assert_eq!(figure_set.len(), 12);
-        assert_eq!(format!("{:?}", figure_set), "{MelodicFigure { shape: Note3Scale, polarity: Positive, direction: Forward }, MelodicFigure { shape: Auxiliary, polarity: Positive, direction: Forward }, MelodicFigure { shape: Run, polarity: Negative, direction: Forward }, MelodicFigure { shape: Trill1, polarity: Positive, direction: Forward }, MelodicFigure { shape: Trill1, polarity: Negative, direction: Forward }, MelodicFigure { shape: NP3, polarity: Positive, direction: Reverse }, MelodicFigure { shape: ReturnCrazyDriver, polarity: Negative, direction: Forward }, MelodicFigure { shape: ReturnCrazyDriver, polarity: Negative, direction: Reverse }, MelodicFigure { shape: LeapingScale, polarity: Positive, direction: Reverse }, MelodicFigure { shape: LeapingScale, polarity: Negative, direction: Forward }, MelodicFigure { shape: LeapingAux2, polarity: Negative, direction: Reverse }, MelodicFigure { shape: Funnel, polarity: Positive, direction: Reverse }}");    }
+        assert_eq!(figure_count, 63);
+        assert_eq!(figure_set.len(), 16);
+        assert_eq!(format!("{:?}", figure_set), "{MelodicFigure { shape: Note3Scale, polarity: Positive, direction: Forward }, MelodicFigure { shape: Auxiliary, polarity: Positive, direction: Forward }, MelodicFigure { shape: Auxiliary, polarity: Positive, direction: Reverse }, MelodicFigure { shape: Run, polarity: Negative, direction: Forward }, MelodicFigure { shape: Trill1, polarity: Positive, direction: Forward }, MelodicFigure { shape: Trill1, polarity: Negative, direction: Forward }, MelodicFigure { shape: NP3, polarity: Positive, direction: Reverse }, MelodicFigure { shape: ReturnCrazyDriver, polarity: Negative, direction: Forward }, MelodicFigure { shape: ReturnCrazyDriver, polarity: Negative, direction: Reverse }, MelodicFigure { shape: Roll, polarity: Positive, direction: Forward }, MelodicFigure { shape: Roll, polarity: Positive, direction: Reverse }, MelodicFigure { shape: DoubleNeighbor, polarity: Positive, direction: Forward }, MelodicFigure { shape: LeapingScale, polarity: Positive, direction: Reverse }, MelodicFigure { shape: LeapingScale, polarity: Negative, direction: Forward }, MelodicFigure { shape: LeapingAux2, polarity: Negative, direction: Reverse }, MelodicFigure { shape: Funnel, polarity: Positive, direction: Reverse }}");
+    }
 
     #[test]
     fn test_figure_match_countdown() {
         let (figure_count, figure_set) = test_figure_match(COUNTDOWN_MELODY);
-        assert_eq!(figure_count, 36);
-        assert_eq!(figure_set.len(), 20);
-        assert_eq!(format!("{:?}", figure_set), "{MelodicFigure { shape: Note3Scale, polarity: Positive, direction: Forward }, MelodicFigure { shape: Note3Scale, polarity: Negative, direction: Forward }, MelodicFigure { shape: Auxiliary, polarity: Positive, direction: Forward }, MelodicFigure { shape: Run, polarity: Negative, direction: Forward }, MelodicFigure { shape: PivotLHP, polarity: Negative, direction: Reverse }, MelodicFigure { shape: ReturnCrazyDriver, polarity: Positive, direction: Reverse }, MelodicFigure { shape: ReturnCrazyDriver, polarity: Negative, direction: Forward }, MelodicFigure { shape: ParkourBounce2, polarity: Negative, direction: Forward }, MelodicFigure { shape: Vault7, polarity: Positive, direction: Forward }, MelodicFigure { shape: Vault7, polarity: Negative, direction: Reverse }, MelodicFigure { shape: Roll, polarity: Negative, direction: Forward }, MelodicFigure { shape: Roll, polarity: Negative, direction: Reverse }, MelodicFigure { shape: DoubleNeighbor, polarity: Negative, direction: Forward }, MelodicFigure { shape: Double3rd, polarity: Positive, direction: Forward }, MelodicFigure { shape: Pendulum54, polarity: Positive, direction: Reverse }, MelodicFigure { shape: LeapingAux2, polarity: Positive, direction: Reverse }, MelodicFigure { shape: LeapingAux2, polarity: Negative, direction: Forward }, MelodicFigure { shape: Cambiata2, polarity: Positive, direction: Forward }, MelodicFigure { shape: ZigZag2, polarity: Positive, direction: Forward }, MelodicFigure { shape: MysteryCountdown, polarity: Positive, direction: Forward }}");
+        assert_eq!(figure_count, 106);
+        assert_eq!(figure_set.len(), 23);
+        assert_eq!(format!("{:?}", figure_set), "{MelodicFigure { shape: Note3Scale, polarity: Positive, direction: Forward }, MelodicFigure { shape: Note3Scale, polarity: Negative, direction: Forward }, MelodicFigure { shape: Auxiliary, polarity: Positive, direction: Forward }, MelodicFigure { shape: Run, polarity: Negative, direction: Forward }, MelodicFigure { shape: Trill1, polarity: Negative, direction: Forward }, MelodicFigure { shape: PivotLHP, polarity: Negative, direction: Reverse }, MelodicFigure { shape: ReturnCrazyDriver, polarity: Positive, direction: Reverse }, MelodicFigure { shape: ReturnCrazyDriver, polarity: Negative, direction: Forward }, MelodicFigure { shape: ReturnCrazyDriver, polarity: Negative, direction: Reverse }, MelodicFigure { shape: Parkour1, polarity: Positive, direction: Reverse }, MelodicFigure { shape: ParkourBounce2, polarity: Positive, direction: Reverse }, MelodicFigure { shape: ParkourBounce2, polarity: Negative, direction: Forward }, MelodicFigure { shape: Vault7, polarity: Positive, direction: Forward }, MelodicFigure { shape: Vault7, polarity: Negative, direction: Reverse }, MelodicFigure { shape: Roll, polarity: Negative, direction: Forward }, MelodicFigure { shape: Roll, polarity: Negative, direction: Reverse }, MelodicFigure { shape: DoubleNeighbor, polarity: Negative, direction: Forward }, MelodicFigure { shape: Double3rd, polarity: Positive, direction: Forward }, MelodicFigure { shape: LeapingAux2, polarity: Positive, direction: Reverse }, MelodicFigure { shape: LeapingAux2, polarity: Negative, direction: Forward }, MelodicFigure { shape: PendulumAux1, polarity: Negative, direction: Forward }, MelodicFigure { shape: Cambiata2, polarity: Positive, direction: Forward }, MelodicFigure { shape: ZigZag2, polarity: Positive, direction: Forward }}");
     }
 
     fn test_figure_match(melody_str: &str) -> (usize, BTreeSet<MelodicFigure>) {
@@ -978,7 +979,6 @@ mod tests {
     fn test_matching_figure() {
         let melody = Melody::from(COUNTDOWN_MELODY);
         let scale = melody.best_scale_for();
-        let maker = MelodyMaker::new();
 
         let pitch1 = melody.pitch_subsequence_at(0, 4).unwrap();
         assert_eq!(pitch1, vec![66, 73, 71, 73]);
@@ -993,26 +993,25 @@ mod tests {
 
     #[test]
     fn study_figures() {
-        //let melody = Melody::from(EXAMPLE_MELODY);
         let melody = Melody::from(COUNTDOWN_MELODY);
         let scale = melody.best_scale_for();
         let maker = MelodyMaker::new();
         let mut start = 0;
         let mut figures = Vec::new();
         while start < melody.len() {
-            if let Some((matched, matched_len)) = maker.matching_figure(&melody, start) {
-                figures.push((start, Some(matched),
+            if let Some((matched, _matched_len)) = maker.matching_figure(&melody, start) {
+                figures.push((Some(matched),
                               matched.make_pitches(melody[start].pitch, &scale)));
             } else {
-                figures.push((start, None, vec![melody[start].pitch]));
+                figures.push((None, vec![melody[start].pitch]));
             }
             start += 1;
         }
-        for (i, (start, figure, notes)) in figures.iter().enumerate() {
+        for (i, (figure, notes)) in figures.iter().enumerate() {
             println!("{}: {}", i, melody[i].pitch());
             println!("{:?} {:?}", figure, notes);
             if i > 0 {
-                println!("diatonic jump: {:?}", scale.diatonic_steps_between(*figures[i - 1].2.last().unwrap(), *notes.first().unwrap()));
+                println!("diatonic jump: {:?}", scale.diatonic_steps_between(*figures[i - 1].1.last().unwrap(), *notes.first().unwrap()));
             }
             println!();
         }

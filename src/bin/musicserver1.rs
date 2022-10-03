@@ -45,7 +45,7 @@ fn handle_client(stream: &mut TcpStream, maker: &mut MelodyMaker) -> std::io::Re
     println!("{}", melody);
     let melody = Melody::from(melody.as_str());
     println!("{}", melody.best_scale_for().name());
-    println!("{:?}", maker.all_figure_matches(&(melody.without_silence())));
+    println!("{:?}", maker.all_figure_matches(&(melody)));
     println!("{}", melody.view_notes());
     let cmd_params = command.split_whitespace().collect::<Vec<_>>();
     if cmd_params.len() == 1 && cmd_params[0] == "show_melody" {
