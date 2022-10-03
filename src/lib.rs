@@ -920,19 +920,19 @@ mod tests {
     #[test]
     fn test_variation_1() {
         test_variation_unchanged(MelodyMaker::create_variation_1);
-        test_variation_changed(MelodyMaker::create_variation_1, 0.25, 0.43);
+        test_variation_changed(MelodyMaker::create_variation_1, 0.50, 0.80);
     }
 
     #[test]
     fn test_variation_2() {
         test_variation_unchanged(MelodyMaker::create_variation_2);
-        test_variation_changed(MelodyMaker::create_variation_2, 0.20, 0.35);
+        test_variation_changed(MelodyMaker::create_variation_2, 0.40, 0.60);
     }
 
     #[test]
     fn test_variation_4() {
         test_variation_unchanged(MelodyMaker::create_variation_4);
-        test_variation_changed(MelodyMaker::create_variation_4, 0.08, 0.37);
+        test_variation_changed(MelodyMaker::create_variation_4, 0.25, 0.55);
     }
 
     #[test]
