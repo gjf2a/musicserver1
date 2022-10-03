@@ -16,6 +16,7 @@ const DIATONIC_SCALE_SIZE: usize = 7;
 const DIATONIC_SCALE_HOPS: [i16; DIATONIC_SCALE_SIZE] = [2, 2, 1, 2, 2, 2, 1];
 const NOTE_NAMES: [&str; NOTES_PER_OCTAVE as usize] = ["C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab", "A", "A#/Bb", "B"];
 const MODE_NAMES: [&str; DIATONIC_SCALE_SIZE] = ["ionian", "dorian", "phrygian", "lydian", "mixolydian", "aeolian", "locrian"];
+const FIGURE_LENGTHS: [usize; 2] = [4, 3];
 
 fn assert_prob(p: f64) {
     assert!(0.0 <= p && p <= 1.0);
@@ -102,6 +103,21 @@ impl Melody {
 
     pub fn iter(&self) -> impl Iterator<Item=&Note> {
         self.notes.iter()
+    }
+
+    pub fn pitch_subsequence_at(&self, start: usize, length: usize) -> Option<Vec<i16>> {
+        let mut result = vec![self.notes[start].pitch];
+        for i in start + 1..self.notes.len() {
+            if result.len() == length {
+                break;
+            } else {
+                let pitch = self.notes[i].pitch();
+                if pitch != *result.last().unwrap() {
+                    result.push(pitch);
+                }
+            }
+        }
+        if result.len() == length {Some(result)} else {None}
     }
 
     pub fn from(s: &str) -> Self {
@@ -213,7 +229,7 @@ pub struct MelodyMaker {
 impl MelodyMaker {
     pub fn new() -> Self {
         MelodyMaker {
-            figure_tables: (3..=4).map(|len| (len, MelodicFigure::interval2figures(len))).collect(),
+            figure_tables: FIGURE_LENGTHS.iter().map(|len| (*len, MelodicFigure::interval2figures(*len))).collect(),
             figure_mappings: HashMap::new()
         }
     }
@@ -222,11 +238,10 @@ impl MelodyMaker {
     /// Prefers matching a 4-note figure to a 3-note figure.
     pub fn matching_figure(&self, melody: &Melody, start: usize) -> Option<(MelodicFigure, usize)> {
         let scale = melody.best_scale_for();
-        let space_left = melody.notes_left_from(start);
-        for length in [4, 3] {
-            if space_left >= length {
-                if let Some(step_gap) = scale.diatonic_steps_between(melody[start].pitch, melody[start + length - 1].pitch) {
-                    if let Some(candidates) = self.figure_tables.get(&length).unwrap().get(&step_gap) {
+        for length in FIGURE_LENGTHS.iter() {
+            if let Some(pitches) = melody.pitch_subsequence_at(start, *length) {
+                if let Some(step_gap) = scale.diatonic_steps_between(*pitches.first().unwrap(), *pitches.last().unwrap()) {
+                    if let Some(candidates) = self.figure_tables.get(length).unwrap().get(&step_gap) {
                         for candidate in candidates.iter() {
                             if let Some(match_len) = candidate.match_length(melody, &scale, start) {
                                 return Some((*candidate, match_len));
@@ -238,6 +253,8 @@ impl MelodyMaker {
         }
         None
     }
+
+
 
     pub fn is_chain(chain: &VecDeque<(usize,Option<(MelodicFigure,usize)>)>) -> bool {
         let mut current = 0;
@@ -548,7 +565,7 @@ impl MelodicFigure {
         let mut p = 0;
         let mut m = start;
         while p < self.pattern().len() && m + 1 < melody.len() {
-            if melody[m] != melody[m + 1] {
+            if melody[m].pitch != melody[m + 1].pitch {
                 match scale.diatonic_steps_between(melody[m].pitch, melody[m + 1].pitch) {
                     None => return None,
                     Some(actual) => if actual != self.pattern()[p] {return None;}
@@ -650,7 +667,7 @@ mod tests {
     use std::collections::{BTreeSet, VecDeque};
     use bare_metal_modulo::ModNumC;
     use ordered_float::OrderedFloat;
-    use crate::{DIATONIC_SCALE_SIZE, MelodicFigure, Melody, MelodyMaker, MusicMode};
+    use crate::{DIATONIC_SCALE_SIZE, FigureDirection, FigurePolarity, MelodicFigure, MelodicFigureShape, Melody, MelodyMaker, MusicMode};
     use crate::MelodicFigureShape::*;
     use crate::FigurePolarity::*;
     use crate::FigureDirection::*;
@@ -961,6 +978,23 @@ mod tests {
     }
 
     #[test]
+    fn test_matching_figure() {
+        let melody = Melody::from(COUNTDOWN_MELODY);
+        let scale = melody.best_scale_for();
+        let maker = MelodyMaker::new();
+
+        let pitch1 = melody.pitch_subsequence_at(0, 4).unwrap();
+        println!("{pitch1:?}");
+        let gap1 = scale.diatonic_steps_between(*pitch1.first().unwrap(), *pitch1.last().unwrap()).unwrap();
+        println!("{gap1}");
+        let figure = MelodicFigure {shape: MelodicFigureShape::LeapingAux2, polarity: FigurePolarity::Positive, direction:FigureDirection::Reverse };
+        let pattern = figure.pattern();
+        println!("{pattern:?}");
+        let m = figure.match_length(&melody, &scale, 0);
+        println!("{m:?}");
+    }
+
+    #[test]
     fn study_figures() {
         //let melody = Melody::from(EXAMPLE_MELODY);
         let melody = Melody::from(COUNTDOWN_MELODY);
@@ -981,6 +1015,9 @@ mod tests {
         for (i, (start, figure, notes)) in figures.iter().enumerate() {
             println!("Item {} Index {}", i, start);
             println!("{:?} {:?}", figure, notes);
+            if i > 0 {
+                println!("diatonic jump: {:?}", scale.diatonic_steps_between(*figures[i - 1].2.last().unwrap(), *notes.first().unwrap()));
+            }
             println!();
         }
     }
