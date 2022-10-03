@@ -41,6 +41,7 @@ macro_rules! user_func_pick {
 //
 // thread 'main' panicked at 'called `Result::unwrap()` on an `Err` value: Other("could not create Windows MM MIDI input port")'
 // Unplugging and re-plugging seems to do the job.
+// I wonder if it was because Sonic Pi was running....
 
 fn main() -> anyhow::Result<()> {
     println!("Welcome to replayer");
