@@ -617,7 +617,7 @@ pub enum MelodicFigureShape {
     Note3Scale, Auxiliary, Arpeggio, Run, Trill1, Trill2, Arch, NP3, PivotLHP, ReturnCrazyDriver,
     ArpeggioPlus, Parkour1, ParkourBounce2, ParkourPounce2, Vault4, Vault5, Vault6, Vault7, Roll,
     DoubleNeighbor, Double3rd, Pendulum43, Pendulum54, LeapingScale, LeapingAux1, LeapingAux2,
-    PendulumAux1, PendulumAux2, Funnel, Cambiata1, Cambiata2, ZigZag1, ZigZag2, MysteryCountdown
+    PendulumAux1, PendulumAux2, Funnel, Cambiata1, Cambiata2, ZigZag1, ZigZag2
 }
 
 impl MelodicFigureShape {
@@ -655,8 +655,7 @@ impl MelodicFigureShape {
             MelodicFigureShape::Cambiata1         => vec![1, 2, -1],
             MelodicFigureShape::Cambiata2         => vec![1, -4, 5],
             MelodicFigureShape::ZigZag1           => vec![4, -2, 5],
-            MelodicFigureShape::ZigZag2           => vec![-1, 5, -1],
-            MelodicFigureShape::MysteryCountdown  => vec![1, -5, 3]
+            MelodicFigureShape::ZigZag2           => vec![-1, 5, -1]
         }
     }
 }
@@ -863,14 +862,12 @@ mod tests {
             (6, Some(MelodicFigure { shape: Note3Scale, polarity: Negative, direction: Forward })),
             (8, None),
             (9, Some(MelodicFigure { shape: PivotLHP, polarity: Negative, direction: Reverse })),
-            (11, Some(MelodicFigure { shape: MysteryCountdown, polarity: Positive, direction: Forward })),
             (14, None), (15, None), (16, None),
             (17, Some(MelodicFigure { shape: DoubleNeighbor, polarity: Negative, direction: Forward })),
             (20, None),
             (21, Some(MelodicFigure { shape: LeapingAux2, polarity: Negative, direction: Forward })),
             (24, None), (25, None), (26, None), (27, None), (28, None), (29, None),
             (30, Some(MelodicFigure { shape: PivotLHP, polarity: Negative, direction: Reverse })),
-            (32, Some(MelodicFigure { shape: MysteryCountdown, polarity: Positive, direction: Forward })),
             (35, None), (36, None), (37, None),
             (38, Some(MelodicFigure { shape: DoubleNeighbor, polarity: Negative, direction: Forward })),
             (41, Some(MelodicFigure { shape: ReturnCrazyDriver, polarity: Positive, direction: Reverse })),
@@ -984,14 +981,14 @@ mod tests {
         let maker = MelodyMaker::new();
 
         let pitch1 = melody.pitch_subsequence_at(0, 4).unwrap();
-        println!("{pitch1:?}");
+        assert_eq!(pitch1, vec![66, 73, 71, 73]);
         let gap1 = scale.diatonic_steps_between(*pitch1.first().unwrap(), *pitch1.last().unwrap()).unwrap();
-        println!("{gap1}");
+        assert_eq!(gap1, 4);
         let figure = MelodicFigure {shape: MelodicFigureShape::LeapingAux2, polarity: FigurePolarity::Positive, direction:FigureDirection::Reverse };
         let pattern = figure.pattern();
-        println!("{pattern:?}");
+        assert_eq!(pattern, vec![4, -1, 1]);
         let m = figure.match_length(&melody, &scale, 0);
-        println!("{m:?}");
+        assert_eq!(m.unwrap(), 6);
     }
 
     #[test]
@@ -1006,14 +1003,13 @@ mod tests {
             if let Some((matched, matched_len)) = maker.matching_figure(&melody, start) {
                 figures.push((start, Some(matched),
                               matched.make_pitches(melody[start].pitch, &scale)));
-                start += matched_len - 1;
             } else {
                 figures.push((start, None, vec![melody[start].pitch]));
-                start += 1;
             }
+            start += 1;
         }
         for (i, (start, figure, notes)) in figures.iter().enumerate() {
-            println!("Item {} Index {}", i, start);
+            println!("{}: {}", i, melody[i].pitch());
             println!("{:?} {:?}", figure, notes);
             if i > 0 {
                 println!("diatonic jump: {:?}", scale.diatonic_steps_between(*figures[i - 1].2.last().unwrap(), *notes.first().unwrap()));
