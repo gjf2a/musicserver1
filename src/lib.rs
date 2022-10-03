@@ -254,8 +254,6 @@ impl MelodyMaker {
         None
     }
 
-
-
     pub fn is_chain(chain: &VecDeque<(usize,Option<(MelodicFigure,usize)>)>) -> bool {
         let mut current = 0;
         for (i,f) in chain.iter() {
@@ -414,6 +412,10 @@ impl MelodyMaker {
 
     pub fn create_variation_2(&mut self, original: &Melody, p_rewrite: f64) -> Melody {
         self.chain_variation_creator(original, p_rewrite, |s, m| s.emphasis_figure_chain(m, &m.find_pause_indices()), Self::pick_figure)
+    }
+
+    pub fn create_variation_3(&mut self, original: &Melody, p_rewrite: f64) -> Melody {
+        self.chain_variation_creator(original, 1.0, |s, m| s.emphasis_figure_chain(m, &m.find_pause_indices()), |s, f| s.pick_remembered_figure(f, p_rewrite))
     }
 
     pub fn create_variation_4(&mut self, original: &Melody, p_remap: f64) -> Melody {
