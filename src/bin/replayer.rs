@@ -37,6 +37,11 @@ macro_rules! user_func_pick {
 // Synthesizer output code based on:
 //   https://github.com/SamiPerttu/fundsp/blob/master/examples/beep.rs
 
+// This happens sometimes, not sure why:
+//
+// thread 'main' panicked at 'called `Result::unwrap()` on an `Err` value: Other("could not create Windows MM MIDI input port")'
+// Unplugging and re-plugging seems to do the job.
+
 fn main() -> anyhow::Result<()> {
     println!("Welcome to replayer");
     let mut midi_in = MidiInput::new("midir reading input")?;
@@ -119,10 +124,12 @@ struct AIFunc {
 
 fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>, replay_delay: f64, p_random: f64) {
     let ai_func = user_func_pick!(AIFunc,
+        ("Bypass", |_,_,_| Melody::new()),
         ("Playback", |_, melody, _| melody.clone()),
         ("Greedy Choice", MelodyMaker::create_variation_1),
         ("Emphasis-Anchored Choice", MelodyMaker::create_variation_2),
-        ("Consistent Figure Replacement", MelodyMaker::create_variation_4));
+        ("Consistent Figure Replacement", MelodyMaker::create_variation_4),
+        ("Consistent Anchored Replacement", MelodyMaker::create_variation_3));
     let mut maker = MelodyMaker::new();
 
     std::thread::spawn(move || {
