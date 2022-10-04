@@ -363,9 +363,12 @@ pub fn start_ai_thread(ai_table: Arc<Mutex<AITable>>, input2ai: Arc<SegQueue<Mid
                 }
             }
 
-            let p_random = p_random_slider.lock().unwrap();
-            let ai_table = ai_table.lock().unwrap();
-            let variation = (ai_table.current_func().func)(&mut maker, &player_melody, p_random.get_current());
+            let variation = {
+                let p_random = p_random_slider.lock().unwrap();
+                let ai_table = ai_table.lock().unwrap();
+                (ai_table.current_func().func)(&mut maker, &player_melody, p_random.get_current())
+            };
+
             for note in variation.iter() {
                 let (midi, duration) = note.to_midi();
                 ai2output.push(midi);
