@@ -1,4 +1,4 @@
-use fundsp::hacker::{lerp11, lfo, lfo2, pulse, sin_hz, triangle};
+use fundsp::hacker::{lerp11, lfo, pulse, sin_hz, triangle};
 use fundsp::prelude::AudioUnit64;
 use std::sync::Arc;
 use crate::{func_vec, SynthTable, SynthFunc};
@@ -21,27 +21,41 @@ pub fn simple_tri(pitch: f64, volume: f64) -> Box<dyn AudioUnit64> {
     Box::new(lfo(move |_t| pitch) >> triangle() * volume)
 }
 
+pub struct AdsrFixed {
+    pub attack: f64, pub decay: f64, pub sustain: f64, pub sustain_level: f64, pub release: f64
+}
+
+impl AdsrFixed {
+    pub fn level(&self, time_s: f64) -> f64 {
+        let mut time_s = time_s;
+        if time_s < self.attack {
+            return self.attack / time_s;
+        }
+        time_s -= self.attack;
+        if time_s < self.decay {
+            return (1.0 - self.decay / time_s) * (1.0 - self.sustain_level) + self.sustain_level;
+        }
+        time_s -= self.decay;
+        if time_s < self.sustain {
+            return self.sustain_level;
+        }
+        time_s -= self.release;
+        if time_s < self.release {
+            return self.sustain_level - (self.sustain_level * self.release / time_s);
+        }
+        0.0
+    }
+}
+
 #[macro_export]
 macro_rules! adsr_fixed {
-    ($attack:expr, $decay:expr, $sustain:expr, $sustain_level:expr, $release:expr) => {
-        lfo(move |t| {
-            if t < $attack {
-                $attack / t
-            } else if t < $attack + $decay {
-                (1.0 - ((t - $attack) / $decay)) * (1.0 - $sustain_level) + $sustain_level
-            } else if t < $attack + $decay + $sustain {
-                $sustain_level
-            } else if t < $attack + $decay + $sustain + $release {
-                1.0 - ((t - $sustain) / $release)
-            } else {
-                0.0
-            }
-        })
+    ($adsrf:expr) => {
+        lfo(move |t| {$adsrf.level(t)})
     }
 }
 
 pub fn expr1(pitch: f64, volume: f64) -> Box<dyn AudioUnit64> {
-    Box::new(lfo(move |_t| pitch) >> triangle() * adsr_fixed!(0.2, 0.2, 0.4, 0.4, 0.2) * volume)
+    Box::new(lfo(move |_t| pitch) >> triangle() * adsr_fixed!(AdsrFixed {attack: 0.2, decay: 0.2, sustain: 0.4, sustain_level: 0.4, release: 0.2}) * volume)
 }
 
 #[cfg(test)]
