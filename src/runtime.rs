@@ -132,8 +132,7 @@ impl <T: Copy + Clone + std::str::FromStr + PartialOrd + 'static> SliderValue<T>
     }
 
     pub fn console_pick(&mut self, prompt: &str) {
-        let inputter = input().msg(prompt).inside(self.make_range());
-        self.current = inputter.get();
+        self.current = input().msg(prompt).inside(self.make_range()).get();
     }
 }
 
@@ -233,7 +232,7 @@ pub fn start_output(ai2output: Arc<SegQueue<MidiMsg>>, synth_table: Arc<Mutex<Sy
     }
 }
 
-pub fn run_synth<T>(ai2output: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config: cpal::StreamConfig, synth_table: Arc<Mutex<SynthTable>>) -> anyhow::Result<()>
+fn run_synth<T>(ai2output: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config: cpal::StreamConfig, synth_table: Arc<Mutex<SynthTable>>) -> anyhow::Result<()>
     where
         T: cpal::Sample,
 {
@@ -255,7 +254,7 @@ pub fn run_synth<T>(ai2output: Arc<SegQueue<MidiMsg>>, device: cpal::Device, con
 }
 
 #[derive(Clone)]
-pub struct RunInstance {
+struct RunInstance {
     synth_table: Arc<Mutex<SynthTable>>,
     sample_rate: f64,
     channels: usize,
@@ -315,7 +314,7 @@ impl RunInstance {
 }
 
 // Borrowed unchanged from https://github.com/SamiPerttu/fundsp/blob/master/examples/beep.rs
-pub fn write_data<T>(output: &mut [T], channels: usize, next_sample: &mut dyn FnMut() -> (f64, f64))
+fn write_data<T>(output: &mut [T], channels: usize, next_sample: &mut dyn FnMut() -> (f64, f64))
     where
         T: cpal::Sample,
 {
