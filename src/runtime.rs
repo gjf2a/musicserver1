@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::mem;
 use std::ops::RangeInclusive;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_queue::SegQueue;
 use dashmap::DashSet;
@@ -10,7 +10,7 @@ use fundsp::hacker::{lerp11, lfo, midi_hz, pulse, sin_hz, triangle};
 use midir::{MidiInput, MidiInputConnection, MidiInputPort};
 use read_input::InputBuild;
 use read_input::prelude::input;
-use crate::{Melody, MelodyMaker, Note, PendingNote, velocity2volume};
+use crate::{Melody, MelodyMaker, PendingNote, velocity2volume};
 use fundsp::prelude::AudioUnit64;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 
@@ -372,7 +372,7 @@ impl PlayerRecorder {
 
     fn check_if_finished(&mut self, pending_note: PendingNote) -> bool {
         let replay_delay = self.replay_delay_slider.lock().unwrap();
-        if pending_note.is_rest() && pending_note.wait() > replay_delay.get_current() {
+        if pending_note.is_rest() && pending_note.elapsed() > replay_delay.get_current() {
             self.player_melody.add(pending_note.into());
             true
         } else {

@@ -98,7 +98,7 @@ impl PendingNote {
         PendingNote {pitch, timestamp: Instant::now(), velocity}
     }
 
-    pub fn wait(&self) -> f64 {
+    pub fn elapsed(&self) -> f64 {
         self.timestamp.elapsed().as_secs_f64()
     }
 
@@ -111,7 +111,7 @@ impl From<PendingNote> for Note {
     fn from(pending_note: PendingNote) -> Self {
         Note {
             pitch: pending_note.pitch as i16,
-            duration: OrderedFloat(pending_note.wait()),
+            duration: OrderedFloat(pending_note.elapsed()),
             intensity: OrderedFloat(pending_note.velocity as f64 / MAX_MIDI_VALUE as f64)
         }
     }
