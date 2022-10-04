@@ -6,7 +6,7 @@ use std::time::Duration;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_queue::SegQueue;
 use dashmap::DashSet;
-use fundsp::hacker::{lerp11, lfo, midi_hz, pulse, sin_hz, triangle};
+use fundsp::hacker::midi_hz;
 use midir::{MidiInput, MidiInputConnection, MidiInputPort};
 use read_input::InputBuild;
 use read_input::prelude::input;
@@ -77,13 +77,6 @@ pub fn make_ai_table() -> AITable {
             ("Consistent Figure Replacement", MelodyMaker::create_variation_4),
             ("Consistent Anchored Replacement", MelodyMaker::create_variation_3)];
     AITable::from(&ai_funcs)
-}
-
-pub fn make_synth_table() -> SynthTable {
-    let synth_funcs = func_vec![SynthFunc,
-            ("Sine Pulse", sine_pulse),
-            ("Simple Triangle", simple_tri)];
-    SynthTable::from(&synth_funcs)
 }
 
 #[derive(Copy, Clone)]
@@ -168,16 +161,6 @@ impl SynthFunc {
     pub fn func(&self) -> Arc<dyn Fn(f64,f64) -> Box<dyn AudioUnit64> + Send + Sync> {
         self.func.clone()
     }
-}
-
-pub fn sine_pulse(pitch: f64, volume: f64) -> Box<dyn AudioUnit64> {
-    Box::new(lfo(move |t| {
-        (pitch, lerp11(0.01, 0.99, sin_hz(0.05, t)))
-    }) >> pulse() * volume)
-}
-
-pub fn simple_tri(pitch: f64, volume: f64) -> Box<dyn AudioUnit64> {
-    Box::new(lfo(move |_t| pitch) >> triangle() * volume)
 }
 
 pub fn start_output_thread(ai2output: Arc<SegQueue<MidiMsg>>, synth_table: Arc<Mutex<SynthTable>>) {
