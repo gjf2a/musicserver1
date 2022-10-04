@@ -15,29 +15,8 @@ use fundsp::prelude::AudioUnit64;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 
 #[macro_export]
-macro_rules! wrap_func {
-    ($t:ident, $s:expr, $f:expr) => {
-        $t::new($s, Arc::new($f))
-    }
-}
-
-#[macro_export]
-macro_rules! user_func_pick {
-    ($t:ident, $( ($s:expr, $f:expr)),+ ) => {
-        {
-        let choices = vec![
-            $(
-            wrap_func!($t, $s, $f),
-            )+
-        ];
-        user_pick_element(choices.iter().cloned(), |aif| aif.name().to_string().clone())
-        }
-    }
-}
-
-#[macro_export]
 macro_rules! func_vec {
-    ($t:ident, $( ($s:expr, $f:expr)),+ ) => {vec![$(wrap_func!($t, $s, $f),)+]}
+    ($t:ident, $( ($s:expr, $f:expr)),+ ) => {vec![$($t::new($s, Arc::new($f)),)+]}
 }
 
 #[macro_export]
