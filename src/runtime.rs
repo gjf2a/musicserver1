@@ -7,7 +7,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_queue::SegQueue;
 use dashmap::DashSet;
 use fundsp::hacker::{lerp11, lfo, midi_hz, pulse, sin_hz, triangle};
-use midir::{Ignore, MidiInput, MidiInputPort};
+use midir::{Ignore, MidiInput, MidiInputConnection, MidiInputPort};
 use read_input::InputBuild;
 use read_input::prelude::input;
 use crate::{Melody, MelodyMaker, Note, velocity2volume};
@@ -198,7 +198,7 @@ pub fn simple_tri(pitch: f64, volume: f64) -> Box<dyn AudioUnit64> {
     Box::new(lfo(move |_t| pitch) >> triangle() * volume)
 }
 
-pub fn start_output(ai2output: Arc<SegQueue<MidiMsg>>, synth_table: Arc<Mutex<SynthTable>>) {
+pub fn start_output_thread(ai2output: Arc<SegQueue<MidiMsg>>, synth_table: Arc<Mutex<SynthTable>>) {
     let host = cpal::default_host();
     let device = host
         .default_output_device()
@@ -312,24 +312,25 @@ fn write_data<T>(output: &mut [T], channels: usize, next_sample: &mut dyn FnMut(
     }
 }
 
-pub fn start_input(input2ai: Arc<SegQueue<MidiMsg>>, midi_in: MidiInput, in_port: MidiInputPort) {
+pub fn start_input_thread(input2ai: Arc<SegQueue<MidiMsg>>, midi_in: MidiInput, in_port: MidiInputPort) {
     std::thread::spawn(move || {
-        let in_port_name = midi_in.port_name(&in_port).unwrap();
-
-        // _conn_in needs to be a named parameter, because it needs to be kept alive until the end of the scope
-        let _conn_in = midi_in.connect(&in_port, "midir-read-input", move |_stamp, message, _| {
-            let (msg, _len) = MidiMsg::from_midi(&message).unwrap();
-            input2ai.push(msg);
-        }, ()).unwrap();
-        println!("Connection open, reading input from '{in_port_name}'");
-
+        let _conn_in = start_input(input2ai, midi_in, in_port);
         loop {}
     });
 }
 
-pub fn start_ai(ai_table: Arc<Mutex<AITable>>, input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>,
-                replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
-                p_random_slider: Arc<Mutex<SliderValue<f64>>>) {
+/// Start the input connection. The returned value needs to remain in scope until we
+/// are finished receiving MIDI input.
+pub fn start_input(input2ai: Arc<SegQueue<MidiMsg>>, midi_in: MidiInput, in_port: MidiInputPort) -> MidiInputConnection<()> {
+    midi_in.connect(&in_port, "midir-read-input", move |_stamp, message, _| {
+        let (msg, _len) = MidiMsg::from_midi(&message).unwrap();
+        input2ai.push(msg);
+    }, ()).unwrap()
+}
+
+pub fn start_ai_thread(ai_table: Arc<Mutex<AITable>>, input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>,
+                       replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
+                       p_random_slider: Arc<Mutex<SliderValue<f64>>>) {
     std::thread::spawn(move || {
         let mut maker = MelodyMaker::new();
         loop {

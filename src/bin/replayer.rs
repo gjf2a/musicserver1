@@ -3,7 +3,7 @@ use midir::{MidiInput, MidiInputPort};
 use midi_msg::MidiMsg;
 use read_input::prelude::*;
 use crossbeam_queue::SegQueue;
-use musicserver1::{get_midi_device, make_ai_table, start_ai,  prob_slider, replay_slider, make_synth_table, start_output};
+use musicserver1::{get_midi_device, make_ai_table, start_ai_thread, prob_slider, replay_slider, make_synth_table, start_output_thread, start_input};
 
 // MIDI input code based on:
 //   https://github.com/Boddlnagg/midir/blob/master/examples/test_read_input.rs
@@ -33,19 +33,13 @@ fn main() -> anyhow::Result<()> {
 fn run_output(ai2output: Arc<SegQueue<MidiMsg>>) {
     let mut synth_table = make_synth_table();
     synth_table.console_pick();
-    start_output(ai2output, Arc::new(Mutex::new(synth_table)));
+    start_output_thread(ai2output, Arc::new(Mutex::new(synth_table)));
 }
 
 fn run_input(input2ai: Arc<SegQueue<MidiMsg>>, midi_in: MidiInput, in_port: MidiInputPort) -> anyhow::Result<()> {
     println!("\nOpening connection");
     let in_port_name = midi_in.port_name(&in_port)?;
-
-    // _conn_in needs to be a named parameter, because it needs to be kept alive until the end of the scope
-    let _conn_in = midi_in.connect(&in_port, "midir-read-input", move |_stamp, message, _| {
-        let (msg, _len) = MidiMsg::from_midi(&message).unwrap();
-        input2ai.push(msg);
-    }, ()).unwrap();
-
+    let _conn_in = start_input(input2ai, midi_in, in_port);
     println!("Connection open, reading input from '{in_port_name}'");
 
     let _ = input::<String>().msg("(press enter to exit)...\n").get();
@@ -60,7 +54,7 @@ fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>) {
     p_random.console_pick("Select probability of random variation: ");
     let mut replay_delay = replay_slider();
     replay_delay.console_pick("Select time delay before starting replay: ");
-    start_ai(Arc::new(Mutex::new(ai_table)), input2ai, ai2output,
-             Arc::new(Mutex::new(replay_delay)),
-             Arc::new(Mutex::new(p_random)));
+    start_ai_thread(Arc::new(Mutex::new(ai_table)), input2ai, ai2output,
+                    Arc::new(Mutex::new(replay_delay)),
+                    Arc::new(Mutex::new(p_random)));
 }

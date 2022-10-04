@@ -1,7 +1,7 @@
 use std::mem;
 use eframe::egui;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
-use musicserver1::{SliderValue, AITable, SynthTable, start_output, start_input, start_ai, make_ai_table, make_synth_table, prob_slider, replay_slider};
+use musicserver1::{SliderValue, AITable, SynthTable, start_output_thread, start_input_thread, start_ai_thread, make_ai_table, make_synth_table, prob_slider, replay_slider};
 use std::sync::{Arc, Mutex};
 use crossbeam_queue::SegQueue;
 
@@ -145,9 +145,9 @@ impl ReplayerApp {
         let input2ai = Arc::new(SegQueue::new());
         let ai2output = Arc::new(SegQueue::new());
 
-        start_output(ai2output.clone(), self.synth_table.clone());
-        start_ai(self.ai_table.clone(), input2ai.clone(), ai2output, self.replay_delay_slider.clone(), self.p_random_slider.clone());
-        start_input(input2ai, midi_in.unwrap(), self.in_port.as_ref().unwrap().clone());
+        start_output_thread(ai2output.clone(), self.synth_table.clone());
+        start_ai_thread(self.ai_table.clone(), input2ai.clone(), ai2output, self.replay_delay_slider.clone(), self.p_random_slider.clone());
+        start_input_thread(input2ai, midi_in.unwrap(), self.in_port.as_ref().unwrap().clone());
     }
 
     fn set_in_port_name(&mut self, in_port: &MidiInputPort) {
