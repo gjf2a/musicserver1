@@ -42,7 +42,8 @@ struct ReplayerApp {
     synth_table: Arc<Mutex<SynthTable>>,
     p_random_slider: Arc<Mutex<SliderValue<f64>>>,
     replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
-    in_port: Option<MidiInputPort>
+    in_port: Option<MidiInputPort>,
+    in_port_name: Option<String>
 }
 
 impl ReplayerApp {
@@ -78,13 +79,15 @@ impl ReplayerApp {
             synth_table: synth_table.clone(),
             ai_name,
             synth_name,
-            in_port: None
+            in_port: None,
+            in_port_name: None
         }
     }
 
     fn main_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Replayer");
+            ui.label(format!("Using {}", self.in_port_name.as_ref().unwrap()));
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
                     let ai_table = self.ai_table.lock().unwrap();
@@ -131,8 +134,8 @@ impl ReplayerApp {
             ui.heading("Replayer: Choose a MIDI Device");
             ui.vertical(|ui| {
                 for in_port in in_ports.iter() {
-                    let name = self.midi_in.as_ref().map(|m| m.as_ref().map(|m| m.port_name(in_port).unwrap())).unwrap().unwrap();
-                    ui.radio_value(&mut self.in_port, Some(in_port.clone()), name.clone());
+                    self.in_port_name = Some(self.midi_in.as_ref().map(|m| m.as_ref().map(|m| m.port_name(in_port).unwrap())).unwrap().unwrap());
+                    ui.radio_value(&mut self.in_port, Some(in_port.clone()), self.in_port_name.as_ref().unwrap().clone());
                 }
             });
             if ui.button("Start Playing").clicked() {
