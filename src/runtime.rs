@@ -315,46 +315,53 @@ pub fn start_ai_thread(ai_table: Arc<Mutex<AITable>>, input2ai: Arc<SegQueue<Mid
     std::thread::spawn(move || {
         let mut maker = MelodyMaker::new();
         loop {
-            let mut waiting: Option<(u8, Instant, u8)> = None;
-            let mut player_melody = Melody::new();
-            loop {
-                if let Some(msg) = input2ai.pop() {
-                    println!("AI received {msg:?}");
-                    if let MidiMsg::ChannelVoice { channel: _, msg } = msg {
-                        match msg {
-                            ChannelVoiceMsg::NoteOff { note, velocity } | ChannelVoiceMsg::NoteOn { note, velocity } => {
-                                if let Some((w_note, w_timestamp, w_velocity)) = waiting {
-                                    player_melody.add(Note::from_midi(w_note, w_timestamp.elapsed().as_secs_f64(), w_velocity));
-                                }
-                                waiting = Some((note, Instant::now(), velocity));
-                            }
-                            _ => {}
-                        }
-                    }
-                    ai2output.push(msg);
-                }
-
-                if let Some((note, timestamp, velocity)) = waiting {
-                    let elapsed = timestamp.elapsed().as_secs_f64();
-                    let replay_delay = replay_delay_slider.lock().unwrap();
-                    if velocity == 0 && elapsed > replay_delay.get_current() {
-                        player_melody.add(Note::from_midi(note, elapsed, velocity));
-                        break;
-                    }
-                }
-            }
-
-            let variation = {
-                let p_random = p_random_slider.lock().unwrap();
-                let ai_table = ai_table.lock().unwrap();
-                (ai_table.current_func().func)(&mut maker, &player_melody, p_random.get_current())
-            };
-
-            for note in variation.iter() {
-                let (midi, duration) = note.to_midi();
-                ai2output.push(midi);
-                std::thread::sleep(Duration::from_secs_f64(duration));
-            }
+            let player_melody = record_player(input2ai.clone(), ai2output.clone(), replay_delay_slider.clone());
+            perform_variation(&mut maker, p_random_slider.clone(), ai_table.clone(), &player_melody, ai2output.clone());
         }
     });
+}
+
+fn record_player(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>, replay_delay_slider: Arc<Mutex<SliderValue<f64>>>) -> Melody {
+    let mut waiting: Option<(u8, Instant, u8)> = None;
+    let mut player_melody = Melody::new();
+    loop {
+        if let Some(msg) = input2ai.pop() {
+            if let MidiMsg::ChannelVoice { channel: _, msg } = msg {
+                match msg {
+                    ChannelVoiceMsg::NoteOff { note, velocity } | ChannelVoiceMsg::NoteOn { note, velocity } => {
+                        if let Some((w_note, w_timestamp, w_velocity)) = waiting {
+                            player_melody.add(Note::from_midi(w_note, w_timestamp.elapsed().as_secs_f64(), w_velocity));
+                        }
+                        waiting = Some((note, Instant::now(), velocity));
+                    }
+                    _ => {}
+                }
+            }
+            ai2output.push(msg);
+        }
+
+        if let Some((note, timestamp, velocity)) = waiting {
+            let elapsed = timestamp.elapsed().as_secs_f64();
+            let replay_delay = replay_delay_slider.lock().unwrap();
+            if velocity == 0 && elapsed > replay_delay.get_current() {
+                player_melody.add(Note::from_midi(note, elapsed, velocity));
+                break;
+            }
+        }
+    }
+    player_melody
+}
+
+fn perform_variation(maker: &mut MelodyMaker, p_random_slider: Arc<Mutex<SliderValue<f64>>>, ai_table: Arc<Mutex<AITable>>, player_melody: &Melody, ai2output: Arc<SegQueue<MidiMsg>>) {
+    let variation = {
+        let p_random = p_random_slider.lock().unwrap();
+        let ai_table = ai_table.lock().unwrap();
+        (ai_table.current_func().func)(maker, &player_melody, p_random.get_current())
+    };
+
+    for note in variation.iter() {
+        let (midi, duration) = note.to_midi();
+        ai2output.push(midi);
+        std::thread::sleep(Duration::from_secs_f64(duration));
+    }
 }
