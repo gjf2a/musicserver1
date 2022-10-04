@@ -1,6 +1,7 @@
 
 use std::cmp::{max, min};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::time::Instant;
 use bare_metal_modulo::{MNum, ModNumC};
 use ordered_float::OrderedFloat;
 use histogram_macros::*;
@@ -46,14 +47,6 @@ impl ApproxEq for Note {
 }
 
 impl Note {
-    pub fn from_midi(pitch: u8, duration: f64, intensity: u8) -> Self {
-        Note {
-            pitch: pitch as i16,
-            duration: OrderedFloat(duration),
-            intensity: OrderedFloat(intensity as f64 / MAX_MIDI_VALUE as f64)
-        }
-    }
-
     pub fn to_midi(&self) -> (MidiMsg, f64) {
         let note = self.pitch as u8;
         let midi = ChannelVoice {
@@ -92,6 +85,36 @@ fn dotify_float(f: OrderedFloat<f64>) -> String {
         result.push_str(".0");
     }
     result
+}
+
+
+#[derive(Copy, Clone)]
+pub struct PendingNote {
+    pitch: u8, timestamp: Instant, velocity: u8
+}
+
+impl PendingNote {
+    pub fn new(pitch: u8, velocity: u8) -> Self {
+        PendingNote {pitch, timestamp: Instant::now(), velocity}
+    }
+
+    pub fn wait(&self) -> f64 {
+        self.timestamp.elapsed().as_secs_f64()
+    }
+
+    pub fn is_rest(&self) -> bool {
+        self.velocity == 0
+    }
+}
+
+impl From<PendingNote> for Note {
+    fn from(pending_note: PendingNote) -> Self {
+        Note {
+            pitch: pending_note.pitch as i16,
+            duration: OrderedFloat(pending_note.wait()),
+            intensity: OrderedFloat(pending_note.velocity as f64 / MAX_MIDI_VALUE as f64)
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
