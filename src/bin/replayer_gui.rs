@@ -146,6 +146,7 @@ impl ReplayerApp {
     }
 
     fn start_now(&mut self) {
+        self.in_port_name = Some(self.midi_in.as_ref().map(|m| m.as_ref().map(|m| m.port_name(self.in_port.as_ref().unwrap()).unwrap())).unwrap().unwrap());
         let mut midi_in = None;
         mem::swap(&mut midi_in, &mut self.midi_in);
         let input2ai = Arc::new(SegQueue::new());
