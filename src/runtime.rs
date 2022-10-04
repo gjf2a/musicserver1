@@ -47,6 +47,7 @@ macro_rules! make_chooser_table {
         pub struct $tabletype {
             name2choice: BTreeMap<String,$functype>,
             names: Vec<String>,
+            choices: Vec<$functype>,
             current_name: String
         }
         impl $tabletype {
@@ -57,7 +58,7 @@ macro_rules! make_chooser_table {
                     name2choice.insert(choice.name().to_string(), choice.clone());
                 }
                 let names: Vec<String> = choices.iter().map(|c| c.name().to_string()).collect();
-                $tabletype {name2choice, names, current_name}
+                $tabletype {name2choice, names, current_name, choices: choices.clone()}
             }
 
             pub fn choose(&mut self, choice: &str) {
@@ -76,12 +77,35 @@ macro_rules! make_chooser_table {
             pub fn name_vec(&self) -> Vec<String> {
                 self.names.clone()
             }
+
+            pub fn console_pick(&mut self) {
+                self.current_name = user_pick_element(self.choices.iter().cloned(),
+                    |f| f.name().to_string().clone()).name().to_string();
+            }
         }
     }
 }
 
 make_chooser_table!{AITable, AIFunc}
 make_chooser_table!{SynthTable, SynthFunc}
+
+pub fn make_ai_table() -> AITable {
+    let ai_funcs = func_vec![AIFunc,
+            ("Bypass", |_,_,_| Melody::new()),
+            ("Playback", |_, melody, _| melody.clone()),
+            ("Greedy Choice", MelodyMaker::create_variation_1),
+            ("Emphasis-Anchored Choice", MelodyMaker::create_variation_2),
+            ("Consistent Figure Replacement", MelodyMaker::create_variation_4),
+            ("Consistent Anchored Replacement", MelodyMaker::create_variation_3)];
+    AITable::from(&ai_funcs)
+}
+
+pub fn make_synth_table() -> SynthTable {
+    let synth_funcs = func_vec![SynthFunc,
+            ("Sine Pulse", sine_pulse),
+            ("Simple Triangle", simple_tri)];
+    SynthTable::from(&synth_funcs)
+}
 
 #[derive(Copy, Clone)]
 pub struct SliderValue<T: Copy + Clone> {
@@ -90,7 +114,7 @@ pub struct SliderValue<T: Copy + Clone> {
     hi: T
 }
 
-impl <T: Copy + Clone> SliderValue<T> {
+impl <T: Copy + Clone + std::str::FromStr + PartialOrd + 'static> SliderValue<T> {
     pub fn new(current: T, min: T, max: T) -> Self {
         SliderValue {current, lo: min, hi: max }
     }
@@ -106,6 +130,19 @@ impl <T: Copy + Clone> SliderValue<T> {
     pub fn get_current(&self) -> T {
         self.current
     }
+
+    pub fn console_pick(&mut self, prompt: &str) {
+        let inputter = input().msg(prompt).inside(self.make_range());
+        self.current = inputter.get();
+    }
+}
+
+pub fn replay_slider() -> SliderValue<f64> {
+    SliderValue::new(1.5, 1.0, 5.0)
+}
+
+pub fn prob_slider() -> SliderValue<f64> {
+    SliderValue::new(1.0, 0.0, 1.0)
 }
 
 pub fn user_pick_element<T: Clone, S: Fn(&T) -> String>(choices: impl Iterator<Item=T>, show: S) -> T {
@@ -278,7 +315,7 @@ impl RunInstance {
 }
 
 // Borrowed unchanged from https://github.com/SamiPerttu/fundsp/blob/master/examples/beep.rs
-fn write_data<T>(output: &mut [T], channels: usize, next_sample: &mut dyn FnMut() -> (f64, f64))
+pub fn write_data<T>(output: &mut [T], channels: usize, next_sample: &mut dyn FnMut() -> (f64, f64))
     where
         T: cpal::Sample,
 {

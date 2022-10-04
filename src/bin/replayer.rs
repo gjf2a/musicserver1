@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use midir::{MidiInput, MidiInputPort};
@@ -8,7 +8,7 @@ use fundsp::hacker::*;
 use dashmap::DashSet;
 use read_input::prelude::*;
 use crossbeam_queue::SegQueue;
-use musicserver1::{Melody, MelodyMaker, Note, velocity2volume, get_midi_device, user_func_pick, wrap_func, user_pick_element, SynthFunc, sine_pulse, simple_tri, AIFunc, func_vec};
+use musicserver1::{Melody, MelodyMaker, Note, velocity2volume, get_midi_device, user_func_pick, wrap_func, user_pick_element, SynthFunc, sine_pulse, simple_tri, AIFunc, write_data, make_ai_table, start_ai, SliderValue, prob_slider, replay_slider};
 
 // MIDI input code based on:
 //   https://github.com/Boddlnagg/midir/blob/master/examples/test_read_input.rs
@@ -30,7 +30,7 @@ fn main() -> anyhow::Result<()> {
     let ai2output = Arc::new(SegQueue::new());
 
     run_output(ai2output.clone());
-    run_ai(input2ai.clone(), ai2output, 1.5, 1.0);
+    run_ai(input2ai.clone(), ai2output);
     run_input(input2ai, midi_in, in_port)
 }
 
@@ -67,54 +67,16 @@ fn run_input(input2ai: Arc<SegQueue<MidiMsg>>, midi_in: MidiInput, in_port: Midi
     Ok(())
 }
 
-fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>, replay_delay: f64, p_random: f64) {
-    let ai_func = user_func_pick!(AIFunc,
-        ("Bypass", |_,_,_| Melody::new()),
-        ("Playback", |_, melody, _| melody.clone()),
-        ("Greedy Choice", MelodyMaker::create_variation_1),
-        ("Emphasis-Anchored Choice", MelodyMaker::create_variation_2),
-        ("Consistent Figure Replacement", MelodyMaker::create_variation_4),
-        ("Consistent Anchored Replacement", MelodyMaker::create_variation_3));
-    let mut maker = MelodyMaker::new();
-
-    std::thread::spawn(move || {
-        loop {
-            let mut waiting: Option<(u8, Instant, u8)> = None;
-            let mut player_melody = Melody::new();
-            loop {
-                if let Some(msg) = input2ai.pop() {
-                    println!("AI received {msg:?}");
-                    if let MidiMsg::ChannelVoice { channel: _, msg } = msg {
-                        match msg {
-                            ChannelVoiceMsg::NoteOff { note, velocity } | ChannelVoiceMsg::NoteOn { note, velocity } => {
-                                if let Some((w_note, w_timestamp, w_velocity)) = waiting {
-                                    player_melody.add(Note::from_midi(w_note, w_timestamp.elapsed().as_secs_f64(), w_velocity));
-                                }
-                                waiting = Some((note, Instant::now(), velocity));
-                            }
-                            _ => {}
-                        }
-                    }
-                    ai2output.push(msg);
-                }
-
-                if let Some((note, timestamp, velocity)) = waiting {
-                    let elapsed = timestamp.elapsed().as_secs_f64();
-                    if velocity == 0 && elapsed > replay_delay {
-                        player_melody.add(Note::from_midi(note, elapsed, velocity));
-                        break;
-                    }
-                }
-            }
-
-            let variation = (ai_func.func())(&mut maker, &player_melody, p_random);
-            for note in variation.iter() {
-                let (midi, duration) = note.to_midi();
-                ai2output.push(midi);
-                thread::sleep(Duration::from_secs_f64(duration));
-            }
-        }
-    });
+fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>) {
+    let mut ai_table = make_ai_table();
+    ai_table.console_pick();
+    let mut p_random = prob_slider();
+    p_random.console_pick("Select probability of random variation");
+    let mut replay_delay = replay_slider();
+    replay_delay.console_pick("Select time delay before starting replay");
+    start_ai(Arc::new(Mutex::new(ai_table)), input2ai, ai2output,
+             Arc::new(Mutex::new(replay_delay)),
+             Arc::new(Mutex::new(p_random)));
 }
 
 fn run<T>(ai2output: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config: cpal::StreamConfig, synth: SynthFunc) -> anyhow::Result<()>
@@ -131,7 +93,7 @@ fn run<T>(ai2output: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config: cpal:
         notes_in_use: Arc::new(DashSet::new())
     };
 
-    std::thread::spawn(move || {
+    thread::spawn(move || {
         run_inst.listen_play_loop::<T>();
     });
 
@@ -194,25 +156,5 @@ impl RunInstance {
             stream.play().unwrap();
             while notes_in_use.contains(&note) {}
         });
-    }
-}
-
-// Borrowed unchanged from https://github.com/SamiPerttu/fundsp/blob/master/examples/beep.rs
-fn write_data<T>(output: &mut [T], channels: usize, next_sample: &mut dyn FnMut() -> (f64, f64))
-    where
-        T: cpal::Sample,
-{
-    for frame in output.chunks_mut(channels) {
-        let sample = next_sample();
-        let left: T = cpal::Sample::from::<f32>(&(sample.0 as f32));
-        let right: T = cpal::Sample::from::<f32>(&(sample.1 as f32));
-
-        for (channel, sample) in frame.iter_mut().enumerate() {
-            if channel & 1 == 0 {
-                *sample = left;
-            } else {
-                *sample = right;
-            }
-        }
     }
 }

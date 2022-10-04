@@ -1,7 +1,7 @@
 use std::mem;
 use eframe::egui;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
-use musicserver1::{SliderValue, AIFunc, func_vec, SynthFunc, wrap_func, MelodyMaker, Melody, sine_pulse, simple_tri, AITable, SynthTable, start_output, start_input, start_ai};
+use musicserver1::{SliderValue, AITable, SynthTable, start_output, start_input, start_ai, make_ai_table, make_synth_table, prob_slider, replay_slider};
 use std::sync::{Arc, Mutex};
 use crossbeam_queue::SegQueue;
 
@@ -53,22 +53,14 @@ impl ReplayerApp {
         // Use the cc.gl (a glow::Context) to create graphics shaders and buffers that you can use
         // for e.g. egui::PaintCallback.
 
-        let synth_funcs = func_vec![SynthFunc,
-            ("Sine Pulse", sine_pulse),
-            ("Simple Triangle", simple_tri)];
-        let ai_funcs = func_vec![AIFunc,
-            ("Bypass", |_,_,_| Melody::new()),
-            ("Playback", |_, melody, _| melody.clone()),
-            ("Greedy Choice", MelodyMaker::create_variation_1),
-            ("Emphasis-Anchored Choice", MelodyMaker::create_variation_2),
-            ("Consistent Figure Replacement", MelodyMaker::create_variation_4),
-            ("Consistent Anchored Replacement", MelodyMaker::create_variation_3)];
-        let ai_table = Arc::new(Mutex::new(AITable::from(&ai_funcs)));
-        let synth_table = Arc::new(Mutex::new(SynthTable::from(&synth_funcs)));
-        let ai_name = ai_funcs[0].name().to_string();
-        let synth_name = synth_funcs[0].name().to_string();
-        let p_random_slider = Arc::new(Mutex::new(SliderValue::new(1.0, 0.0, 1.0)));
-        let replay_delay_slider = Arc::new(Mutex::new(SliderValue::new(1.5, 1.0, 5.0)));
+        let ai_table = make_ai_table();
+        let synth_table = make_synth_table();
+        let ai_name = ai_table.current_name().to_string();
+        let synth_name = synth_table.current_name().to_string();
+        let ai_table = Arc::new(Mutex::new(ai_table));
+        let synth_table = Arc::new(Mutex::new(synth_table));
+        let p_random_slider = Arc::new(Mutex::new(prob_slider()));
+        let replay_delay_slider = Arc::new(Mutex::new(replay_slider()));
 
         ReplayerApp {
             midi_scenario: midi_state,
