@@ -9,28 +9,8 @@ use fundsp::hacker::*;
 use dashmap::DashSet;
 use read_input::prelude::*;
 use crossbeam_queue::SegQueue;
-use musicserver1::{Melody, MelodyMaker, Note, velocity2volume};
+use musicserver1::{Melody, MelodyMaker, Note, velocity2volume, get_midi_device, user_func_pick, wrap_func, user_pick_element};
 
-#[macro_export]
-macro_rules! wrap_func {
-    ($t:ident, $s:expr, $f:expr) => {
-        $t {name: $s.to_owned(), func: Arc::new($f)}
-    }
-}
-
-#[macro_export]
-macro_rules! user_func_pick {
-    ($t:ident, $( ($s:expr, $f:expr)),+ ) => {
-        {
-        let choices = vec![
-            $(
-            wrap_func!($t, $s, $f),
-            )*
-        ];
-        user_pick_element(choices.iter().cloned(), |aif| aif.name.clone())
-        }
-    }
-}
 
 // MIDI input code based on:
 //   https://github.com/Boddlnagg/midir/blob/master/examples/test_read_input.rs
@@ -56,34 +36,6 @@ fn main() -> anyhow::Result<()> {
     run_input(input2ai, midi_in, in_port)
 }
 
-fn user_pick_element<T: Clone, S: Fn(&T) -> String>(choices: impl Iterator<Item=T>, show: S) -> T {
-    let choices = choices.collect::<Vec<_>>();
-    for (i, item) in choices.iter().enumerate() {
-        println!("{}) {}", i+1, show(item));
-    }
-    let choice: usize = input()
-        .msg("Enter choice: ")
-        .inside(1..=choices.len())
-        .get();
-    choices[choice - 1].clone()
-}
-
-fn get_midi_device(midi_in: &mut MidiInput) -> anyhow::Result<MidiInputPort> {
-    midi_in.ignore(Ignore::None);
-
-    let in_ports = midi_in.ports();
-    match in_ports.len() {
-        0 => bail!("no input port found"),
-        1 => {
-            println!("Choosing the only available input port: {}", midi_in.port_name(&in_ports[0]).unwrap());
-            Ok(in_ports[0].clone())
-        },
-        _ => {
-            println!("\nAvailable input ports:");
-            Ok(user_pick_element(in_ports.iter().cloned(), |p| midi_in.port_name(p).unwrap()))
-        }
-    }
-}
 
 fn run_output(ai2output: Arc<SegQueue<MidiMsg>>) {
     let host = cpal::default_host();
