@@ -1,9 +1,10 @@
 use std::sync::{Arc, Mutex};
-use midir::{MidiInput, MidiInputPort};
+use anyhow::bail;
+use midir::{Ignore, MidiInput, MidiInputPort};
 use midi_msg::MidiMsg;
 use read_input::prelude::*;
 use crossbeam_queue::SegQueue;
-use musicserver1::{get_midi_device, make_ai_table, start_ai_thread, prob_slider, replay_slider, make_synth_table, start_output_thread, start_input};
+use musicserver1::{make_ai_table, start_ai_thread, prob_slider, replay_slider, make_synth_table, start_output_thread, start_input, user_pick_element};
 
 // MIDI input code based on:
 //   https://github.com/Boddlnagg/midir/blob/master/examples/test_read_input.rs
@@ -57,4 +58,21 @@ fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>) {
     start_ai_thread(Arc::new(Mutex::new(ai_table)), input2ai, ai2output,
                     Arc::new(Mutex::new(replay_delay)),
                     Arc::new(Mutex::new(p_random)));
+}
+
+fn get_midi_device(midi_in: &mut MidiInput) -> anyhow::Result<MidiInputPort> {
+    midi_in.ignore(Ignore::None);
+
+    let in_ports = midi_in.ports();
+    match in_ports.len() {
+        0 => bail!("no input port found"),
+        1 => {
+            println!("Choosing the only available input port: {}", midi_in.port_name(&in_ports[0]).unwrap());
+            Ok(in_ports[0].clone())
+        },
+        _ => {
+            println!("\nAvailable input ports:");
+            Ok(user_pick_element(in_ports.iter().cloned(), |p| midi_in.port_name(p).unwrap()))
+        }
+    }
 }

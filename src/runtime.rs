@@ -2,12 +2,11 @@ use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use anyhow::bail;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use crossbeam_queue::SegQueue;
 use dashmap::DashSet;
 use fundsp::hacker::{lerp11, lfo, midi_hz, pulse, sin_hz, triangle};
-use midir::{Ignore, MidiInput, MidiInputConnection, MidiInputPort};
+use midir::{MidiInput, MidiInputConnection, MidiInputPort};
 use read_input::InputBuild;
 use read_input::prelude::input;
 use crate::{Melody, MelodyMaker, Note, velocity2volume};
@@ -134,24 +133,6 @@ pub fn user_pick_element<T: Clone, S: Fn(&T) -> String>(choices: impl Iterator<I
         .get();
     choices[choice - 1].clone()
 }
-
-pub fn get_midi_device(midi_in: &mut MidiInput) -> anyhow::Result<MidiInputPort> {
-    midi_in.ignore(Ignore::None);
-
-    let in_ports = midi_in.ports();
-    match in_ports.len() {
-        0 => bail!("no input port found"),
-        1 => {
-            println!("Choosing the only available input port: {}", midi_in.port_name(&in_ports[0]).unwrap());
-            Ok(in_ports[0].clone())
-        },
-        _ => {
-            println!("\nAvailable input ports:");
-            Ok(user_pick_element(in_ports.iter().cloned(), |p| midi_in.port_name(p).unwrap()))
-        }
-    }
-}
-
 
 #[derive(Clone)]
 pub struct AIFunc {
