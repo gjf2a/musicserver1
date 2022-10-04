@@ -4,6 +4,7 @@ use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
 use musicserver1::{SliderValue, AITable, SynthTable, start_output_thread, start_input_thread, start_ai_thread, make_ai_table, make_synth_table, prob_slider, replay_slider};
 use std::sync::{Arc, Mutex};
 use crossbeam_queue::SegQueue;
+use crate::egui::Ui;
 
 fn main() -> anyhow::Result<()> {
     let mut midi_in = MidiInput::new("midir reading input");
@@ -99,16 +100,16 @@ impl ReplayerApp {
             let mut synth_table = self.synth_table.lock().unwrap();
             synth_table.choose(self.synth_name.as_str());
 
-            let mut p_random_slider = self.p_random_slider.lock().unwrap();
-            let mut replay_delay_slider = self.replay_delay_slider.lock().unwrap();
-            let mut p_random = p_random_slider.get_current();
-            let mut replay_delay = replay_delay_slider.get_current();
-
-            ui.add(egui::Slider::new(&mut p_random, p_random_slider.make_range()).text("Probability of Randomization"));
-            ui.add(egui::Slider::new(&mut replay_delay, replay_delay_slider.make_range()).text("Replay Delay"));
-            p_random_slider.set_current(p_random);
-            replay_delay_slider.set_current(replay_delay);
+            Self::insert_slider(ui, self.p_random_slider.clone(), "Probability of Randomization");
+            Self::insert_slider(ui, self.replay_delay_slider.clone(), "Replay Delay");
         });
+    }
+
+    fn insert_slider(ui: &mut Ui, slider: Arc<Mutex<SliderValue<f64>>>, text: &str) {
+        let mut slider = slider.lock().unwrap();
+        let mut value = slider.get_current();
+        ui.add(egui::Slider::new(&mut value, slider.make_range()).text(text));
+        slider.set_current(value);
     }
 
     fn no_midi_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame, message: &str) {
