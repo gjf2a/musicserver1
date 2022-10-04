@@ -1,16 +1,14 @@
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
-use anyhow::bail;
-use midir::{MidiInput, Ignore, MidiInputPort};
+use midir::{MidiInput, MidiInputPort};
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use fundsp::hacker::*;
 use dashmap::DashSet;
 use read_input::prelude::*;
 use crossbeam_queue::SegQueue;
-use musicserver1::{Melody, MelodyMaker, Note, velocity2volume, get_midi_device, user_func_pick, wrap_func, user_pick_element};
-
+use musicserver1::{Melody, MelodyMaker, Note, velocity2volume, get_midi_device, user_func_pick, wrap_func, user_pick_element, SynthFunc, sine_pulse, simple_tri, AIFunc, func_vec};
 
 // MIDI input code based on:
 //   https://github.com/Boddlnagg/midir/blob/master/examples/test_read_input.rs
@@ -69,12 +67,6 @@ fn run_input(input2ai: Arc<SegQueue<MidiMsg>>, midi_in: MidiInput, in_port: Midi
     Ok(())
 }
 
-#[derive(Clone)]
-struct AIFunc {
-    name: String,
-    func: Arc<dyn Fn(&mut MelodyMaker,&Melody,f64)->Melody + Send + Sync>
-}
-
 fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>, replay_delay: f64, p_random: f64) {
     let ai_func = user_func_pick!(AIFunc,
         ("Bypass", |_,_,_| Melody::new()),
@@ -115,7 +107,7 @@ fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>, r
                 }
             }
 
-            let variation = (ai_func.func)(&mut maker, &player_melody, p_random);
+            let variation = (ai_func.func())(&mut maker, &player_melody, p_random);
             for note in variation.iter() {
                 let (midi, duration) = note.to_midi();
                 ai2output.push(midi);
@@ -123,23 +115,6 @@ fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>, r
             }
         }
     });
-}
-
-// Invaluable help with the function type: https://stackoverflow.com/a/59442384/906268
-#[derive(Clone)]
-struct SynthFunc {
-    name: String,
-    func: Arc<dyn Fn(f64,f64) -> Box<dyn AudioUnit64> + Send + Sync>
-}
-
-fn sine_pulse(pitch: f64, volume: f64) -> Box<dyn AudioUnit64> {
-    Box::new(lfo(move |t| {
-        (pitch, lerp11(0.01, 0.99, sin_hz(0.05, t)))
-    }) >> pulse() * volume)
-}
-
-fn simple_tri(pitch: f64, volume: f64) -> Box<dyn AudioUnit64> {
-    Box::new(lfo(move |_t| pitch) >> triangle() * volume)
 }
 
 fn run<T>(ai2output: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config: cpal::StreamConfig, synth: SynthFunc) -> anyhow::Result<()>
@@ -188,7 +163,7 @@ impl RunInstance {
                             self.notes_in_use.insert(note);
                             let pitch = midi_hz(note as f64);
                             let volume = velocity2volume(velocity.into());
-                            let mut c = (self.synth.func)(pitch, volume);
+                            let mut c = (self.synth.func())(pitch, volume);
                             c.reset(Some(self.sample_rate));
                             println!("{:?}", c.get_stereo());
                             self.play_sound::<T>(note, c);

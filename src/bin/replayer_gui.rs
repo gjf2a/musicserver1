@@ -1,6 +1,6 @@
 use std::mem;
 use eframe::egui;
-use midir::{Ignore, InitError, MidiInput, MidiInputPort, MidiInputPorts};
+use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
 use musicserver1::{SliderValue, AIFunc, func_vec, SynthFunc, wrap_func, MelodyMaker, Melody, sine_pulse, simple_tri, AITable, SynthTable, start_output, start_input, start_ai};
 use std::sync::{Arc, Mutex};
 use crossbeam_queue::SegQueue;
@@ -22,7 +22,7 @@ fn main() -> anyhow::Result<()> {
         }
     };
     let native_options = eframe::NativeOptions::default();
-    eframe::run_native("Replayer", native_options, Box::new(|cc| Box::new(ReplayerApp::new(cc, scenario, Some(midi_in)))));
+    eframe::run_native("Replayer", native_options, Box::new(|cc| Box::new(ReplayerApp::new(cc, scenario, midi_in.ok()))));
     Ok(())
 }
 
@@ -35,7 +35,7 @@ enum MidiScenario {
 
 struct ReplayerApp {
     midi_scenario: MidiScenario,
-    midi_in: Option<Result<MidiInput,InitError>>,
+    midi_in: Option<MidiInput>,
     ai_name: String,
     ai_table: Arc<Mutex<AITable>>,
     synth_name: String,
@@ -47,7 +47,7 @@ struct ReplayerApp {
 }
 
 impl ReplayerApp {
-    fn new(_cc: &eframe::CreationContext<'_>, midi_state: MidiScenario, midi_in: Option<Result<MidiInput,InitError>>) -> Self {
+    fn new(_cc: &eframe::CreationContext<'_>, midi_state: MidiScenario, midi_in: Option<MidiInput>) -> Self {
         // Customize egui here with cc.egui_ctx.set_fonts and cc.egui_ctx.set_visuals.
         // Restore app state using cc.storage (requires the "persistence" feature).
         // Use the cc.gl (a glow::Context) to create graphics shaders and buffers that you can use
@@ -134,7 +134,7 @@ impl ReplayerApp {
             ui.heading("Replayer: Choose a MIDI Device");
             ui.vertical(|ui| {
                 for in_port in in_ports.iter() {
-                    self.in_port_name = Some(self.midi_in.as_ref().map(|m| m.as_ref().map(|m| m.port_name(in_port).unwrap())).unwrap().unwrap());
+                    self.set_in_port_name(in_port);
                     ui.radio_value(&mut self.in_port, Some(in_port.clone()), self.in_port_name.as_ref().unwrap().clone());
                 }
             });
@@ -146,7 +146,8 @@ impl ReplayerApp {
     }
 
     fn start_now(&mut self) {
-        self.in_port_name = Some(self.midi_in.as_ref().map(|m| m.as_ref().map(|m| m.port_name(self.in_port.as_ref().unwrap()).unwrap())).unwrap().unwrap());
+        let in_port = self.in_port.as_ref().unwrap().clone();
+        self.set_in_port_name(&in_port);
         let mut midi_in = None;
         mem::swap(&mut midi_in, &mut self.midi_in);
         let input2ai = Arc::new(SegQueue::new());
@@ -154,7 +155,11 @@ impl ReplayerApp {
 
         start_output(ai2output.clone(), self.synth_table.clone());
         start_ai(self.ai_table.clone(), input2ai.clone(), ai2output, self.replay_delay_slider.clone(), self.p_random_slider.clone());
-        start_input(input2ai, midi_in.unwrap().unwrap(), self.in_port.as_ref().unwrap().clone());
+        start_input(input2ai, midi_in.unwrap(), self.in_port.as_ref().unwrap().clone());
+    }
+
+    fn set_in_port_name(&mut self, in_port: &MidiInputPort) {
+        self.in_port_name = self.midi_in.as_ref().and_then(|m| m.port_name(in_port).ok());
     }
 }
 

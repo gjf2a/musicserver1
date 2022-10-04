@@ -28,9 +28,9 @@ macro_rules! user_func_pick {
         let choices = vec![
             $(
             wrap_func!($t, $s, $f),
-            )*
+            )+
         ];
-        user_pick_element(choices.iter().cloned(), |aif| aif.name.clone())
+        user_pick_element(choices.iter().cloned(), |aif| aif.name().to_string().clone())
         }
     }
 }
@@ -149,6 +149,9 @@ impl AIFunc {
         AIFunc {name: name.to_owned(), func}
     }
     pub fn name(&self) -> &str {self.name.as_str()}
+    pub fn func(&self) -> Arc<dyn Fn(&mut MelodyMaker,&Melody,f64)->Melody + Send + Sync> {
+        self.func.clone()
+    }
 }
 
 // Invaluable help with the function type: https://stackoverflow.com/a/59442384/906268
@@ -164,6 +167,10 @@ impl SynthFunc {
     }
 
     pub fn name(&self) -> &str {self.name.as_str()}
+
+    pub fn func(&self) -> Arc<dyn Fn(f64,f64) -> Box<dyn AudioUnit64> + Send + Sync> {
+        self.func.clone()
+    }
 }
 
 pub fn sine_pulse(pitch: f64, volume: f64) -> Box<dyn AudioUnit64> {
