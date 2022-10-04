@@ -299,8 +299,8 @@ pub fn start_input(input2ai: Arc<SegQueue<MidiMsg>>, midi_in: MidiInput, in_port
             let (msg, _len) = MidiMsg::from_midi(&message).unwrap();
             input2ai.push(msg);
         }, ()).unwrap();
-
         println!("Connection open, reading input from '{in_port_name}'");
+
         loop {}
     });
 }
