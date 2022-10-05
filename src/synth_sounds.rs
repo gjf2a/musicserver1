@@ -23,11 +23,11 @@ pub fn simple_tri(pitch: f64, volume: f64) -> Box<dyn AudioUnit64> {
 }
 
 pub fn expr1(pitch: f64, volume: f64) -> Box<dyn AudioUnit64> {
-    Box::new(lfo(move |_t| pitch) >> triangle() * adsr_fixed!(0.2, 0.2, 0.4, 0.4, 0.2) * volume)
+    Box::new(lfo(move |_t| pitch) >> triangle() * adsr_fixed(0.2, 0.2, 0.4, 0.4, 0.2) * volume)
 }
 
 pub fn expr2(pitch: f64, volume: f64) -> Box<dyn AudioUnit64> {
-    Box::new(lfo(move |t| {(pitch, lerp11(0.01, 0.99, sin_hz(0.05, t)))}) >> pulse() * adsr_fixed!(0.2, 0.2, 0.4, 0.4, 0.2) * volume)
+    Box::new(lfo(move |t| {(pitch, lerp11(0.01, 0.99, sin_hz(0.05, t)))}) >> pulse() * adsr_fixed(0.2, 0.2, 0.4, 0.4, 0.2) * volume)
 }
 
 #[cfg(test)]
