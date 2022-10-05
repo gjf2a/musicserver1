@@ -1,32 +1,17 @@
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use crossbeam_queue::SegQueue;
 use crate::{velocity2volume, user_pick_element, make_chooser_table};
 use fundsp::prelude::{midi_hz, AudioUnit64};
-use dashmap::DashSet;
+use dashmap::{DashMap, DashSet};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 
-make_chooser_table!{SynthTable, SynthFunc}
-
 // Invaluable help with the function type: https://stackoverflow.com/a/59442384/906268
-#[derive(Clone)]
-pub struct SynthFunc {
-    name: String,
-    func: Arc<dyn Fn(f64,f64) -> Box<dyn AudioUnit64> + Send + Sync>
-}
+type SynthFuncType = dyn Fn(u8,u8,Arc<DashMap<u8,NoteStatus>>) -> Box<dyn AudioUnit64> + Send + Sync;
 
-impl SynthFunc {
-    pub fn new(name: &str, func: Arc<dyn Fn(f64,f64) -> Box<dyn AudioUnit64> + Send + Sync>) -> Self {
-        SynthFunc {name: name.to_owned(), func}
-    }
-
-    pub fn name(&self) -> &str {self.name.as_str()}
-
-    pub fn func(&self) -> Arc<dyn Fn(f64,f64) -> Box<dyn AudioUnit64> + Send + Sync> {
-        self.func.clone()
-    }
-}
+make_chooser_table!{SynthTable, SynthFunc, SynthFuncType}
 
 pub fn start_output_thread(ai2output: Arc<SegQueue<MidiMsg>>, synth_table: Arc<Mutex<SynthTable>>) {
     let host = cpal::default_host();
@@ -52,7 +37,7 @@ fn run_synth<T>(ai2output: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config:
         ai2output: ai2output.clone(),
         device: Arc::new(device),
         config: Arc::new(config),
-        notes_in_use: Arc::new(DashSet::new())
+        notes_in_use: Arc::new(DashMap::new())
     };
 
     std::thread::spawn(move || {
@@ -70,7 +55,12 @@ struct RunInstance {
     ai2output: Arc<SegQueue<MidiMsg>>,
     device: Arc<cpal::Device>,
     config: Arc<cpal::StreamConfig>,
-    notes_in_use: Arc<DashSet<u8>>
+    notes_in_use: Arc<DashMap<u8,NoteStatus>>
+}
+
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum NoteStatus {
+    On, Release(Instant)
 }
 
 impl RunInstance {
@@ -81,14 +71,13 @@ impl RunInstance {
                     println!("synth receives {msg:?}");
                     match msg {
                         ChannelVoiceMsg::NoteOff {note, velocity:_} => {
-                            self.notes_in_use.remove(&note);
+                            self.start_release(note);
                         }
                         ChannelVoiceMsg::NoteOn {note, velocity} => {
-                            self.notes_in_use.insert(note);
-                            let pitch = midi_hz(note as f64);
-                            let volume = velocity2volume(velocity.into());
+                            self.release_all();
+                            self.notes_in_use.insert(note, NoteStatus::On);
                             let synth_table = self.synth_table.lock().unwrap();
-                            let mut c = (synth_table.current_func().func)(pitch, volume);
+                            let mut c = (synth_table.current_func().func)(note, velocity, self.notes_in_use.clone());
                             c.reset(Some(self.sample_rate));
                             println!("stereo values {:?}", c.get_stereo());
                             self.play_sound::<T>(note, c);
@@ -97,6 +86,16 @@ impl RunInstance {
                     }
                 }
             }
+        }
+    }
+
+    fn start_release(&self, note: u8) {
+        self.notes_in_use.insert(note, NoteStatus::Release(Instant::now()));
+    }
+
+    fn release_all(&self) {
+        for note in self.notes_in_use.iter() {
+            self.start_release(*(note.key()));
         }
     }
 
@@ -117,7 +116,7 @@ impl RunInstance {
             ).unwrap();
 
             stream.play().unwrap();
-            while notes_in_use.contains(&note) {}
+            while notes_in_use.contains_key(&note) {}
         });
     }
 }

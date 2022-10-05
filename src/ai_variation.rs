@@ -5,23 +5,9 @@ use crossbeam_queue::SegQueue;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use crate::{user_pick_element, func_vec, make_chooser_table, Melody, MelodyMaker, PendingNote, SliderValue};
 
-#[derive(Clone)]
-pub struct AIFunc {
-    name: String,
-    func: Arc<dyn Fn(&mut MelodyMaker,&Melody,f64)->Melody + Send + Sync>
-}
+type AIFuncType = dyn Fn(&mut MelodyMaker,&Melody,f64)->Melody + Send + Sync;
 
-impl AIFunc {
-    pub fn new(name: &str, func: Arc<dyn Fn(&mut MelodyMaker,&Melody,f64)->Melody + Send + Sync>) -> Self {
-        AIFunc {name: name.to_owned(), func}
-    }
-    pub fn name(&self) -> &str {self.name.as_str()}
-    pub fn func(&self) -> Arc<dyn Fn(&mut MelodyMaker,&Melody,f64)->Melody + Send + Sync> {
-        self.func.clone()
-    }
-}
-
-make_chooser_table!{AITable, AIFunc}
+make_chooser_table!{AITable, AIFunc, AIFuncType}
 
 pub fn make_ai_table() -> AITable {
     let ai_funcs = func_vec![AIFunc,

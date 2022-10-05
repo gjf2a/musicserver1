@@ -9,7 +9,23 @@ macro_rules! func_vec {
 
 #[macro_export]
 macro_rules! make_chooser_table {
-    ($tabletype:ident, $functype:ident) => {
+    ($tabletype:ident, $functype:ident, $funcsig:ident) => {
+        #[derive(Clone)]
+        pub struct $functype {
+            name: String,
+            func: Arc<$funcsig>
+        }
+
+        impl $functype {
+            pub fn new(name: &str, func: Arc<$funcsig>) -> Self {
+                $functype {name: name.to_owned(), func}
+            }
+            pub fn name(&self) -> &str {self.name.as_str()}
+            pub fn func(&self) -> Arc<$funcsig> {
+                self.func.clone()
+            }
+        }
+
         #[derive(Clone)]
         pub struct $tabletype {
             name2choice: BTreeMap<String,$functype>,
