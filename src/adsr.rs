@@ -1,6 +1,27 @@
 use fundsp::hacker::{An, Envelope, lerp, lfo};
 use std::time::Instant;
 use std::fmt::{Debug, Formatter};
+use std::sync::Arc;
+use crossbeam_utils::atomic::AtomicCell;
+
+pub fn adsr_live(attack: f64, decay: f64, sustain: f64, release: f64, note_m: Arc<AtomicCell<SoundMsg>>) -> An<Envelope<f64, f64, impl Fn(f64)->f64 + 'static, f64>> {
+    let adsr = AtomicCell::new(Adsr::new(attack, decay, sustain, release));
+    lfo(move |t| {
+        if note_m.load() == SoundMsg::Stop {
+            return 0.0;
+        }
+        if note_m.load() == SoundMsg::Release {
+            let mut adsr_inner = adsr.load();
+            adsr_inner.release();
+            adsr.store(adsr_inner);
+            note_m.store(SoundMsg::Play);
+        }
+        match adsr.load().volume(t) {
+            Some(v) => v,
+            None => {note_m.store(SoundMsg::Stop); 0.0}
+        }
+    })
+}
 
 /// Credit: https://stackoverflow.com/a/73205224/906268 for showing how to write the return type
 pub fn adsr_fixed(attack: f64, decay: f64, sustain: f64, sustain_level: f64, release: f64) -> An<Envelope<f64, f64, impl Fn(f64)->f64 + 'static, f64>> {

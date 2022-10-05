@@ -9,7 +9,7 @@ use std::sync::Arc;
 use fundsp::hacker::{lerp11, envelope, midi_hz, pulse, sin_hz, triangle};
 use fundsp::prelude::AudioUnit64;
 use crossbeam_utils::atomic::AtomicCell;
-use musicserver1::Adsr;
+use musicserver1::{SoundMsg,adsr_live};
 use std::collections::VecDeque;
 
 fn main() -> anyhow::Result<()> {
@@ -57,11 +57,6 @@ fn run_output(incoming_midi: Arc<SegQueue<MidiMsg>>) {
         SampleFormat::I16 => run_synth::<i16>(incoming_midi, device, config.into()),
         SampleFormat::U16 => run_synth::<u16>(incoming_midi, device, config.into()),
     }
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-enum SoundMsg {
-    Play, Release, Stop
 }
 
 fn run_synth<T: Sample>(incoming_midi: Arc<SegQueue<MidiMsg>>, device: Device, config: StreamConfig) {
@@ -128,23 +123,7 @@ fn start_sound<T: Sample>(note: u8, velocity: u8, note_m: Arc<AtomicCell<SoundMs
 fn create_sound(note: u8, velocity: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
     let pitch = midi_hz(note as f64);
     let volume = velocity as f64 / 127.0;
-    let adsr = AtomicCell::new(Adsr::new(0.2, 0.2, 0.4, 0.2));
-    Box::new(envelope(move |_t| pitch) >> triangle() *
-        envelope(move |t| {
-            if note_m.load() == SoundMsg::Stop {
-                return 0.0;
-            }
-            if note_m.load() == SoundMsg::Release {
-                let mut adsr_inner = adsr.load();
-                adsr_inner.release();
-                adsr.store(adsr_inner);
-                note_m.store(SoundMsg::Play);
-            }
-            match adsr.load().volume(t) {
-                Some(v) => v,
-                None => {note_m.store(SoundMsg::Stop); 0.0}
-            }
-        }) * volume)
+    Box::new(envelope(move |_t| pitch) >> triangle() * adsr_live(0.2, 0.2, 0.4, 0.2, note_m) * volume)
 }
 
 fn write_data<T: Sample>(output: &mut [T], channels: usize, next_sample: &mut dyn FnMut() -> (f64, f64)) {

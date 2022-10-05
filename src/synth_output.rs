@@ -1,16 +1,12 @@
-use std::collections::HashMap;
 use std::collections::vec_deque::VecDeque;
-use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use crate::ChooserTable;
 use fundsp::prelude::AudioUnit64;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use fundsp::hacker::lerp;
-use crate::adsr::{Adsr,SoundMsg};
+use crate::adsr::SoundMsg;
 
 // Invaluable help with the function type: https://stackoverflow.com/a/59442384/906268
 pub type SynthFuncType = dyn Fn(u8,u8,Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> + Send + Sync;
@@ -86,7 +82,7 @@ impl RunInstance {
                                 (synth_table.current_choice())(note, velocity, note_m.clone())
                             };
                             sound.reset(Some(self.sample_rate));
-                            self.play_sound::<T>(note, sound, note_m);
+                            self.play_sound::<T>(sound, note_m);
                         }
                         _ => {}
                     }
@@ -95,7 +91,7 @@ impl RunInstance {
         }
     }
 
-    fn play_sound<T: cpal::Sample>(&self, note: u8, mut sound: Box<dyn AudioUnit64>, note_m: Arc<AtomicCell<SoundMsg>>) {
+    fn play_sound<T: cpal::Sample>(&self, mut sound: Box<dyn AudioUnit64>, note_m: Arc<AtomicCell<SoundMsg>>) {
         let mut next_value = move || sound.get_stereo();
         let device = self.device.clone();
         let config = self.config.clone();

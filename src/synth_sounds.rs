@@ -1,9 +1,7 @@
 use fundsp::hacker::{lerp11, envelope, midi_hz, pulse, sin_hz, triangle};
 use fundsp::prelude::AudioUnit64;
-use std::sync::{Arc, Mutex};
-use crate::{ChooserTable, SynthFuncType, SynthTable, velocity2volume};
-use std::collections::HashMap;
-use crate::adsr::{Adsr, SoundMsg};
+use std::sync::Arc;
+use crate::{adsr_live, SoundMsg, ChooserTable, SynthFuncType, SynthTable, velocity2volume};
 use crossbeam_utils::atomic::AtomicCell;
 
 pub fn make_synth_table() -> SynthTable {
@@ -15,23 +13,7 @@ pub fn make_synth_table() -> SynthTable {
 pub fn adsr_tri(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
     let pitch = midi_hz(pitch as f64);
     let volume = velocity2volume(volume.into());
-    let adsr = AtomicCell::new(Adsr::new(0.2, 0.2, 0.4, 0.2));
-    Box::new(envelope(move |_t| pitch) >> triangle() *
-        envelope(move |t| {
-            if note_m.load() == SoundMsg::Stop {
-                return 0.0;
-            }
-            if note_m.load() == SoundMsg::Release {
-                let mut adsr_inner = adsr.load();
-                adsr_inner.release();
-                adsr.store(adsr_inner);
-                note_m.store(SoundMsg::Play);
-            }
-            match adsr.load().volume(t) {
-                Some(v) => v,
-                None => {note_m.store(SoundMsg::Stop); 0.0}
-            }
-        }) * volume)
+    Box::new(envelope(move |_t| pitch) >> triangle() * adsr_live(0.2, 0.2, 0.4, 0.2, note_m) * volume)
 }
 
 /*
