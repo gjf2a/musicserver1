@@ -1,17 +1,17 @@
-use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use crossbeam_queue::SegQueue;
-use crate::{velocity2volume, user_pick_element, make_chooser_table};
-use fundsp::prelude::{midi_hz, AudioUnit64};
-use dashmap::{DashMap, DashSet};
+use crate::ChooserTable;
+use fundsp::prelude::AudioUnit64;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use fundsp::hacker::lerp;
 
 // Invaluable help with the function type: https://stackoverflow.com/a/59442384/906268
-type SynthFuncType = dyn Fn(u8,u8,Arc<DashMap<u8,NoteStatus>>) -> Box<dyn AudioUnit64> + Send + Sync;
-
-make_chooser_table!{SynthTable, SynthFunc, SynthFuncType}
+pub type SynthFuncType = dyn Fn(u8,u8,Arc<Mutex<HashMap<u8,Adsr>>>) -> Box<dyn AudioUnit64> + Send + Sync;
+pub type SynthTable = ChooserTable<Arc<SynthFuncType>>;
 
 pub fn start_output_thread(ai2output: Arc<SegQueue<MidiMsg>>, synth_table: Arc<Mutex<SynthTable>>) {
     let host = cpal::default_host();
@@ -30,14 +30,14 @@ fn run_synth<T>(ai2output: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config:
     where
         T: cpal::Sample,
 {
-    let run_inst = RunInstance {
+    let mut run_inst = RunInstance {
         synth_table: synth_table.clone(),
         sample_rate: config.sample_rate.0 as f64,
         channels: config.channels as usize,
         ai2output: ai2output.clone(),
         device: Arc::new(device),
         config: Arc::new(config),
-        notes_in_use: Arc::new(DashMap::new())
+        notes_in_use: Arc::new(Mutex::new(HashMap::new()))
     };
 
     std::thread::spawn(move || {
@@ -55,16 +55,59 @@ struct RunInstance {
     ai2output: Arc<SegQueue<MidiMsg>>,
     device: Arc<cpal::Device>,
     config: Arc<cpal::StreamConfig>,
-    notes_in_use: Arc<DashMap<u8,NoteStatus>>
+    notes_in_use: Arc<Mutex<HashMap<u8,Adsr>>>
 }
 
-#[derive(Copy, Clone, Eq, PartialEq)]
-pub enum NoteStatus {
-    On, Release(Instant)
+#[derive(Copy, Clone)]
+pub struct Adsr {
+    attack: f64, decay: f64, sustain: f64, release: f64, release_start: Option<Instant>
+}
+
+impl Adsr {
+    pub fn new(attack: f64, decay: f64, sustain: f64, release: f64) -> Self {
+        Adsr {attack, decay, sustain, release, release_start: None}
+    }
+
+    pub fn release(&mut self) {
+        self.release_start = Some(Instant::now());
+    }
+
+    pub fn volume(&self, time: f64) -> Option<f64> {
+        match self.release_start {
+            None => {
+                if time < self.attack {
+                    Some(lerp(0.0, 1.0, time / self.attack))
+                } else if time - self.attack < self.decay {
+                    Some(lerp(1.0, self.sustain, (time - self.attack) / self.decay))
+                } else {
+                    Some(self.sustain)
+                }
+            }
+            Some(release_start) => {
+                let release_time = time - Self::elapsed(release_start);
+                if release_time > self.release {
+                    None
+                } else {
+                    Some(lerp(self.sustain, 0.0, release_time / self.release))
+                }
+            }
+        }
+    }
+
+    fn elapsed(instant: Instant) -> f64 {instant.elapsed().as_secs_f64()}
+}
+
+impl Debug for Adsr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Adsr {{ attack: {} decay: {} sustain: {} release: {} release_start: {:?} }}",
+               self.attack, self.decay, self.sustain, self.release,
+               self.release_start.map(Self::elapsed)
+        )
+    }
 }
 
 impl RunInstance {
-    fn listen_play_loop<T: cpal::Sample>(&self) {
+    fn listen_play_loop<T: cpal::Sample>(&mut self) {
         loop {
             if let Some(m) = self.ai2output.pop() {
                 if let MidiMsg::ChannelVoice { channel:_, msg} = m {
@@ -74,12 +117,15 @@ impl RunInstance {
                             self.start_release(note);
                         }
                         ChannelVoiceMsg::NoteOn {note, velocity} => {
-                            self.release_all();
-                            self.notes_in_use.insert(note, NoteStatus::On);
+                            //self.release_all();
+                            {
+                                let mut notes_in_use = self.notes_in_use.lock().unwrap();
+                                notes_in_use.clear();
+                                notes_in_use.insert(note, Adsr::new(0.2, 0.2, 0.4, 0.2));
+                            }
                             let synth_table = self.synth_table.lock().unwrap();
-                            let mut c = (synth_table.current_func().func)(note, velocity, self.notes_in_use.clone());
+                            let mut c = (synth_table.current_choice())(note, velocity, self.notes_in_use.clone());
                             c.reset(Some(self.sample_rate));
-                            println!("stereo values {:?}", c.get_stereo());
                             self.play_sound::<T>(note, c);
                         }
                         _ => {}
@@ -90,14 +136,20 @@ impl RunInstance {
     }
 
     fn start_release(&self, note: u8) {
-        self.notes_in_use.insert(note, NoteStatus::Release(Instant::now()));
+        let mut notes_in_use = self.notes_in_use.lock().unwrap();
+        match notes_in_use.get_mut(&note) {
+            None => {}
+            Some(status) => {status.release()}
+        }
     }
-
+/*
     fn release_all(&self) {
         for note in self.notes_in_use.iter() {
             self.start_release(*(note.key()));
         }
     }
+
+ */
 
     fn play_sound<T: cpal::Sample>(&self, note: u8, mut sound: Box<dyn AudioUnit64>) {
         let mut next_value = move || sound.get_stereo();
@@ -116,7 +168,10 @@ impl RunInstance {
             ).unwrap();
 
             stream.play().unwrap();
-            while notes_in_use.contains_key(&note) {}
+            loop {
+                let notes_in_use = notes_in_use.lock().unwrap();
+                if !notes_in_use.contains_key(&note) {break;}
+            }
         });
     }
 }

@@ -1,25 +1,22 @@
-use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use crossbeam_queue::SegQueue;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
-use crate::{user_pick_element, func_vec, make_chooser_table, Melody, MelodyMaker, PendingNote, SliderValue};
+use crate::{Melody, MelodyMaker, PendingNote, SliderValue, ChooserTable, arc_vec};
 
-type AIFuncType = dyn Fn(&mut MelodyMaker,&Melody,f64)->Melody + Send + Sync;
-
-make_chooser_table!{AITable, AIFunc, AIFuncType}
+pub type AIFuncType = dyn Fn(&mut MelodyMaker,&Melody,f64)->Melody + Send + Sync;
+pub type AITable = ChooserTable<Arc<AIFuncType>>;
 
 pub fn make_ai_table() -> AITable {
-    let ai_funcs = func_vec![AIFunc,
+    let ai_funcs: Vec<(&str, Arc<AIFuncType>)> = arc_vec![
             ("Bypass", |_,_,_| Melody::new()),
             ("Playback", |_, melody, _| melody.clone()),
             ("Greedy Choice", MelodyMaker::create_variation_1),
             ("Emphasis-Anchored Choice", MelodyMaker::create_variation_2),
             ("Consistent Figure Replacement", MelodyMaker::create_variation_4),
             ("Consistent Anchored Replacement", MelodyMaker::create_variation_3)];
-    AITable::from(&ai_funcs)
+    ChooserTable::from(&ai_funcs)
 }
-
 
 pub fn start_ai_thread(ai_table: Arc<Mutex<AITable>>, input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>,
                        replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
@@ -109,7 +106,7 @@ impl Performer {
         let variation = {
             let p_random = self.p_random_slider.lock().unwrap();
             let ai_table = self.ai_table.lock().unwrap();
-            (ai_table.current_func().func)(&mut self.maker, &player_melody, p_random.get_current())
+            (ai_table.current_choice())(&mut self.maker, &player_melody, p_random.get_current())
         };
 
         for note in variation.iter() {

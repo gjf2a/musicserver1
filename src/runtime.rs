@@ -1,6 +1,51 @@
+use std::collections::btree_map::BTreeMap;
 use std::ops::RangeInclusive;
 use read_input::InputBuild;
 use read_input::prelude::input;
+
+pub struct ChooserTable<T: Clone> {
+    name2choice: BTreeMap<String,T>,
+    names: Vec<String>,
+    current_name: String
+}
+
+impl <T:Clone> ChooserTable<T> {
+    pub fn from(choices: &Vec<(&str,T)>) -> Self {
+        let current_name = choices.iter().next().unwrap().0.to_string();
+        let mut name2choice = BTreeMap::new();
+        for (name, choice) in choices.iter() {
+            name2choice.insert(name.to_string(), choice.clone());
+        }
+        let names: Vec<String> = choices.iter().map(|c| c.0.to_string()).collect();
+        ChooserTable {name2choice, names, current_name}
+    }
+
+    pub fn choose(&mut self, choice: &str) {
+        assert!(self.name2choice.contains_key(choice));
+        self.current_name = choice.to_owned();
+    }
+
+    pub fn current_name(&self) -> &str {
+        self.current_name.as_str()
+    }
+
+    pub fn current_choice(&self) -> T {
+        self.name2choice.get(self.current_name.as_str()).unwrap().clone()
+    }
+
+    pub fn name_vec(&self) -> Vec<String> {
+        self.names.clone()
+    }
+
+    pub fn console_pick(&mut self) {
+        self.current_name = user_pick_element(self.names.iter().cloned(), |s| s.clone())
+    }
+}
+
+#[macro_export]
+macro_rules! arc_vec {
+    ($( ($s:expr, $f:expr)),* ) => {vec![$(($s, Arc::new($f)),)*]}
+}
 
 #[macro_export]
 macro_rules! func_vec {
