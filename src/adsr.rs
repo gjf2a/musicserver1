@@ -4,11 +4,11 @@ macro_rules! adsr_fixed {
         lfo(move |time_s| {
             let mut time_s = time_s;
             if time_s < $attack {
-                return $attack / time_s;
+                return fundsp::hacker::lerp(0.0, 1.0, time_s / $attack);
             }
             time_s -= $attack;
             if time_s < $decay {
-                return (1.0 - $decay / time_s) * (1.0 - $sustain_level) + $sustain_level;
+                return fundsp::hacker::lerp(1.0, $sustain_level, time_s / $decay);
             }
             time_s -= $decay;
             if time_s < $sustain {
@@ -16,7 +16,7 @@ macro_rules! adsr_fixed {
             }
             time_s -= $release;
             if time_s < $release {
-                return $sustain_level - ($sustain_level * $release / time_s);
+                return fundsp::hacker::lerp($sustain_level, 0.0, time_s / $release);
             }
             0.0
         })
