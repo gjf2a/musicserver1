@@ -213,7 +213,7 @@ impl RunInstance {
         loop {
             if let Some(m) = self.ai2output.pop() {
                 if let MidiMsg::ChannelVoice { channel:_, msg} = m {
-                    println!("{msg:?}");
+                    println!("synth receives {msg:?}");
                     match msg {
                         ChannelVoiceMsg::NoteOff {note, velocity:_} => {
                             self.notes_in_use.remove(&note);
@@ -225,7 +225,7 @@ impl RunInstance {
                             let synth_table = self.synth_table.lock().unwrap();
                             let mut c = (synth_table.current_func().func)(pitch, volume);
                             c.reset(Some(self.sample_rate));
-                            println!("{:?}", c.get_stereo());
+                            println!("stereo values {:?}", c.get_stereo());
                             self.play_sound::<T>(note, c);
                         }
                         _ => {}
@@ -335,6 +335,7 @@ impl PlayerRecorder {
         }
         let mut result = Melody::new();
         mem::swap(&mut result, &mut self.player_melody);
+        result.synchronize_rests();
         result
     }
 
