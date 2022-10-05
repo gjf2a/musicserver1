@@ -1,9 +1,10 @@
-use fundsp::hacker::{lerp11, lfo, midi_hz, pulse, sin_hz, triangle};
+use fundsp::hacker::{lerp11, envelope, midi_hz, pulse, sin_hz, triangle};
 use fundsp::prelude::AudioUnit64;
 use std::sync::{Arc, Mutex};
 use crate::{ChooserTable, SynthFuncType, SynthTable, velocity2volume};
 use std::collections::HashMap;
-use crate::adsr::Adsr;
+use crate::adsr::{Adsr, SoundMsg};
+use crossbeam_utils::atomic::AtomicCell;
 
 pub fn make_synth_table() -> SynthTable {
     let synth_funcs: Vec<(&str, Arc<SynthFuncType>)> = vec![
@@ -11,23 +12,26 @@ pub fn make_synth_table() -> SynthTable {
     ChooserTable::from(&synth_funcs)
 }
 
-pub fn adsr_tri(pitch: u8, volume: u8, notes_in_use: Arc<Mutex<HashMap<u8,Adsr>>>) -> Box<dyn AudioUnit64> {
-    let pitch_hz = midi_hz(pitch as f64);
+pub fn adsr_tri(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
+    let pitch = midi_hz(pitch as f64);
     let volume = velocity2volume(volume.into());
-    Box::new(lfo(move |_t| pitch_hz) >> triangle() * lfo(move |t| {
-        let mut notes_in_use = notes_in_use.lock().unwrap();
-        let mut quit = false;
-        let result = notes_in_use.get(&pitch)
-            .map_or(0.0, |adsr|
-                match adsr.volume(t) {
-                    Some(v) => v,
-                    None => {quit = true; 0.0}
-                });
-        if quit {
-            notes_in_use.remove(&pitch);
-        }
-        result
-    }) * volume)
+    let adsr = AtomicCell::new(Adsr::new(0.2, 0.2, 0.4, 0.2));
+    Box::new(envelope(move |_t| pitch) >> triangle() *
+        envelope(move |t| {
+            if note_m.load() == SoundMsg::Stop {
+                return 0.0;
+            }
+            if note_m.load() == SoundMsg::Release {
+                let mut adsr_inner = adsr.load();
+                adsr_inner.release();
+                adsr.store(adsr_inner);
+                note_m.store(SoundMsg::Play);
+            }
+            match adsr.load().volume(t) {
+                Some(v) => v,
+                None => {note_m.store(SoundMsg::Stop); 0.0}
+            }
+        }) * volume)
 }
 
 /*

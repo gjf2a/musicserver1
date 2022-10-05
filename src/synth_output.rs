@@ -1,17 +1,19 @@
 use std::collections::HashMap;
+use std::collections::vec_deque::VecDeque;
 use std::fmt::{Debug, Formatter};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use crossbeam_queue::SegQueue;
+use crossbeam_utils::atomic::AtomicCell;
 use crate::ChooserTable;
 use fundsp::prelude::AudioUnit64;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use fundsp::hacker::lerp;
-use crate::adsr::Adsr;
+use crate::adsr::{Adsr,SoundMsg};
 
 // Invaluable help with the function type: https://stackoverflow.com/a/59442384/906268
-pub type SynthFuncType = dyn Fn(u8,u8,Arc<Mutex<HashMap<u8,Adsr>>>) -> Box<dyn AudioUnit64> + Send + Sync;
+pub type SynthFuncType = dyn Fn(u8,u8,Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> + Send + Sync;
 pub type SynthTable = ChooserTable<Arc<SynthFuncType>>;
 
 pub fn start_output_thread(ai2output: Arc<SegQueue<MidiMsg>>, synth_table: Arc<Mutex<SynthTable>>) {
@@ -37,8 +39,7 @@ fn run_synth<T>(ai2output: Arc<SegQueue<MidiMsg>>, device: cpal::Device, config:
         channels: config.channels as usize,
         ai2output: ai2output.clone(),
         device: Arc::new(device),
-        config: Arc::new(config),
-        notes_in_use: Arc::new(Mutex::new(HashMap::new()))
+        config: Arc::new(config)
     };
 
     std::thread::spawn(move || {
@@ -55,31 +56,37 @@ struct RunInstance {
     channels: usize,
     ai2output: Arc<SegQueue<MidiMsg>>,
     device: Arc<cpal::Device>,
-    config: Arc<cpal::StreamConfig>,
-    notes_in_use: Arc<Mutex<HashMap<u8,Adsr>>>
+    config: Arc<cpal::StreamConfig>
 }
 
 impl RunInstance {
     fn listen_play_loop<T: cpal::Sample>(&mut self) {
+        let mut sound_thread_messages: VecDeque<Arc<AtomicCell<SoundMsg>>> = VecDeque::new();
         loop {
             if let Some(m) = self.ai2output.pop() {
                 if let MidiMsg::ChannelVoice { channel:_, msg} = m {
                     println!("synth receives {msg:?}");
                     match msg {
-                        ChannelVoiceMsg::NoteOff {note, velocity:_} => {
-                            self.start_release(note);
+                        ChannelVoiceMsg::NoteOff {note:_, velocity:_} => {
+                            if let Some(m) = sound_thread_messages.back() {
+                                m.store(SoundMsg::Release);
+                            }
                         }
                         ChannelVoiceMsg::NoteOn {note, velocity} => {
-                            //self.release_all();
-                            {
-                                let mut notes_in_use = self.notes_in_use.lock().unwrap();
-                                notes_in_use.clear();
-                                notes_in_use.insert(note, Adsr::new(0.2, 0.2, 0.4, 0.2));
+                            loop {
+                                match sound_thread_messages.pop_front() {
+                                    None => break,
+                                    Some(m) => m.store(SoundMsg::Stop)
+                                }
                             }
-                            let synth_table = self.synth_table.lock().unwrap();
-                            let mut sound = (synth_table.current_choice())(note, velocity, self.notes_in_use.clone());
+                            let note_m = Arc::new(AtomicCell::new(SoundMsg::Play));
+                            sound_thread_messages.push_back(note_m.clone());
+                            let mut sound = {
+                                let synth_table = self.synth_table.lock().unwrap();
+                                (synth_table.current_choice())(note, velocity, note_m.clone())
+                            };
                             sound.reset(Some(self.sample_rate));
-                            self.play_sound::<T>(note, sound);
+                            self.play_sound::<T>(note, sound, note_m);
                         }
                         _ => {}
                     }
@@ -88,25 +95,8 @@ impl RunInstance {
         }
     }
 
-    fn start_release(&self, note: u8) {
-        let mut notes_in_use = self.notes_in_use.lock().unwrap();
-        match notes_in_use.get_mut(&note) {
-            None => {}
-            Some(status) => {status.release()}
-        }
-    }
-/*
-    fn release_all(&self) {
-        for note in self.notes_in_use.iter() {
-            self.start_release(*(note.key()));
-        }
-    }
-
- */
-
-    fn play_sound<T: cpal::Sample>(&self, note: u8, mut sound: Box<dyn AudioUnit64>) {
+    fn play_sound<T: cpal::Sample>(&self, note: u8, mut sound: Box<dyn AudioUnit64>, note_m: Arc<AtomicCell<SoundMsg>>) {
         let mut next_value = move || sound.get_stereo();
-        let notes_in_use = self.notes_in_use.clone();
         let device = self.device.clone();
         let config = self.config.clone();
         let channels = self.channels;
@@ -122,8 +112,10 @@ impl RunInstance {
 
             stream.play().unwrap();
             loop {
-                let notes_in_use = notes_in_use.lock().unwrap();
-                if !notes_in_use.contains_key(&note) {break;}
+                match note_m.load() {
+                    SoundMsg::Stop => break,
+                    _ => {}
+                }
             }
         });
     }

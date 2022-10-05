@@ -27,6 +27,11 @@ pub fn adsr_level(time_s: f64, attack: f64, decay: f64, sustain: f64, sustain_le
     0.0
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum SoundMsg {
+    Play, Release, Stop
+}
+
 #[derive(Copy, Clone)]
 pub struct Adsr {
     attack: f64, decay: f64, sustain: f64, release: f64, release_start: Option<Instant>
