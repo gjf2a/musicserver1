@@ -1,8 +1,9 @@
 use fundsp::hacker::{lerp11, lfo, midi_hz, pulse, sin_hz, triangle};
 use fundsp::prelude::AudioUnit64;
-use std::sync::{Mutex,Arc};
-use crate::{SynthTable, SynthFuncType, velocity2volume, Adsr, ChooserTable};
+use std::sync::{Arc, Mutex};
+use crate::{ChooserTable, SynthFuncType, SynthTable, velocity2volume};
 use std::collections::HashMap;
+use crate::adsr::Adsr;
 
 pub fn make_synth_table() -> SynthTable {
     let synth_funcs: Vec<(&str, Arc<SynthFuncType>)> = vec![

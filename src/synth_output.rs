@@ -8,6 +8,7 @@ use crate::ChooserTable;
 use fundsp::prelude::AudioUnit64;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use fundsp::hacker::lerp;
+use crate::adsr::Adsr;
 
 // Invaluable help with the function type: https://stackoverflow.com/a/59442384/906268
 pub type SynthFuncType = dyn Fn(u8,u8,Arc<Mutex<HashMap<u8,Adsr>>>) -> Box<dyn AudioUnit64> + Send + Sync;
@@ -58,54 +59,6 @@ struct RunInstance {
     notes_in_use: Arc<Mutex<HashMap<u8,Adsr>>>
 }
 
-#[derive(Copy, Clone)]
-pub struct Adsr {
-    attack: f64, decay: f64, sustain: f64, release: f64, release_start: Option<Instant>
-}
-
-impl Adsr {
-    pub fn new(attack: f64, decay: f64, sustain: f64, release: f64) -> Self {
-        Adsr {attack, decay, sustain, release, release_start: None}
-    }
-
-    pub fn release(&mut self) {
-        self.release_start = Some(Instant::now());
-    }
-
-    pub fn volume(&self, time: f64) -> Option<f64> {
-        match self.release_start {
-            None => {
-                if time < self.attack {
-                    Some(lerp(0.0, 1.0, time / self.attack))
-                } else if time - self.attack < self.decay {
-                    Some(lerp(1.0, self.sustain, (time - self.attack) / self.decay))
-                } else {
-                    Some(self.sustain)
-                }
-            }
-            Some(release_start) => {
-                let release_time = time - Self::elapsed(release_start);
-                if release_time > self.release {
-                    None
-                } else {
-                    Some(lerp(self.sustain, 0.0, release_time / self.release))
-                }
-            }
-        }
-    }
-
-    fn elapsed(instant: Instant) -> f64 {instant.elapsed().as_secs_f64()}
-}
-
-impl Debug for Adsr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Adsr {{ attack: {} decay: {} sustain: {} release: {} release_start: {:?} }}",
-               self.attack, self.decay, self.sustain, self.release,
-               self.release_start.map(Self::elapsed)
-        )
-    }
-}
-
 impl RunInstance {
     fn listen_play_loop<T: cpal::Sample>(&mut self) {
         loop {
@@ -124,9 +77,9 @@ impl RunInstance {
                                 notes_in_use.insert(note, Adsr::new(0.2, 0.2, 0.4, 0.2));
                             }
                             let synth_table = self.synth_table.lock().unwrap();
-                            let mut c = (synth_table.current_choice())(note, velocity, self.notes_in_use.clone());
-                            c.reset(Some(self.sample_rate));
-                            self.play_sound::<T>(note, c);
+                            let mut sound = (synth_table.current_choice())(note, velocity, self.notes_in_use.clone());
+                            sound.reset(Some(self.sample_rate));
+                            self.play_sound::<T>(note, sound);
                         }
                         _ => {}
                     }
