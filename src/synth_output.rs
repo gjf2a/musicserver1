@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
-use crate::{ChooserTable, velocity2volume};
+use crate::{ChooserTable, SynthChoice, velocity2volume};
 use fundsp::prelude::AudioUnit64;
 use cpal::{Device, StreamConfig, Sample, SampleFormat};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -18,7 +18,7 @@ pub fn convert_midi(note: u8, velocity: u8) -> (f64, f64) {
     (midi_hz(note as f64), (velocity2volume(velocity.into())))
 }
 
-pub fn start_output_thread(ai2output: Arc<SegQueue<MidiMsg>>, human_synth_table: Arc<Mutex<SynthTable>>, ai_synth_table: Arc<Mutex<SynthTable>>) {
+pub fn start_output_thread(ai2output: Arc<SegQueue<(SynthChoice,MidiMsg)>>, human_synth_table: Arc<Mutex<SynthTable>>, ai_synth_table: Arc<Mutex<SynthTable>>) {
     let host = cpal::default_host();
     let device = host
         .default_output_device()
@@ -31,7 +31,7 @@ pub fn start_output_thread(ai2output: Arc<SegQueue<MidiMsg>>, human_synth_table:
     }
 }
 
-fn run_synth<T: Sample>(ai2output: Arc<SegQueue<MidiMsg>>, device: Device, config: StreamConfig, human_synth_table: Arc<Mutex<SynthTable>>, ai_synth_table: Arc<Mutex<SynthTable>>) {
+fn run_synth<T: Sample>(ai2output: Arc<SegQueue<(SynthChoice,MidiMsg)>>, device: Device, config: StreamConfig, human_synth_table: Arc<Mutex<SynthTable>>, ai_synth_table: Arc<Mutex<SynthTable>>) {
     let mut run_inst = RunInstance {
         human_synth_table: human_synth_table.clone(),
         ai_synth_table: ai_synth_table.clone(),
@@ -55,7 +55,7 @@ struct RunInstance {
     ai_synth_table: Arc<Mutex<SynthTable>>,
     sample_rate: f64,
     channels: usize,
-    ai2output: Arc<SegQueue<MidiMsg>>,
+    ai2output: Arc<SegQueue<(SynthChoice,MidiMsg)>>,
     device: Arc<Device>,
     config: Arc<StreamConfig>,
     sound_thread_messages: VecDeque<Arc<AtomicCell<SoundMsg>>>,
@@ -65,11 +65,11 @@ struct RunInstance {
 impl RunInstance {
     fn listen_play_loop<T: Sample>(&mut self) {
         loop {
-            if let Some(m) = self.ai2output.pop() {
-                if let MidiMsg::ChannelVoice { channel:_, msg} = m {
+            if let Some((choice, midi)) = self.ai2output.pop() {
+                if let MidiMsg::ChannelVoice { channel:_, msg} = midi {
                     match msg {
                         ChannelVoiceMsg::NoteOff {note, velocity:_} => {self.note_off(note);}
-                        ChannelVoiceMsg::NoteOn {note, velocity} => {self.note_on::<T>(note, velocity);}
+                        ChannelVoiceMsg::NoteOn {note, velocity} => {self.note_on::<T>(note, velocity, choice);}
                         _ => {}
                     }
                 }
@@ -77,7 +77,7 @@ impl RunInstance {
         }
     }
 
-    fn note_on<T: Sample>(&mut self, note: u8, velocity: u8) {
+    fn note_on<T: Sample>(&mut self, note: u8, velocity: u8, choice: SynthChoice) {
         loop {
             match self.sound_thread_messages.pop_front() {
                 None => break,
@@ -87,7 +87,10 @@ impl RunInstance {
         let note_m = Arc::new(AtomicCell::new(SoundMsg::Play));
         self.sound_thread_messages.push_back(note_m.clone());
         let mut sound = {
-            let synth_table = self.human_synth_table.lock().unwrap();
+            let synth_table = match choice {
+                SynthChoice::Human => self.human_synth_table.lock().unwrap(),
+                SynthChoice::Ai => self.ai_synth_table.lock().unwrap(),
+            };
             (synth_table.current_choice())(note, velocity, note_m.clone())
         };
         sound.reset(Some(self.sample_rate));

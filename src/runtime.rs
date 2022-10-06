@@ -3,6 +3,11 @@ use std::ops::RangeInclusive;
 use read_input::InputBuild;
 use read_input::prelude::input;
 
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum SynthChoice {
+    Human, Ai
+}
+
 pub struct ChooserTable<T: Clone> {
     name2choice: BTreeMap<String,T>,
     names: Vec<String>,

@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use crossbeam_queue::SegQueue;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
-use crate::{Melody, MelodyMaker, PendingNote, SliderValue, ChooserTable, arc_vec};
+use crate::{Melody, MelodyMaker, PendingNote, SliderValue, ChooserTable, arc_vec, SynthChoice};
 
 pub type AIFuncType = dyn Fn(&mut MelodyMaker,&Melody,f64)->Melody + Send + Sync;
 pub type AITable = ChooserTable<Arc<AIFuncType>>;
@@ -18,7 +18,7 @@ pub fn make_ai_table() -> AITable {
     ChooserTable::from(&ai_funcs)
 }
 
-pub fn start_ai_thread(ai_table: Arc<Mutex<AITable>>, input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>,
+pub fn start_ai_thread(ai_table: Arc<Mutex<AITable>>, input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<(SynthChoice,MidiMsg)>>,
                        replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
                        p_random_slider: Arc<Mutex<SliderValue<f64>>>) {
     std::thread::spawn(move || {
@@ -33,14 +33,14 @@ pub fn start_ai_thread(ai_table: Arc<Mutex<AITable>>, input2ai: Arc<SegQueue<Mid
 
 struct PlayerRecorder {
     input2ai: Arc<SegQueue<MidiMsg>>,
-    ai2output: Arc<SegQueue<MidiMsg>>,
+    ai2output: Arc<SegQueue<(SynthChoice,MidiMsg)>>,
     replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
     waiting: Option<PendingNote>,
     player_melody: Melody
 }
 
 impl PlayerRecorder {
-    fn new(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>, replay_delay_slider: Arc<Mutex<SliderValue<f64>>>) -> Self {
+    fn new(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<(SynthChoice,MidiMsg)>>, replay_delay_slider: Arc<Mutex<SliderValue<f64>>>) -> Self {
         PlayerRecorder {
             input2ai, ai2output, replay_delay_slider, waiting: None, player_melody: Melody::new()
         }
@@ -76,7 +76,7 @@ impl PlayerRecorder {
                 _ => {}
             }
         }
-        self.ai2output.push(msg);
+        self.ai2output.push((SynthChoice::Human, msg));
     }
 
     fn check_if_finished(&mut self, pending_note: PendingNote) -> bool {
@@ -94,11 +94,11 @@ struct Performer {
     maker: MelodyMaker,
     p_random_slider: Arc<Mutex<SliderValue<f64>>>,
     ai_table: Arc<Mutex<AITable>>,
-    ai2output: Arc<SegQueue<MidiMsg>>
+    ai2output: Arc<SegQueue<(SynthChoice,MidiMsg)>>
 }
 
 impl Performer {
-    fn new(p_random_slider: Arc<Mutex<SliderValue<f64>>>, ai_table: Arc<Mutex<AITable>>, ai2output: Arc<SegQueue<MidiMsg>>) -> Self {
+    fn new(p_random_slider: Arc<Mutex<SliderValue<f64>>>, ai_table: Arc<Mutex<AITable>>, ai2output: Arc<SegQueue<(SynthChoice,MidiMsg)>>) -> Self {
         Performer {maker: MelodyMaker::new(), p_random_slider, ai_table, ai2output}
     }
 
@@ -111,7 +111,7 @@ impl Performer {
 
         for note in variation.iter() {
             let (midi, duration) = note.to_midi();
-            self.ai2output.push(midi);
+            self.ai2output.push((SynthChoice::Ai, midi));
             std::thread::sleep(Duration::from_secs_f64(duration));
         }
     }
