@@ -5,7 +5,7 @@ use crossbeam_utils::atomic::AtomicCell;
 
 /// Credit: https://stackoverflow.com/a/73205224/906268 for showing how to write the return type
 pub fn adsr_live(attack: f64, decay: f64, sustain: f64, release: f64, note_m: Arc<AtomicCell<SoundMsg>>) -> An<Envelope<f64, f64, impl Fn(f64)->f64 + 'static, f64>> {
-    let adsr = AtomicCell::new(Adsr::new(attack, decay, sustain, release));
+    let adsr = AtomicCell::new(Adsr::live(attack, decay, sustain, release));
     lfo(move |t| {
         if note_m.load() == SoundMsg::Stop {
             return 0.0;
@@ -16,6 +16,16 @@ pub fn adsr_live(attack: f64, decay: f64, sustain: f64, release: f64, note_m: Ar
             adsr.store(adsr_inner);
             note_m.store(SoundMsg::Play);
         }
+        match adsr.load().volume(t) {
+            Some(v) => v,
+            None => {note_m.store(SoundMsg::Stop); 0.0}
+        }
+    })
+}
+
+pub fn adsr_fixed(attack: f64, decay: f64, sustain_time: f64, sustain_level: f64, release: f64, note_m: Arc<AtomicCell<SoundMsg>>) -> An<Envelope<f64, f64, impl Fn(f64)->f64 + 'static, f64>> {
+    let adsr = AtomicCell::new(Adsr::fixed(attack, decay, sustain_time, sustain_level, release));
+    lfo(move |t| {
         match adsr.load().volume(t) {
             Some(v) => v,
             None => {note_m.store(SoundMsg::Stop); 0.0}
@@ -34,8 +44,12 @@ pub struct Adsr {
 }
 
 impl Adsr {
-    pub fn new(attack: f64, decay: f64, sustain: f64, release: f64) -> Self {
+    pub fn live(attack: f64, decay: f64, sustain: f64, release: f64) -> Self {
         Adsr {attack, decay, sustain, release, release_start: None}
+    }
+
+    pub fn fixed(attack: f64, decay: f64, sustain_time: f64, sustain_level: f64, release: f64) -> Self {
+        Adsr {attack, decay, sustain: sustain_level, release, release_start: Some(attack + decay + sustain_time)}
     }
 
     pub fn release(&mut self, time_now: f64) {
