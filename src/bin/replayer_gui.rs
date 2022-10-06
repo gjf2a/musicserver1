@@ -7,36 +7,23 @@ use crossbeam_queue::SegQueue;
 use crate::egui::Ui;
 
 fn main() -> anyhow::Result<()> {
-    let mut midi_in = MidiInput::new("midir reading input");
-    let scenario = match midi_in {
-        Ok(ref mut midi_in) => {
-            midi_in.ignore(Ignore::None);
-            let in_ports = midi_in.ports();
-            match in_ports.len() {
-                0 => MidiScenario::NoInputPorts("No MIDI devices found".to_string()),
-                1 => MidiScenario::InputPortSelected {in_port: in_ports[0].clone()},
-                _ => MidiScenario::MultipleInputPorts {in_ports: in_ports.clone()}
-            }
-        }
-        Err(e) => {
-            MidiScenario::NoInputPorts(e.to_string())
-        }
-    };
     let native_options = eframe::NativeOptions::default();
-    eframe::run_native("Replayer", native_options, Box::new(|cc| Box::new(ReplayerApp::new(cc, scenario, midi_in.ok()))));
+    eframe::run_native("Replayer", native_options,
+                       Box::new(|cc| Box::new(ReplayerApp::new(cc))));
     Ok(())
 }
 
 #[derive(Clone)]
 enum MidiScenario {
+    StartingUp,
     NoInputPorts(String),
     InputPortSelected {in_port: MidiInputPort},
     MultipleInputPorts {in_ports: MidiInputPorts}
 }
 
 struct ReplayerApp {
-    midi_scenario: MidiScenario,
-    midi_in: Option<MidiInput>,
+    midi_scenario: Arc<Mutex<MidiScenario>>,
+    midi_in: Arc<Mutex<Option<MidiInput>>>,
     ai_name: String,
     ai_table: Arc<Mutex<AITable>>,
     synth_name: String,
@@ -48,7 +35,7 @@ struct ReplayerApp {
 }
 
 impl ReplayerApp {
-    fn new(_cc: &eframe::CreationContext<'_>, midi_state: MidiScenario, midi_in: Option<MidiInput>) -> Self {
+    fn new(_cc: &eframe::CreationContext<'_>) -> Self {
         // Customize egui here with cc.egui_ctx.set_fonts and cc.egui_ctx.set_visuals.
         // Restore app state using cc.storage (requires the "persistence" feature).
         // Use the cc.gl (a glow::Context) to create graphics shaders and buffers that you can use
@@ -63,9 +50,9 @@ impl ReplayerApp {
         let p_random_slider = Arc::new(Mutex::new(prob_slider()));
         let replay_delay_slider = Arc::new(Mutex::new(replay_slider()));
 
-        ReplayerApp {
-            midi_scenario: midi_state,
-            midi_in,
+        let app = ReplayerApp {
+            midi_scenario: Arc::new(Mutex::new(MidiScenario::StartingUp)),
+            midi_in: Arc::new(Mutex::new(None)),
             p_random_slider: p_random_slider.clone(),
             replay_delay_slider: replay_delay_slider.clone(),
             ai_table: ai_table.clone(),
@@ -74,7 +61,9 @@ impl ReplayerApp {
             synth_name,
             in_port: None,
             in_port_name: None
-        }
+        };
+        app.startup_thread();
+        app
     }
 
     fn main_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -112,6 +101,40 @@ impl ReplayerApp {
         slider.set_current(value);
     }
 
+    fn startup_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("Replayer: Looking for MIDI devices...");
+        });
+    }
+
+    fn startup_thread(&self) {
+        let midi_in_record = self.midi_in.clone();
+        let midi_scenario = self.midi_scenario.clone();
+        std::thread::spawn(move || {
+            let mut midi_in = MidiInput::new("midir reading input");
+            let scenario = match midi_in {
+                Ok(ref mut midi_in) => {
+                    midi_in.ignore(Ignore::None);
+                    let in_ports = midi_in.ports();
+                    match in_ports.len() {
+                        0 => MidiScenario::NoInputPorts("No MIDI devices found".to_string()),
+                        1 => MidiScenario::InputPortSelected {in_port: in_ports[0].clone()},
+                        _ => MidiScenario::MultipleInputPorts {in_ports: in_ports.clone()}
+                    }
+                }
+                Err(e) => {
+                    MidiScenario::NoInputPorts(e.to_string())
+                }
+            };
+            {
+                let mut midi_scenario = midi_scenario.lock().unwrap();
+                *midi_scenario = scenario;
+            }
+            let mut midi_in_record = midi_in_record.lock().unwrap();
+            *midi_in_record = midi_in.ok();
+        });
+    }
+
     fn no_midi_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame, message: &str) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Replayer: No MIDI Devices Available");
@@ -132,7 +155,10 @@ impl ReplayerApp {
                 }
             });
             if ui.button("Start Playing").clicked() {
-                self.midi_scenario = MidiScenario::InputPortSelected {in_port: self.in_port.clone().unwrap()};
+                {
+                    let mut midi_scenario = self.midi_scenario.lock().unwrap();
+                    *midi_scenario = MidiScenario::InputPortSelected { in_port: self.in_port.clone().unwrap() };
+                }
                 self.start_now();
             }
         });
@@ -142,7 +168,10 @@ impl ReplayerApp {
         let in_port = self.in_port.as_ref().unwrap().clone();
         self.set_in_port_name(&in_port);
         let mut midi_in = None;
-        mem::swap(&mut midi_in, &mut self.midi_in);
+        {
+            let mut self_midi_in = self.midi_in.lock().unwrap();
+            mem::swap(&mut midi_in, &mut *self_midi_in);
+        }
         let input2ai = Arc::new(SegQueue::new());
         let ai2output = Arc::new(SegQueue::new());
 
@@ -152,14 +181,21 @@ impl ReplayerApp {
     }
 
     fn set_in_port_name(&mut self, in_port: &MidiInputPort) {
-        self.in_port_name = self.midi_in.as_ref().and_then(|m| m.port_name(in_port).ok());
+        let midi_in = self.midi_in.lock().unwrap();
+        self.in_port_name = midi_in.as_ref().and_then(|m| m.port_name(in_port).ok());
     }
 }
 
 impl eframe::App for ReplayerApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        let scenario = self.midi_scenario.clone();
+        let scenario = {
+            let midi_scenario = self.midi_scenario.lock().unwrap();
+            midi_scenario.clone()
+        };
         match scenario {
+            MidiScenario::StartingUp => {
+                self.startup_screen(ctx, frame);
+            }
             MidiScenario::NoInputPorts(msg) => {
                 self.no_midi_screen(ctx, frame, msg.as_str());
             }
