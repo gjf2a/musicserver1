@@ -1,6 +1,5 @@
 use fundsp::hacker::{An, Envelope, lerp, lfo};
-use std::time::Instant;
-use std::fmt::{Debug, Formatter};
+use std::fmt::Debug;
 use std::sync::Arc;
 use crossbeam_utils::atomic::AtomicCell;
 
@@ -13,7 +12,7 @@ pub fn adsr_live(attack: f64, decay: f64, sustain: f64, release: f64, note_m: Ar
         }
         if note_m.load() == SoundMsg::Release {
             let mut adsr_inner = adsr.load();
-            adsr_inner.release();
+            adsr_inner.release(t);
             adsr.store(adsr_inner);
             note_m.store(SoundMsg::Play);
         }
@@ -29,9 +28,9 @@ pub enum SoundMsg {
     Play, Release, Stop
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub struct Adsr {
-    attack: f64, decay: f64, sustain: f64, release: f64, release_start: Option<Instant>
+    attack: f64, decay: f64, sustain: f64, release: f64, release_start: Option<f64>
 }
 
 impl Adsr {
@@ -39,8 +38,8 @@ impl Adsr {
         Adsr {attack, decay, sustain, release, release_start: None}
     }
 
-    pub fn release(&mut self) {
-        self.release_start = Some(Instant::now());
+    pub fn release(&mut self, time_now: f64) {
+        self.release_start = Some(time_now);
     }
 
     pub fn volume(&self, time: f64) -> Option<f64> {
@@ -55,7 +54,7 @@ impl Adsr {
                 }
             }
             Some(release_start) => {
-                let release_time = Self::elapsed(release_start);
+                let release_time = time - release_start;
                 if release_time > self.release {
                     None
                 } else {
@@ -63,16 +62,5 @@ impl Adsr {
                 }
             }
         }
-    }
-
-    fn elapsed(instant: Instant) -> f64 {instant.elapsed().as_secs_f64()}
-}
-
-impl Debug for Adsr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Adsr {{ attack: {} decay: {} sustain: {} release: {} release_start: {:?} }}",
-               self.attack, self.decay, self.sustain, self.release,
-               self.release_start.map(Self::elapsed)
-        )
     }
 }
