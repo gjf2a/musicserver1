@@ -81,10 +81,9 @@ impl ReplayerApp {
                 Self::radio_choice(ui, "Variation Synthesizer Sound", self.ai_synth_table.clone(), &mut self.ai_synth_name);
                 Self::radio_choice(ui, "Variation Algorithm", self.ai_table.clone(), &mut self.ai_name);
             });
-            let mut ai_table = self.ai_table.lock().unwrap();
-            ai_table.choose(self.ai_name.as_str());
-            let mut synth_table = self.human_synth_table.lock().unwrap();
-            synth_table.choose(self.human_synth_name.as_str());
+            Self::update_table_choice(self.ai_table.clone(), self.ai_name.as_str());
+            Self::update_table_choice(self.human_synth_table.clone(), self.human_synth_name.as_str());
+            Self::update_table_choice(self.ai_synth_table.clone(), self.ai_synth_name.as_str());
 
             Self::insert_slider(ui, self.p_random_slider.clone(), "Probability of Randomization");
             Self::insert_slider(ui, self.replay_delay_slider.clone(), "Replay Delay");
@@ -99,6 +98,11 @@ impl ReplayerApp {
                 ui.radio_value(tag, item.clone(), item.clone());
             }
         });
+    }
+
+    fn update_table_choice<T: Clone>(table: Arc<Mutex<ChooserTable<T>>>, tag: &str) {
+        let mut table = table.lock().unwrap();
+        table.choose(tag);
     }
 
     fn insert_slider(ui: &mut Ui, slider: Arc<Mutex<SliderValue<f64>>>, text: &str) {
