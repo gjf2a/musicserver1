@@ -25,13 +25,13 @@ pub fn start_output_thread(ai2output: Arc<SegQueue<MidiMsg>>, synth_table: Arc<M
         .expect("failed to find a default output device");
     let config = device.default_output_config().unwrap();
     match config.sample_format() {
-        SampleFormat::F32 => run_synth::<f32>(ai2output, device, config.into(), synth_table).unwrap(),
-        SampleFormat::I16 => run_synth::<i16>(ai2output, device, config.into(), synth_table).unwrap(),
-        SampleFormat::U16 => run_synth::<u16>(ai2output, device, config.into(), synth_table).unwrap(),
+        SampleFormat::F32 => run_synth::<f32>(ai2output, device, config.into(), synth_table),
+        SampleFormat::I16 => run_synth::<i16>(ai2output, device, config.into(), synth_table),
+        SampleFormat::U16 => run_synth::<u16>(ai2output, device, config.into(), synth_table)
     }
 }
 
-fn run_synth<T: Sample>(ai2output: Arc<SegQueue<MidiMsg>>, device: Device, config: StreamConfig, synth_table: Arc<Mutex<SynthTable>>) -> anyhow::Result<()> {
+fn run_synth<T: Sample>(ai2output: Arc<SegQueue<MidiMsg>>, device: Device, config: StreamConfig, synth_table: Arc<Mutex<SynthTable>>) {
     let mut run_inst = RunInstance {
         synth_table: synth_table.clone(),
         sample_rate: config.sample_rate.0 as f64,
@@ -46,8 +46,6 @@ fn run_synth<T: Sample>(ai2output: Arc<SegQueue<MidiMsg>>, device: Device, confi
     std::thread::spawn(move || {
         run_inst.listen_play_loop::<T>();
     });
-
-    Ok(())
 }
 
 #[derive(Clone)]
@@ -113,8 +111,7 @@ impl RunInstance {
         let channels = self.channels;
         std::thread::spawn(move || {
             let err_fn = |err| eprintln!("an error occurred on stream: {err}");
-            let stream = device.build_output_stream(
-                &config,
+            let stream = device.build_output_stream(&config,
                 move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
                     write_data(data, channels, &mut next_value)
                 },
