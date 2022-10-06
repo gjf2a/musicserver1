@@ -1,19 +1,24 @@
 use fundsp::hacker::{lerp11, envelope, midi_hz, pulse, sin_hz, triangle};
 use fundsp::prelude::AudioUnit64;
 use std::sync::Arc;
-use crate::{adsr_live, SoundMsg, ChooserTable, SynthFuncType, SynthTable, velocity2volume};
+use crate::{adsr_live, SoundMsg, ChooserTable, SynthFuncType, SynthTable, convert_midi, arc_vec};
 use crossbeam_utils::atomic::AtomicCell;
 
 pub fn make_synth_table() -> SynthTable {
-    let synth_funcs: Vec<(&str, Arc<SynthFuncType>)> = vec![
-            ("ADSR Triangle", Arc::new(adsr_tri))];
+    let synth_funcs: Vec<(&str, Arc<SynthFuncType>)> = arc_vec![
+        ("ADSR Pulse", adsr_pulse),
+        ("ADSR Triangle", adsr_tri)];
     ChooserTable::from(&synth_funcs)
 }
 
 pub fn adsr_tri(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
-    let pitch = midi_hz(pitch as f64);
-    let volume = velocity2volume(volume.into());
+    let (pitch, volume) = convert_midi(pitch, volume);
     Box::new(envelope(move |_t| pitch) >> triangle() * adsr_live(0.2, 0.2, 0.4, 0.2, note_m) * volume)
+}
+
+pub fn adsr_pulse(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
+    let (pitch, volume) = convert_midi(pitch, volume);
+    Box::new(envelope(move |t| (pitch, lerp11(0.01, 0.99, sin_hz(0.05, t)))) >> pulse() * adsr_live(0.2, 0.2, 0.4, 0.2, note_m) * volume)
 }
 
 /*

@@ -3,15 +3,20 @@ use std::sync::{Arc, Mutex};
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
-use crate::ChooserTable;
+use crate::{ChooserTable, velocity2volume};
 use fundsp::prelude::AudioUnit64;
 use cpal::{Device, StreamConfig, Sample, SampleFormat};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use fundsp::hacker::midi_hz;
 use crate::adsr::SoundMsg;
 
 // Invaluable help with the function type: https://stackoverflow.com/a/59442384/906268
 pub type SynthFuncType = dyn Fn(u8,u8,Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> + Send + Sync;
 pub type SynthTable = ChooserTable<Arc<SynthFuncType>>;
+
+pub fn convert_midi(note: u8, velocity: u8) -> (f64, f64) {
+    (midi_hz(note as f64), (velocity2volume(velocity.into())))
+}
 
 pub fn start_output_thread(ai2output: Arc<SegQueue<MidiMsg>>, synth_table: Arc<Mutex<SynthTable>>) {
     let host = cpal::default_host();
@@ -117,13 +122,17 @@ impl RunInstance {
             ).unwrap();
 
             stream.play().unwrap();
-            loop {
-                match note_m.load() {
-                    SoundMsg::Stop => break,
-                    _ => {}
-                }
-            }
+            Self::loop_until_stop(note_m);
         });
+    }
+
+    fn loop_until_stop(note_m: Arc<AtomicCell<SoundMsg>>) {
+        loop {
+            match note_m.load() {
+                SoundMsg::Stop => break,
+                _ => {}
+            }
+        }
     }
 }
 
