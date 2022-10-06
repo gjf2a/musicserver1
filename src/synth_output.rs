@@ -89,8 +89,8 @@ impl RunInstance {
             (synth_table.current_choice())(note, velocity, note_m.clone())
         };
         sound.reset(Some(self.sample_rate));
-        self.play_sound::<T>(sound, note_m);
         self.live_note = Some(note);
+        self.play_sound::<T>(sound, note_m);
     }
 
     fn note_off(&mut self, note: u8) {

@@ -55,7 +55,7 @@ impl Adsr {
                 }
             }
             Some(release_start) => {
-                let release_time = time - Self::elapsed(release_start);
+                let release_time = Self::elapsed(release_start);
                 if release_time > self.release {
                     None
                 } else {
