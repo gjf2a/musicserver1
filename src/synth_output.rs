@@ -18,22 +18,23 @@ pub fn convert_midi(note: u8, velocity: u8) -> (f64, f64) {
     (midi_hz(note as f64), (velocity2volume(velocity.into())))
 }
 
-pub fn start_output_thread(ai2output: Arc<SegQueue<MidiMsg>>, synth_table: Arc<Mutex<SynthTable>>) {
+pub fn start_output_thread(ai2output: Arc<SegQueue<MidiMsg>>, human_synth_table: Arc<Mutex<SynthTable>>, ai_synth_table: Arc<Mutex<SynthTable>>) {
     let host = cpal::default_host();
     let device = host
         .default_output_device()
         .expect("failed to find a default output device");
     let config = device.default_output_config().unwrap();
     match config.sample_format() {
-        SampleFormat::F32 => run_synth::<f32>(ai2output, device, config.into(), synth_table),
-        SampleFormat::I16 => run_synth::<i16>(ai2output, device, config.into(), synth_table),
-        SampleFormat::U16 => run_synth::<u16>(ai2output, device, config.into(), synth_table)
+        SampleFormat::F32 => run_synth::<f32>(ai2output, device, config.into(), human_synth_table, ai_synth_table),
+        SampleFormat::I16 => run_synth::<i16>(ai2output, device, config.into(), human_synth_table, ai_synth_table),
+        SampleFormat::U16 => run_synth::<u16>(ai2output, device, config.into(), human_synth_table, ai_synth_table)
     }
 }
 
-fn run_synth<T: Sample>(ai2output: Arc<SegQueue<MidiMsg>>, device: Device, config: StreamConfig, synth_table: Arc<Mutex<SynthTable>>) {
+fn run_synth<T: Sample>(ai2output: Arc<SegQueue<MidiMsg>>, device: Device, config: StreamConfig, human_synth_table: Arc<Mutex<SynthTable>>, ai_synth_table: Arc<Mutex<SynthTable>>) {
     let mut run_inst = RunInstance {
-        synth_table: synth_table.clone(),
+        human_synth_table: human_synth_table.clone(),
+        ai_synth_table: ai_synth_table.clone(),
         sample_rate: config.sample_rate.0 as f64,
         channels: config.channels as usize,
         ai2output: ai2output.clone(),
@@ -50,7 +51,8 @@ fn run_synth<T: Sample>(ai2output: Arc<SegQueue<MidiMsg>>, device: Device, confi
 
 #[derive(Clone)]
 struct RunInstance {
-    synth_table: Arc<Mutex<SynthTable>>,
+    human_synth_table: Arc<Mutex<SynthTable>>,
+    ai_synth_table: Arc<Mutex<SynthTable>>,
     sample_rate: f64,
     channels: usize,
     ai2output: Arc<SegQueue<MidiMsg>>,
@@ -85,7 +87,7 @@ impl RunInstance {
         let note_m = Arc::new(AtomicCell::new(SoundMsg::Play));
         self.sound_thread_messages.push_back(note_m.clone());
         let mut sound = {
-            let synth_table = self.synth_table.lock().unwrap();
+            let synth_table = self.human_synth_table.lock().unwrap();
             (synth_table.current_choice())(note, velocity, note_m.clone())
         };
         sound.reset(Some(self.sample_rate));

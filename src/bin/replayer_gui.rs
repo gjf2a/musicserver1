@@ -26,8 +26,10 @@ struct ReplayerApp {
     midi_in: Arc<Mutex<Option<MidiInput>>>,
     ai_name: String,
     ai_table: Arc<Mutex<AITable>>,
-    synth_name: String,
-    synth_table: Arc<Mutex<SynthTable>>,
+    human_synth_name: String,
+    human_synth_table: Arc<Mutex<SynthTable>>,
+    ai_synth_name: String,
+    ai_synth_table: Arc<Mutex<SynthTable>>,
     p_random_slider: Arc<Mutex<SliderValue<f64>>>,
     replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
     in_port: Option<MidiInputPort>,
@@ -42,11 +44,14 @@ impl ReplayerApp {
         // for e.g. egui::PaintCallback.
 
         let ai_table = make_ai_table();
-        let synth_table = make_synth_table();
+        let human_synth_table = make_synth_table();
+        let ai_synth_table = make_synth_table();
         let ai_name = ai_table.current_name().to_string();
-        let synth_name = synth_table.current_name().to_string();
+        let human_synth_name = human_synth_table.current_name().to_string();
+        let ai_synth_name = ai_synth_table.current_name().to_string();
         let ai_table = Arc::new(Mutex::new(ai_table));
-        let synth_table = Arc::new(Mutex::new(synth_table));
+        let human_synth_table = Arc::new(Mutex::new(human_synth_table));
+        let ai_synth_table = Arc::new(Mutex::new(ai_synth_table));
         let p_random_slider = Arc::new(Mutex::new(prob_slider()));
         let replay_delay_slider = Arc::new(Mutex::new(replay_slider()));
 
@@ -56,9 +61,11 @@ impl ReplayerApp {
             p_random_slider: p_random_slider.clone(),
             replay_delay_slider: replay_delay_slider.clone(),
             ai_table: ai_table.clone(),
-            synth_table: synth_table.clone(),
+            human_synth_table: human_synth_table.clone(),
+            ai_synth_name,
+            ai_synth_table: ai_synth_table.clone(),
             ai_name,
-            synth_name,
+            human_synth_name,
             in_port: None,
             in_port_name: None
         };
@@ -68,26 +75,34 @@ impl ReplayerApp {
 
     fn main_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Replayer");
-            ui.label(format!("Using {}", self.in_port_name.as_ref().unwrap()));
+            ui.heading(format!("Replayer ({})", self.in_port_name.as_ref().unwrap()));
             ui.horizontal(|ui| {
                 ui.vertical(|ui| {
+                    ui.label("Human Synthesizer Sound");
+                    let synth_table = self.human_synth_table.lock().unwrap();
+                    for func_name in synth_table.name_vec() {
+                        ui.radio_value(&mut self.human_synth_name, func_name.clone(), func_name.clone());
+                    }
+                });
+                ui.vertical(|ui| {
+                    ui.label("Variation Synthesizer Sound");
+                    let synth_table = self.ai_synth_table.lock().unwrap();
+                    for func_name in synth_table.name_vec() {
+                        ui.radio_value(&mut self.ai_synth_name, func_name.clone(), func_name.clone());
+                    }
+                });
+                ui.vertical(|ui| {
+                    ui.label("Variation Algorithm");
                     let ai_table = self.ai_table.lock().unwrap();
                     for func_name in ai_table.name_vec() {
                         ui.radio_value(&mut self.ai_name, func_name.clone(), func_name.clone());
                     }
                 });
-                ui.vertical(|ui| {
-                    let synth_table = self.synth_table.lock().unwrap();
-                    for func_name in synth_table.name_vec() {
-                        ui.radio_value(&mut self.synth_name, func_name.clone(), func_name.clone());
-                    }
-                });
             });
             let mut ai_table = self.ai_table.lock().unwrap();
             ai_table.choose(self.ai_name.as_str());
-            let mut synth_table = self.synth_table.lock().unwrap();
-            synth_table.choose(self.synth_name.as_str());
+            let mut synth_table = self.human_synth_table.lock().unwrap();
+            synth_table.choose(self.human_synth_name.as_str());
 
             Self::insert_slider(ui, self.p_random_slider.clone(), "Probability of Randomization");
             Self::insert_slider(ui, self.replay_delay_slider.clone(), "Replay Delay");
@@ -175,7 +190,7 @@ impl ReplayerApp {
         let input2ai = Arc::new(SegQueue::new());
         let ai2output = Arc::new(SegQueue::new());
 
-        start_output_thread(ai2output.clone(), self.synth_table.clone());
+        start_output_thread(ai2output.clone(), self.human_synth_table.clone(), self.ai_synth_table.clone());
         start_ai_thread(self.ai_table.clone(), input2ai.clone(), ai2output, self.replay_delay_slider.clone(), self.p_random_slider.clone());
         start_input_thread(input2ai, midi_in.unwrap(), self.in_port.as_ref().unwrap().clone());
     }
