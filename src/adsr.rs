@@ -28,7 +28,7 @@ pub fn adsr_fixed(attack: f64, decay: f64, sustain: f64, sustain_level: f64, rel
     lfo(move |time_s| adsr_level(time_s, attack, decay, sustain, sustain_level, release))
 }
 
-pub fn adsr_level(time_s: f64, attack: f64, decay: f64, sustain: f64, sustain_level: f64, release: f64) -> f64 {
+pub fn adsr_level(time_s: f64, attack: f64, decay: f64, sustain_time: f64, sustain_level: f64, release: f64) -> f64 {
     let mut time_s = time_s;
     if time_s < attack {
         return lerp(0.0, 1.0, time_s / attack);
@@ -38,7 +38,7 @@ pub fn adsr_level(time_s: f64, attack: f64, decay: f64, sustain: f64, sustain_le
         return lerp(1.0, sustain_level, time_s / decay);
     }
     time_s -= decay;
-    if time_s < sustain {
+    if time_s < sustain_time {
         return sustain_level;
     }
     time_s -= release;
