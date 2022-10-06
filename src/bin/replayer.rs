@@ -4,7 +4,7 @@ use midir::{Ignore, MidiInput, MidiInputPort};
 use midi_msg::MidiMsg;
 use read_input::prelude::*;
 use crossbeam_queue::SegQueue;
-use musicserver1::{make_ai_table, start_ai_thread, prob_slider, replay_slider, make_synth_table, start_output_thread, start_input, user_pick_element};
+use musicserver1::{make_ai_table, start_ai_thread, prob_slider, replay_slider, make_synth_table, start_output_thread, start_input, user_pick_element, SynthChoice};
 
 // MIDI input code based on:
 //   https://github.com/Boddlnagg/midir/blob/master/examples/test_read_input.rs
@@ -31,10 +31,15 @@ fn main() -> anyhow::Result<()> {
 }
 
 
-fn run_output(ai2output: Arc<SegQueue<MidiMsg>>) {
-    let mut synth_table = make_synth_table();
-    synth_table.console_pick();
-    start_output_thread(ai2output, Arc::new(Mutex::new(synth_table)));
+fn run_output(ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>) {
+    println!("Select synth sound for human");
+    let mut human_synth_table = make_synth_table();
+    human_synth_table.console_pick();
+    println!("Select synth sound for playback");
+    let mut ai_synth_table = make_synth_table();
+    ai_synth_table.console_pick();
+    start_output_thread(ai2output, Arc::new(Mutex::new(human_synth_table)),
+                        Arc::new(Mutex::new(ai_synth_table)));
 }
 
 fn run_input(input2ai: Arc<SegQueue<MidiMsg>>, midi_in: MidiInput, in_port: MidiInputPort) -> anyhow::Result<()> {
@@ -48,7 +53,7 @@ fn run_input(input2ai: Arc<SegQueue<MidiMsg>>, midi_in: MidiInput, in_port: Midi
     Ok(())
 }
 
-fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<MidiMsg>>) {
+fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>) {
     let mut ai_table = make_ai_table();
     ai_table.console_pick();
     let mut p_random = prob_slider();
