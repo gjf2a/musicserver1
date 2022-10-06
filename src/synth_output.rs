@@ -81,7 +81,7 @@ impl RunInstance {
         loop {
             match self.sound_thread_messages.pop_front() {
                 None => break,
-                Some(m) => m.store(SoundMsg::Stop)
+                Some(m) => m.store(SoundMsg::Finished)
             }
         }
         let note_m = Arc::new(AtomicCell::new(SoundMsg::Play));
@@ -131,7 +131,7 @@ impl RunInstance {
     fn loop_until_stop(note_m: Arc<AtomicCell<SoundMsg>>) {
         loop {
             match note_m.load() {
-                SoundMsg::Stop => break,
+                SoundMsg::Finished => break,
                 _ => {}
             }
         }

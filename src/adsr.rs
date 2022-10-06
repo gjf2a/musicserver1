@@ -15,7 +15,7 @@ pub fn adsr_live(attack: f64, decay: f64, sustain: f64, release: f64, note_m: Ar
         }
         match adsr.load().volume(t) {
             Some(v) => v,
-            None => {note_m.store(SoundMsg::Stop); 0.0}
+            None => {note_m.store(SoundMsg::Finished); 0.0}
         }
     })
 }
@@ -25,14 +25,14 @@ pub fn adsr_fixed(attack: f64, decay: f64, sustain_time: f64, sustain_level: f64
     lfo(move |t| {
         match adsr.load().volume(t) {
             Some(v) => v,
-            None => {note_m.store(SoundMsg::Stop); 0.0}
+            None => {note_m.store(SoundMsg::Finished); 0.0}
         }
     })
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum SoundMsg {
-    Play, Release, Stop
+    Play, Release, Finished
 }
 
 #[derive(Copy, Clone, Debug)]

@@ -79,7 +79,7 @@ fn run_synth<T: Sample>(incoming_midi: Arc<SegQueue<MidiMsg>>, device: Device, c
                             loop {
                                 match sound_thread_messages.pop_front() {
                                     None => break,
-                                    Some(m) => m.store(SoundMsg::Stop)
+                                    Some(m) => m.store(SoundMsg::Finished)
                                 }
                             }
                             let note_m = Arc::new(AtomicCell::new(SoundMsg::Play));
@@ -113,7 +113,7 @@ fn start_sound<T: Sample>(note: u8, velocity: u8, note_m: Arc<AtomicCell<SoundMs
         stream.play().unwrap();
         loop {
             match note_m.load() {
-                SoundMsg::Stop => break,
+                SoundMsg::Finished => break,
                 _ => {}
             }
         }
@@ -133,11 +133,7 @@ fn write_data<T: Sample>(output: &mut [T], channels: usize, next_sample: &mut dy
         let right: T = Sample::from::<f32>(&(sample.1 as f32));
 
         for (channel, sample) in frame.iter_mut().enumerate() {
-            if channel & 1 == 0 {
-                *sample = left;
-            } else {
-                *sample = right;
-            }
+            *sample = if channel & 1 == 0 {left} else {right};
         }
     }
 }
