@@ -1,7 +1,7 @@
 use std::mem;
 use eframe::egui;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
-use musicserver1::{SliderValue, AITable, SynthTable, start_output_thread, start_input_thread, start_ai_thread, make_ai_table, make_synth_table, prob_slider, replay_slider};
+use musicserver1::{SliderValue, AITable, SynthTable, start_output_thread, start_input_thread, start_ai_thread, make_ai_table, make_synth_table, prob_slider, replay_slider, ChooserTable};
 use std::sync::{Arc, Mutex};
 use crossbeam_queue::SegQueue;
 use crate::egui::Ui;
@@ -77,27 +77,9 @@ impl ReplayerApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading(format!("Replayer ({})", self.in_port_name.as_ref().unwrap()));
             ui.horizontal(|ui| {
-                ui.vertical(|ui| {
-                    ui.label("Human Synthesizer Sound");
-                    let synth_table = self.human_synth_table.lock().unwrap();
-                    for func_name in synth_table.name_vec() {
-                        ui.radio_value(&mut self.human_synth_name, func_name.clone(), func_name.clone());
-                    }
-                });
-                ui.vertical(|ui| {
-                    ui.label("Variation Synthesizer Sound");
-                    let synth_table = self.ai_synth_table.lock().unwrap();
-                    for func_name in synth_table.name_vec() {
-                        ui.radio_value(&mut self.ai_synth_name, func_name.clone(), func_name.clone());
-                    }
-                });
-                ui.vertical(|ui| {
-                    ui.label("Variation Algorithm");
-                    let ai_table = self.ai_table.lock().unwrap();
-                    for func_name in ai_table.name_vec() {
-                        ui.radio_value(&mut self.ai_name, func_name.clone(), func_name.clone());
-                    }
-                });
+                Self::radio_choice(ui, "Human Synthesizer Sound", self.human_synth_table.clone(), &mut self.human_synth_name);
+                Self::radio_choice(ui, "Variation Synthesizer Sound", self.ai_synth_table.clone(), &mut self.ai_synth_name);
+                Self::radio_choice(ui, "Variation Algorithm", self.ai_table.clone(), &mut self.ai_name);
             });
             let mut ai_table = self.ai_table.lock().unwrap();
             ai_table.choose(self.ai_name.as_str());
@@ -106,6 +88,16 @@ impl ReplayerApp {
 
             Self::insert_slider(ui, self.p_random_slider.clone(), "Probability of Randomization");
             Self::insert_slider(ui, self.replay_delay_slider.clone(), "Replay Delay");
+        });
+    }
+
+    fn radio_choice<T: Clone>(ui: &mut Ui, header: &str, table: Arc<Mutex<ChooserTable<T>>>, tag: &mut String) {
+        ui.vertical(|ui| {
+            let table = table.lock().unwrap();
+            ui.label(header);
+            for item in table.name_vec() {
+                ui.radio_value(tag, item.clone(), item.clone());
+            }
         });
     }
 
