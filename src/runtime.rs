@@ -3,6 +3,8 @@ use std::ops::RangeInclusive;
 use read_input::InputBuild;
 use read_input::prelude::input;
 
+pub const SHOW_MIDI_MSG: bool = true;
+
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum SynthChoice {
     Human, Ai

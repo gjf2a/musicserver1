@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
-use crate::{ChooserTable, SynthChoice, velocity2volume};
+use crate::{ChooserTable, SHOW_MIDI_MSG, SynthChoice, velocity2volume};
 use fundsp::prelude::AudioUnit64;
 use cpal::{Device, StreamConfig, Sample, SampleFormat};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -66,6 +66,9 @@ impl RunInstance {
     fn listen_play_loop<T: Sample>(&mut self) {
         loop {
             if let Some((choice, midi)) = self.ai2output.pop() {
+                if SHOW_MIDI_MSG {
+                    println!("synth_output: {midi:?}");
+                }
                 if let MidiMsg::ChannelVoice { channel:_, msg} = midi {
                     match msg {
                         ChannelVoiceMsg::NoteOff {note, velocity:_} => {self.note_off(note);}
