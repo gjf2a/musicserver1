@@ -3,7 +3,7 @@ use std::ops::RangeInclusive;
 use read_input::InputBuild;
 use read_input::prelude::input;
 
-pub const SHOW_MIDI_MSG: bool = true;
+pub const SHOW_MIDI_MSG: bool = false;
 
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum SynthChoice {
