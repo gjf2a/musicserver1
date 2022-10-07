@@ -212,6 +212,13 @@ impl Melody {
         mode_by_weight!(mode_weights).unwrap()
     }
 
+    pub fn diatonic_intervals(&self) -> Vec<Option<i16>> {
+        let scale = self.best_scale_for();
+        (0..self.notes.len() - 1)
+            .map(|i| scale.diatonic_steps_between(self.notes[i].pitch, self.notes[i+1].pitch))
+            .collect()
+    }
+
     /// Returns a Vec containing consolidated `Note` objects.
     /// Two or more `Note` objects are consolidated when they
     /// are consecutive in sequence with the same pitch. The `usize`

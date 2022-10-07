@@ -5,6 +5,7 @@ mod adsr;
 mod midi_input;
 mod ai_variation;
 mod synth_output;
+mod subsequence_finder;
 
 pub use analyzer::*;
 pub use runtime::*;

@@ -26,6 +26,7 @@ pub fn start_ai_thread(ai_table: Arc<Mutex<AITable>>, input2ai: Arc<SegQueue<Mid
         let mut performer = Performer::new(p_random_slider.clone(), ai_table.clone(), ai2output.clone());
         loop {
             let player_melody = recorder.record();
+            println!("Intervals: {:?}", player_melody.diatonic_intervals());
             performer.perform_variation(&player_melody);
         }
     });

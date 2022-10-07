@@ -6,7 +6,7 @@ use read_input::prelude::*;
 use cpal::{Device, Sample, StreamConfig, SampleFormat};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use std::sync::Arc;
-use fundsp::hacker::{lerp11, envelope, midi_hz, pulse, sin_hz, triangle};
+use fundsp::hacker::{envelope, midi_hz, triangle};
 use fundsp::prelude::AudioUnit64;
 use crossbeam_utils::atomic::AtomicCell;
 use musicserver1::{SoundMsg,adsr_live};
