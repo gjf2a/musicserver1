@@ -14,3 +14,4 @@ pub use adsr::*;
 pub use midi_input::*;
 pub use ai_variation::*;
 pub use synth_output::*;
+pub use subsequence_finder::*;
