@@ -1,29 +1,45 @@
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use crate::{arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue, SynthChoice};
 use crossbeam_queue::SegQueue;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
-use crate::{Melody, MelodyMaker, PendingNote, SliderValue, ChooserTable, arc_vec, SynthChoice};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
-pub type AIFuncType = dyn Fn(&mut MelodyMaker,&Melody,f64)->Melody + Send + Sync;
+pub type AIFuncType = dyn Fn(&mut MelodyMaker, &Melody, f64) -> Melody + Send + Sync;
 pub type AITable = ChooserTable<Arc<AIFuncType>>;
 
 pub fn make_ai_table() -> AITable {
     let ai_funcs: Vec<(&str, Arc<AIFuncType>)> = arc_vec![
-            ("Bypass", |_,_,_| Melody::new()),
-            ("Playback", |_, melody, _| melody.clone()),
-            ("Greedy Choice", MelodyMaker::create_variation_1),
-            ("Emphasis-Anchored Choice", MelodyMaker::create_variation_2),
-            ("Consistent Figure Replacement", MelodyMaker::create_variation_4),
-            ("Consistent Anchored Replacement", MelodyMaker::create_variation_3)];
+        ("Bypass", |_, _, _| Melody::new()),
+        ("Playback", |_, melody, _| melody.clone()),
+        ("Greedy Choice", MelodyMaker::create_variation_1),
+        ("Emphasis-Anchored Choice", MelodyMaker::create_variation_2),
+        (
+            "Consistent Figure Replacement",
+            MelodyMaker::create_variation_4
+        ),
+        (
+            "Consistent Anchored Replacement",
+            MelodyMaker::create_variation_3
+        )
+    ];
     ChooserTable::from(&ai_funcs)
 }
 
-pub fn start_ai_thread(ai_table: Arc<Mutex<AITable>>, input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<(SynthChoice,MidiMsg)>>,
-                       replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
-                       p_random_slider: Arc<Mutex<SliderValue<f64>>>) {
+pub fn start_ai_thread(
+    ai_table: Arc<Mutex<AITable>>,
+    input2ai: Arc<SegQueue<MidiMsg>>,
+    ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
+    replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
+    p_random_slider: Arc<Mutex<SliderValue<f64>>>,
+) {
     std::thread::spawn(move || {
-        let mut recorder = PlayerRecorder::new(input2ai.clone(), ai2output.clone(), replay_delay_slider.clone());
-        let mut performer = Performer::new(p_random_slider.clone(), ai_table.clone(), ai2output.clone());
+        let mut recorder = PlayerRecorder::new(
+            input2ai.clone(),
+            ai2output.clone(),
+            replay_delay_slider.clone(),
+        );
+        let mut performer =
+            Performer::new(p_random_slider.clone(), ai_table.clone(), ai2output.clone());
         loop {
             let player_melody = recorder.record();
             println!("Intervals: {:?}", player_melody.diatonic_intervals());
@@ -34,16 +50,24 @@ pub fn start_ai_thread(ai_table: Arc<Mutex<AITable>>, input2ai: Arc<SegQueue<Mid
 
 struct PlayerRecorder {
     input2ai: Arc<SegQueue<MidiMsg>>,
-    ai2output: Arc<SegQueue<(SynthChoice,MidiMsg)>>,
+    ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
     replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
     waiting: Option<PendingNote>,
-    player_melody: Melody
+    player_melody: Melody,
 }
 
 impl PlayerRecorder {
-    fn new(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<(SynthChoice,MidiMsg)>>, replay_delay_slider: Arc<Mutex<SliderValue<f64>>>) -> Self {
+    fn new(
+        input2ai: Arc<SegQueue<MidiMsg>>,
+        ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
+        replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
+    ) -> Self {
         PlayerRecorder {
-            input2ai, ai2output, replay_delay_slider, waiting: None, player_melody: Melody::new()
+            input2ai,
+            ai2output,
+            replay_delay_slider,
+            waiting: None,
+            player_melody: Melody::new(),
         }
     }
 
@@ -68,7 +92,8 @@ impl PlayerRecorder {
     fn handle_incoming(&mut self, msg: MidiMsg) {
         if let MidiMsg::ChannelVoice { channel: _, msg } = msg {
             match msg {
-                ChannelVoiceMsg::NoteOff { note, velocity } | ChannelVoiceMsg::NoteOn { note, velocity } => {
+                ChannelVoiceMsg::NoteOff { note, velocity }
+                | ChannelVoiceMsg::NoteOn { note, velocity } => {
                     if let Some(pending_note) = self.waiting {
                         self.player_melody.add(pending_note.into());
                     }
@@ -95,12 +120,21 @@ struct Performer {
     maker: MelodyMaker,
     p_random_slider: Arc<Mutex<SliderValue<f64>>>,
     ai_table: Arc<Mutex<AITable>>,
-    ai2output: Arc<SegQueue<(SynthChoice,MidiMsg)>>
+    ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
 }
 
 impl Performer {
-    fn new(p_random_slider: Arc<Mutex<SliderValue<f64>>>, ai_table: Arc<Mutex<AITable>>, ai2output: Arc<SegQueue<(SynthChoice,MidiMsg)>>) -> Self {
-        Performer {maker: MelodyMaker::new(), p_random_slider, ai_table, ai2output}
+    fn new(
+        p_random_slider: Arc<Mutex<SliderValue<f64>>>,
+        ai_table: Arc<Mutex<AITable>>,
+        ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
+    ) -> Self {
+        Performer {
+            maker: MelodyMaker::new(),
+            p_random_slider,
+            ai_table,
+            ai2output,
+        }
     }
 
     fn perform_variation(&mut self, player_melody: &Melody) {

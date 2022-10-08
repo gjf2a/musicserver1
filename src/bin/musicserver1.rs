@@ -22,9 +22,9 @@ play_melody reply, :additive_2
 
  */
 
-use std::io::{Write, BufReader, BufRead};
-use std::net::{TcpListener, TcpStream};
 use musicserver1::{Melody, MelodyMaker};
+use std::io::{BufRead, BufReader, Write};
+use std::net::{TcpListener, TcpStream};
 
 fn main() -> std::io::Result<()> {
     let listener = TcpListener::bind("127.0.0.1:8888")?;
@@ -52,15 +52,23 @@ fn handle_client(stream: &mut TcpStream, maker: &mut MelodyMaker) -> std::io::Re
         println!("Echoing...");
         write!(stream, "{}", melody.sonic_pi_list())
     } else if cmd_params.len() == 2 && cmd_params[0] == "create_variation_1" {
-        invoke_variation_func(stream, maker, &melody, &cmd_params, |mk, m, p| mk.create_variation_1(m, p))
+        invoke_variation_func(stream, maker, &melody, &cmd_params, |mk, m, p| {
+            mk.create_variation_1(m, p)
+        })
     } else if cmd_params.len() == 2 && cmd_params[0] == "create_variation_2" {
-        invoke_variation_func(stream, maker, &melody, &cmd_params, |mk, m, p| mk.create_variation_2(m, p))
+        invoke_variation_func(stream, maker, &melody, &cmd_params, |mk, m, p| {
+            mk.create_variation_2(m, p)
+        })
     } else if cmd_params.len() == 2 && cmd_params[0] == "create_variation_3" {
-        invoke_variation_func(stream, maker, &melody, &cmd_params, |mk, m, p| mk.create_variation_3(m, p))?;
+        invoke_variation_func(stream, maker, &melody, &cmd_params, |mk, m, p| {
+            mk.create_variation_3(m, p)
+        })?;
         maker.print_figure_mappings();
         Ok(())
     } else if cmd_params.len() == 2 && cmd_params[0] == "create_variation_4" {
-        invoke_variation_func(stream, maker, &melody, &cmd_params, |mk, m, p| mk.create_variation_4(m, p))?;
+        invoke_variation_func(stream, maker, &melody, &cmd_params, |mk, m, p| {
+            mk.create_variation_4(m, p)
+        })?;
         maker.print_figure_mappings();
         Ok(())
     } else {
@@ -69,7 +77,13 @@ fn handle_client(stream: &mut TcpStream, maker: &mut MelodyMaker) -> std::io::Re
     }
 }
 
-fn invoke_variation_func<V:Fn(&mut MelodyMaker,&Melody,f64)->Melody>(stream: &mut TcpStream, maker: &mut MelodyMaker, melody: &Melody, cmd_params: &Vec<&str>, make_variation: V) -> std::io::Result<()> {
+fn invoke_variation_func<V: Fn(&mut MelodyMaker, &Melody, f64) -> Melody>(
+    stream: &mut TcpStream,
+    maker: &mut MelodyMaker,
+    melody: &Melody,
+    cmd_params: &Vec<&str>,
+    make_variation: V,
+) -> std::io::Result<()> {
     let p: f64 = cmd_params[1].parse().unwrap();
     let reply = make_variation(maker, melody, p);
     println!("Sending {}", reply.sonic_pi_list());

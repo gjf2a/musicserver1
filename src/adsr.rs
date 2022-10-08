@@ -1,24 +1,59 @@
-use fundsp::hacker::{An, Envelope, lerp, lfo};
+use crossbeam_utils::atomic::AtomicCell;
+use fundsp::hacker::{lerp, lfo, An, Envelope};
 use std::fmt::Debug;
 use std::sync::Arc;
-use crossbeam_utils::atomic::AtomicCell;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum SoundMsg {
-    Play, Release, Finished
+    Play,
+    Release,
+    Finished,
 }
 
 /// Credit: https://stackoverflow.com/a/73205224/906268 for showing how to write the return type
-pub fn adsr_live(attack: f64, decay: f64, sustain: f64, release: f64, note_m: Arc<AtomicCell<SoundMsg>>) -> An<Envelope<f64, f64, impl Fn(f64)->f64 + 'static, f64>> {
+pub fn adsr_live(
+    attack: f64,
+    decay: f64,
+    sustain: f64,
+    release: f64,
+    note_m: Arc<AtomicCell<SoundMsg>>,
+) -> An<Envelope<f64, f64, impl Fn(f64) -> f64 + Sized, f64>> {
     adsr(attack, decay, sustain, release, None, note_m)
 }
 
-pub fn adsr_fixed(attack: f64, decay: f64, sustain_time: f64, sustain_level: f64, release: f64, note_m: Arc<AtomicCell<SoundMsg>>) -> An<Envelope<f64, f64, impl Fn(f64)->f64 + 'static, f64>> {
-    adsr(attack, decay, sustain_level, release, Some(attack + decay + sustain_time), note_m)
+pub fn adsr_fixed(
+    attack: f64,
+    decay: f64,
+    sustain_time: f64,
+    sustain_level: f64,
+    release: f64,
+    note_m: Arc<AtomicCell<SoundMsg>>,
+) -> An<Envelope<f64, f64, impl Fn(f64) -> f64 + Sized, f64>> {
+    adsr(
+        attack,
+        decay,
+        sustain_level,
+        release,
+        Some(attack + decay + sustain_time),
+        note_m,
+    )
 }
 
-fn adsr(attack: f64, decay: f64, sustain: f64, release: f64, release_start: Option<f64>, note_m: Arc<AtomicCell<SoundMsg>>) -> An<Envelope<f64, f64, impl Fn(f64)->f64 + 'static, f64>> {
-    let adsr = AtomicCell::new(Adsr {attack, decay, sustain, release, release_start});
+fn adsr(
+    attack: f64,
+    decay: f64,
+    sustain: f64,
+    release: f64,
+    release_start: Option<f64>,
+    note_m: Arc<AtomicCell<SoundMsg>>,
+) -> An<Envelope<f64, f64, impl Fn(f64) -> f64 + Sized, f64>> {
+    let adsr = AtomicCell::new(Adsr {
+        attack,
+        decay,
+        sustain,
+        release,
+        release_start,
+    });
     lfo(move |t| {
         if note_m.load() == SoundMsg::Release {
             let mut adsr_inner = adsr.load();
@@ -28,14 +63,21 @@ fn adsr(attack: f64, decay: f64, sustain: f64, release: f64, release_start: Opti
         }
         match adsr.load().volume(t) {
             Some(v) => v,
-            None => {note_m.store(SoundMsg::Finished); 0.0}
+            None => {
+                note_m.store(SoundMsg::Finished);
+                0.0
+            }
         }
     })
 }
 
 #[derive(Copy, Clone, Debug)]
 struct Adsr {
-    attack: f64, decay: f64, sustain: f64, release: f64, release_start: Option<f64>
+    attack: f64,
+    decay: f64,
+    sustain: f64,
+    release: f64,
+    release_start: Option<f64>,
 }
 
 impl Adsr {
