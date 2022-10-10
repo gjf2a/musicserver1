@@ -75,6 +75,7 @@ fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<(SynthChoice
         ai2output,
         Arc::new(Mutex::new(replay_delay)),
         Arc::new(Mutex::new(p_random)),
+        false,
     );
 }
 

@@ -258,6 +258,7 @@ impl ReplayerApp {
             ai2output,
             self.replay_delay_slider.clone(),
             self.p_random_slider.clone(),
+            true
         );
         start_input_thread(
             input2ai,

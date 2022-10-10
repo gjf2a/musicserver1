@@ -43,7 +43,7 @@ pub fn velocity2volume(midi_velocity: MidiByte) -> f64 {
 pub struct Note {
     pitch: MidiByte,
     duration: OrderedFloat<f64>,
-    intensity: MidiByte,
+    velocity: MidiByte,
 }
 
 impl ApproxEq for Note {
@@ -52,7 +52,7 @@ impl ApproxEq for Note {
     fn approx_eq<M: Into<Self::Margin>>(self, other: Self, margin: M) -> bool {
         let margin = margin.into();
         self.pitch == other.pitch
-            && self.intensity == other.intensity
+            && self.velocity == other.velocity
             && self
                 .duration
                 .into_inner()
@@ -70,7 +70,7 @@ impl Note {
             } else {
                 ChannelVoiceMsg::NoteOn {
                     note,
-                    velocity: self.intensity as u8,
+                    velocity: self.velocity as u8,
                 }
             },
         };
@@ -81,21 +81,25 @@ impl Note {
         self.pitch
     }
 
+    pub fn duration(&self) -> f64 {self.duration.into_inner()}
+
+    pub fn velocity(&self) -> MidiByte {self.velocity}
+
     pub fn is_rest(&self) -> bool {
-        self.intensity == 0
+        self.velocity == 0
     }
 
     pub fn repitched(&self, new_pitch: MidiByte) -> Note {
         Note {
             pitch: new_pitch,
             duration: self.duration,
-            intensity: self.intensity,
+            velocity: self.velocity,
         }
     }
 
     pub fn reweigh(&mut self, extra_duration: OrderedFloat<f64>, extra_intensity: MidiByte) {
         let durations = self.duration + extra_duration;
-        self.intensity = ((self.duration.into_inner() * self.intensity as f64
+        self.velocity = ((self.duration.into_inner() * self.velocity as f64
             + extra_duration.into_inner() * extra_intensity as f64)
             / durations.into_inner()) as MidiByte;
         self.duration = durations;
@@ -106,7 +110,7 @@ impl Note {
             "[{}, {}, {}]",
             self.pitch,
             dotify_float(self.duration),
-            dotify_float(OrderedFloat(velocity2volume(self.intensity)))
+            dotify_float(OrderedFloat(velocity2volume(self.velocity)))
         )
     }
 }
@@ -155,7 +159,7 @@ impl PendingNote {
         Note {
             pitch: self.pitch as MidiByte,
             duration: OrderedFloat(0.0),
-            intensity: 0,
+            velocity: 0,
         }
     }
 }
@@ -165,7 +169,7 @@ impl From<PendingNote> for Note {
         Note {
             pitch: pending_note.pitch as MidiByte,
             duration: OrderedFloat(pending_note.elapsed()),
-            intensity: pending_note.velocity as MidiByte,
+            velocity: pending_note.velocity as MidiByte,
         }
     }
 }
@@ -216,7 +220,7 @@ impl Melody {
                     notes.push(Note {
                         pitch: note,
                         duration,
-                        intensity,
+                        velocity: intensity,
                     });
                 }
                 _ => {
@@ -262,7 +266,7 @@ impl Melody {
                     "{} [({:2}) ({:2})] ",
                     NOTE_NAMES[(n.pitch % NOTES_PER_OCTAVE) as usize],
                     n.duration,
-                    n.intensity
+                    n.velocity
                 )
                 .as_str(),
             );
@@ -311,7 +315,7 @@ impl Melody {
                         .last_mut()
                         .unwrap()
                         .1
-                        .reweigh(note.duration, note.intensity);
+                        .reweigh(note.duration, note.velocity);
                 } else {
                     result.push((i, note.clone()));
                 }
@@ -363,10 +367,10 @@ impl Melody {
         let pb = self[b].pitch;
         self.notes[a].pitch = pb;
         self.notes[b].pitch = pa;
-        let av = self[a].intensity;
-        let bv = self[b].intensity;
-        self.notes[a].intensity = bv;
-        self.notes[b].intensity = av;
+        let av = self[a].velocity;
+        let bv = self[b].velocity;
+        self.notes[a].velocity = bv;
+        self.notes[b].velocity = av;
     }
 }
 
@@ -1404,7 +1408,7 @@ mod tests {
             m.add(Note {
                 pitch: n,
                 duration: OrderedFloat(d),
-                intensity: i,
+                velocity: i,
             });
         }
         assert!(!m.all_rests_synchronized());
