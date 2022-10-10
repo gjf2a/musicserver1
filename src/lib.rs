@@ -6,6 +6,7 @@ mod runtime;
 mod subsequence_finder;
 mod synth_output;
 mod synth_sounds;
+mod database;
 
 pub use adsr::*;
 pub use ai_variation::*;
@@ -15,3 +16,4 @@ pub use runtime::*;
 pub use subsequence_finder::*;
 pub use synth_output::*;
 pub use synth_sounds::*;
+pub use database::*;

@@ -2,12 +2,10 @@ use crate::egui::Ui;
 use crossbeam_queue::SegQueue;
 use eframe::egui;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
-use musicserver1::{
-    make_ai_table, make_synth_table, prob_slider, replay_slider, start_ai_thread,
-    start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue, SynthTable,
-};
+use musicserver1::{make_ai_table, make_synth_table, prob_slider, replay_slider, start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue, SynthTable, Preference};
 use std::mem;
 use std::sync::{Arc, Mutex};
+use enum_iterator::all;
 
 fn main() -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions::default();
@@ -40,6 +38,8 @@ struct ReplayerApp {
     replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
     in_port: Option<MidiInputPort>,
     in_port_name: Option<String>,
+    melody_pref: Preference,
+    variation_pref: Preference
 }
 
 impl ReplayerApp {
@@ -74,6 +74,8 @@ impl ReplayerApp {
             human_synth_name,
             in_port: None,
             in_port_name: None,
+            melody_pref: Preference::Neutral,
+            variation_pref: Preference::Neutral
         };
         app.startup_thread();
         app
@@ -81,43 +83,53 @@ impl ReplayerApp {
 
     fn main_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading(format!(
-                "Replayer ({})",
-                self.in_port_name.as_ref().unwrap()
-            ));
+            ui.heading(format!("Replayer ({})", self.in_port_name.as_ref().unwrap()));
             ui.horizontal(|ui| {
-                Self::radio_choice(
-                    ui,
-                    "Human Synthesizer Sound",
-                    self.human_synth_table.clone(),
-                    &mut self.human_synth_name,
-                );
-                Self::radio_choice(
-                    ui,
-                    "Variation Synthesizer Sound",
-                    self.ai_synth_table.clone(),
-                    &mut self.ai_synth_name,
-                );
-                Self::radio_choice(
-                    ui,
-                    "Variation Algorithm",
-                    self.ai_table.clone(),
-                    &mut self.ai_name,
-                );
+                Self::radio_choice(ui,"Human Synthesizer",self.human_synth_table.clone(),&mut self.human_synth_name);
+                Self::radio_choice(ui,"Variation Synthesizer",self.ai_synth_table.clone(),&mut self.ai_synth_name);
+                Self::radio_choice(ui,"Variation Algorithm",self.ai_table.clone(),&mut self.ai_name);
             });
             Self::update_table_choice(self.ai_table.clone(), self.ai_name.as_str());
-            Self::update_table_choice(
-                self.human_synth_table.clone(),
-                self.human_synth_name.as_str(),
-            );
+            Self::update_table_choice(self.human_synth_table.clone(),self.human_synth_name.as_str());
             Self::update_table_choice(self.ai_synth_table.clone(), self.ai_synth_name.as_str());
 
-            Self::insert_slider(
-                ui,
-                self.p_random_slider.clone(),
-                "Probability of Randomization",
-            );
+            Self::insert_slider(ui,self.p_random_slider.clone(),"Probability of Randomization");
             Self::insert_slider(ui, self.replay_delay_slider.clone(), "Replay Delay");
+
+            self.sqlite_choice(ui);
+        });
+    }
+
+    fn sqlite_choice(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            if ui.button("<").clicked() {
+
+            }
+            ui.label("Melody timestamp here");
+            if ui.button(">").clicked() {
+
+            }
+            Self::preference_buttons(ui, &mut self.melody_pref);
+        });
+
+
+        ui.horizontal(|ui| {
+            if ui.button("<").clicked() {
+
+            }
+            ui.label("Variation timestamp here");
+            if ui.button(">").clicked() {
+
+            }
+            Self::preference_buttons(ui, &mut self.variation_pref);
+        });
+    }
+
+    fn preference_buttons(ui: &mut Ui, pref: &mut Preference) {
+        ui.horizontal(|ui| {
+            for preference in all::<Preference>() {
+                ui.radio_value(pref, preference, preference.to_string());
+            }
         });
     }
 

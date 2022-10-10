@@ -114,12 +114,7 @@ impl RunInstance {
     }
 
     fn note_on<T: Sample>(&mut self, note: u8, velocity: u8, choice: SynthChoice) {
-        loop {
-            match self.sound_thread_messages.pop_front() {
-                None => break,
-                Some(m) => m.store(SoundMsg::Finished),
-            }
-        }
+        self.stop_all_other_notes();
         let note_m = Arc::new(AtomicCell::new(SoundMsg::Play));
         self.sound_thread_messages.push_back(note_m.clone());
         let mut sound = {
@@ -132,6 +127,15 @@ impl RunInstance {
         sound.reset(Some(self.sample_rate));
         self.live_note = Some(note);
         self.play_sound::<T>(sound, note_m);
+    }
+
+    fn stop_all_other_notes(&mut self) {
+        loop {
+            match self.sound_thread_messages.pop_front() {
+                None => break,
+                Some(m) => m.store(SoundMsg::Finished),
+            }
+        }
     }
 
     fn note_off(&mut self, note: u8) {
