@@ -2,6 +2,9 @@ use std::fmt::{Display, Formatter};
 use enum_iterator::Sequence;
 use crate::{MidiByte,Melody,Note};
 use sqlite::{State,Connection};
+use anyhow::bail;
+use chrono::{Utc, NaiveDate, NaiveTime, Local, TimeZone};
+use std::str::FromStr;
 
 const DATABASE_FILENAME: &str = "replayer_variations.db";
 
@@ -12,53 +15,87 @@ fn get_connection() -> Connection {
     connection
 }
 
-pub fn store_melody(melody: &Melody, source: Option<i64>, timestamp: i64) -> i64 {
-    let connection = get_connection();
-    connection
-        .prepare("INSERT INTO main_table (timestamp, rating, source) VALUES (?, ?, ?)").unwrap()
-        .bind(1, timestamp).unwrap()
-        .bind(2, Preference::Neutral.to_string().as_str()).unwrap()
-        .bind(3, source).unwrap()
-        .next().unwrap();
-    let mut statement = connection.prepare("SELECT last_insert_rowid()").unwrap();
-    statement.next().unwrap();
-    let row_id = statement.read::<i64>(0).unwrap();
-    for note in melody.iter() {
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct MelodyInfo {
+    timestamp: i64,
+    row_id: Option<i64>,
+    rating: Preference,
+    source: Option<i64>,
+    tag: String,
+    melody: Melody
+}
+
+impl MelodyInfo {
+    pub fn new(melody: &Melody, source: Option<i64>) -> Self {
+        let mut result = MelodyInfo {row_id: None, timestamp: Utc::now().timestamp(), melody: melody.clone(), tag: "".to_string(), source, rating: Preference::Neutral};
+        result.store();
+        result
+    }
+
+    pub fn get_main_melodies() -> Vec<Self> {
+        let connection = get_connection();
+        let mut statement = connection.prepare("SELECT timestamp, rowid, tag, rating FROM main_table WHERE source IS NULL").unwrap();
+        let mut result = Vec::new();
+        while let State::Row = statement.next().unwrap() {
+            let timestamp = statement.read::<i64>(0).unwrap();
+            let row_id = statement.read::<i64>(1).unwrap();
+            let tag = statement.read::<String>(2).unwrap();
+            let rating = statement.read::<String>(3).unwrap().parse::<Preference>().unwrap();
+            result.push(MelodyInfo {row_id: Some(row_id), timestamp, melody: get_melody(row_id), tag, source: None, rating});
+        }
+        result
+    }
+
+    pub fn get_variations_of(&self) -> Vec<Self> {
+        let connection = get_connection();
+        let mut statement = connection
+            .prepare("SELECT timestamp, rowid, tag, rating FROM main_table WHERE source = ?").unwrap()
+            .bind(1, self.row_id.unwrap()).unwrap();
+        let mut result = Vec::new();
+        while let State::Row = statement.next().unwrap() {
+            let timestamp = statement.read::<i64>(0).unwrap();
+            let row_id = statement.read::<i64>(1).unwrap();
+            let tag = statement.read::<String>(2).unwrap();
+            let rating = statement.read::<String>(3).unwrap().parse::<Preference>().unwrap();
+            result.push(MelodyInfo {row_id: Some(row_id), timestamp, melody: get_melody(row_id), tag, source: self.row_id, rating});
+        }
+        result
+    }
+
+    pub fn get_row_id(&self) -> Option<i64> {
+        self.row_id
+    }
+
+    pub fn get_date(&self) -> NaiveDate {
+        Local.timestamp(self.timestamp, 0).date_naive()
+    }
+
+    pub fn get_time(&self) -> NaiveTime {
+        Local.timestamp(self.timestamp, 0).time()
+    }
+
+    pub fn store(&mut self) {
+        let connection = get_connection();
+        let p = format!("INSERT INTO main_table (timestamp, rating, source, tag) VALUES (?, ?, ?, {})", self.tag);
         connection
-            .prepare("INSERT INTO melodies (row, pitch, duration, velocity) VALUES (?, ?, ?, ?);").unwrap()
-            .bind(1, row_id).unwrap()
-            .bind(2, note.pitch() as i64).unwrap()
-            .bind(3, note.duration()).unwrap()
-            .bind(4, note.velocity() as i64).unwrap()
+            .prepare(p.as_str()).unwrap()
+            .bind(1, self.timestamp).unwrap()
+            .bind(2, self.rating.to_string().as_str()).unwrap()
+            .bind(3, self.source).unwrap()
             .next().unwrap();
+        let mut statement = connection.prepare("SELECT last_insert_rowid()").unwrap();
+        statement.next().unwrap();
+        self.row_id = Some(statement.read::<i64>(0).unwrap());
+        for note in self.melody.iter() {
+            connection
+                .prepare("INSERT INTO melodies (row, pitch, duration, velocity) VALUES (?, ?, ?, ?);").unwrap()
+                .bind(1, self.row_id).unwrap()
+                .bind(2, note.pitch() as i64).unwrap()
+                .bind(3, note.duration()).unwrap()
+                .bind(4, note.velocity() as i64).unwrap()
+                .next().unwrap();
+        }
     }
-    row_id
-}
-
-pub fn get_main_melody_ids() -> Vec<(i64, i64)> {
-    let connection = get_connection();
-    let mut statement = connection.prepare("SELECT rowid, timestamp FROM main_table WHERE source IS NULL").unwrap();
-    let mut result = Vec::new();
-    while let State::Row = statement.next().unwrap() {
-        let row_id = statement.read::<i64>(0).unwrap();
-        let timestamp = statement.read::<i64>(1).unwrap();
-        result.push((row_id, timestamp));
-    }
-    result
-}
-
-pub fn get_variations_of(main_id: i64) -> Vec<(i64,i64)> {
-    let connection = get_connection();
-    let mut statement = connection
-        .prepare("SELECT rowid, timestamp FROM main_table WHERE source = ?").unwrap()
-        .bind(1, main_id).unwrap();
-    let mut result = Vec::new();
-    while let State::Row = statement.next().unwrap() {
-        let row_id = statement.read::<i64>(0).unwrap();
-        let timestamp = statement.read::<i64>(1).unwrap();
-        result.push((row_id, timestamp));
-    }
-    result
 }
 
 pub fn get_melody(row_id: i64) -> Melody {
@@ -87,5 +124,18 @@ pub enum Preference {
 impl Display for Preference {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}", self)
+    }
+}
+
+impl FromStr for Preference {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "Favorite" => Ok(Preference::Favorite),
+            "Neutral" => Ok(Preference::Neutral),
+            "Ignore" => Ok(Preference::Ignore),
+            _ => bail!("No match for {s}")
+        }
     }
 }

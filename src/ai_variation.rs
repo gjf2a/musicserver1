@@ -1,9 +1,8 @@
-use crate::{arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue, SynthChoice, store_melody};
+use crate::{arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue, SynthChoice, MelodyInfo};
 use crossbeam_queue::SegQueue;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use chrono::Utc;
 
 pub type AIFuncType = dyn Fn(&mut MelodyMaker, &Melody, f64) -> Melody + Send + Sync;
 pub type AITable = ChooserTable<Arc<AIFuncType>>;
@@ -26,7 +25,6 @@ pub fn start_ai_thread(
     ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
     replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
     p_random_slider: Arc<Mutex<SliderValue<f64>>>,
-    record_in_database: bool,
 ) {
     std::thread::spawn(move || {
         let mut recorder = PlayerRecorder::new(
@@ -41,9 +39,8 @@ pub fn start_ai_thread(
             println!("Intervals: {:?}", player_melody.diatonic_intervals());
             performer.perform_variation(&player_melody);
             if performer.get_last_variation().len() > 0 {
-                let timestamp = Utc::now().timestamp();
-                let player_row = store_melody(&player_melody, None, timestamp);
-                store_melody(performer.get_last_variation(), Some(player_row), timestamp);
+                let player_info = MelodyInfo::new(&player_melody, None);
+                MelodyInfo::new(performer.get_last_variation(), player_info.get_row_id());
             }
         }
     });
