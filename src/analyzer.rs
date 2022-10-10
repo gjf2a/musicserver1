@@ -53,14 +53,15 @@ impl ApproxEq for Note {
         let margin = margin.into();
         self.pitch == other.pitch
             && self.velocity == other.velocity
-            && self
-                .duration
-                .into_inner()
-                .approx_eq(other.duration.into_inner(), margin)
+            && self.duration.into_inner().approx_eq(other.duration.into_inner(), margin)
     }
 }
 
 impl Note {
+    pub fn new(pitch: MidiByte, duration: f64, velocity: MidiByte) -> Self {
+        Note {pitch, duration: OrderedFloat(duration), velocity}
+    }
+
     pub fn to_midi(&self) -> (MidiMsg, f64) {
         let note = self.pitch as u8;
         let midi = ChannelVoice {

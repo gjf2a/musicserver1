@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 use enum_iterator::Sequence;
-use crate::Melody;
-use sqlite::Connection;
+use crate::{MidiByte,Melody,Note};
+use sqlite::{State,Connection};
 
 const DATABASE_FILENAME: &str = "replayer_variations.db";
 
@@ -15,9 +15,11 @@ fn get_connection() -> Connection {
 pub fn store_melody(melody: &Melody, source: Option<i64>, timestamp: i64) -> i64 {
     let connection = get_connection();
     connection
-        .prepare(format!("INSERT INTO main_table (timestamp, rating, source) VALUES (?, '{}', ?)", Preference::Neutral.to_string())).unwrap()
+        .prepare("INSERT INTO main_table (timestamp, rating, source) VALUES (?, ?, ?)").unwrap()
         .bind(1, timestamp).unwrap()
-        .bind(2, source).unwrap();
+        .bind(2, Preference::Neutral.to_string().as_str()).unwrap()
+        .bind(3, source).unwrap()
+        .next().unwrap();
     let mut statement = connection.prepare("SELECT last_insert_rowid()").unwrap();
     statement.next().unwrap();
     let row_id = statement.read::<i64>(0).unwrap();
@@ -27,32 +29,94 @@ pub fn store_melody(melody: &Melody, source: Option<i64>, timestamp: i64) -> i64
             .bind(1, row_id).unwrap()
             .bind(2, note.pitch() as i64).unwrap()
             .bind(3, note.duration()).unwrap()
-            .bind(4, note.velocity() as i64).unwrap();
+            .bind(4, note.velocity() as i64).unwrap()
+            .next().unwrap();
     }
     row_id
 }
+
+pub fn get_main_melody_ids() -> Vec<(i64, i64)> {
+    let connection = get_connection();
+    let mut statement = connection.prepare("SELECT rowid, timestamp FROM main_table WHERE source IS NULL").unwrap();
+    let mut result = Vec::new();
+    while let State::Row = statement.next().unwrap() {
+        let row_id = statement.read::<i64>(0).unwrap();
+        let timestamp = statement.read::<i64>(1).unwrap();
+        result.push((row_id, timestamp));
+    }
+    result
+}
+
+pub fn get_variations_of(main_id: i64) -> Vec<(i64,i64)> {
+    let connection = get_connection();
+    let mut statement = connection
+        .prepare("SELECT rowid, timestamp FROM main_table WHERE source = ?").unwrap()
+        .bind(1, main_id).unwrap();
+    let mut result = Vec::new();
+    while let State::Row = statement.next().unwrap() {
+        let row_id = statement.read::<i64>(0).unwrap();
+        let timestamp = statement.read::<i64>(1).unwrap();
+        result.push((row_id, timestamp));
+    }
+    result
+}
+
+pub fn get_variation_ids() -> Vec<(i64, i64, i64)> {
+    let connection = get_connection();
+    let mut statement = connection.prepare("SELECT row_id, timestamp, source FROM main_table WHERE source IS NOT NULL").unwrap();
+    let mut result = Vec::new();
+    while let State::Row = statement.next().unwrap() {
+        let row_id = statement.read::<i64>(0).unwrap();
+        let timestamp = statement.read::<i64>(1).unwrap();
+        let source = statement.read::<i64>(2).unwrap();
+        result.push((row_id, timestamp, source));
+    }
+    result
+}
 /*
-pub fn get_last_melodies() -> ((Melody, u64), Option<(Melody, u64)>) {
+pub fn get_last_melodies() -> ((i64, Melody, i64), Option<(i64, Melody, i64)>) {
     let row_id = {
         let connection = get_connection();
         let mut statement = connection.prepare("SELECT COUNT(*) from main_table;").unwrap();
-        statement.read::<u64>(0).unwrap()
+        statement.next().unwrap().read::<i64>(0).unwrap()
     };
-    let (m1, m2) = get_melodies(row_id);
-    ((m1, row_id), m2)
-}
+    let ((m1_time, m1), m2) = get_melodies(row_id);
+    ((m1_time, m1, row_id), m2)
+}*/
 
-pub fn get_melodies(row_id: u64) -> (Melody, Option<(Melody, u64)>) {
+pub fn get_melodies(row_id: i64) -> ((i64, Melody), Option<(i64, Melody, i64)>) {
     let connection = get_connection();
     let mut statement = connection
-        .prepare("SELECT timestamp, source FROM main_table WHERE row_id = ?")
-        .unwrap()
-        .bind(1, row_id)
-        .unwrap();
-
+        .prepare("SELECT timestamp, source FROM main_table WHERE row_id = ?").unwrap()
+        .bind(1, row_id).unwrap();
+    statement.next().unwrap();
+    let timestamp = statement.read::<i64>(0).unwrap();
+    let source = statement.read::<Option<i64>>(1).unwrap();
+    ((timestamp, get_melody(row_id)), source.map(|source| {
+        let mut statement = connection
+            .prepare("SELECT timestamp from main_table WHERE row_id = ?").unwrap()
+            .bind(1, source).unwrap();
+        statement.next().unwrap();
+        let timestamp = statement.read::<i64>(0).unwrap();
+        (timestamp, get_melody(source), source)
+    }))
 }
 
- */
+pub fn get_melody(row_id: i64) -> Melody {
+    let connection = get_connection();
+    let mut statement = connection
+        .prepare("SELECT pitch, duration, velocity from melodies WHERE row = ?").unwrap()
+        .bind(1, row_id).unwrap();
+    let mut melody = Melody::new();
+    while let State::Row = statement.next().unwrap() {
+        let pitch = statement.read::<i64>(0).unwrap();
+        let duration = statement.read::<f64>(1).unwrap();
+        let velocity = statement.read::<i64>(2).unwrap();
+        let note = Note::new(pitch as MidiByte, duration, velocity as MidiByte);
+        melody.add(note);
+    }
+    melody
+}
 
 #[derive(Copy, Clone, Eq, PartialEq, Sequence, Debug)]
 pub enum Preference {
