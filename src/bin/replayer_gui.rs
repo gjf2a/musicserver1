@@ -1,15 +1,19 @@
-use std::mem;
+use crate::egui::Ui;
+use crossbeam_queue::SegQueue;
 use eframe::egui;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
-use musicserver1::{SliderValue, AITable, SynthTable, start_output_thread, start_input_thread, start_ai_thread, make_ai_table, make_synth_table, prob_slider, replay_slider, ChooserTable};
+use musicserver1::{make_ai_table, make_synth_table, prob_slider, replay_slider, start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue, SynthTable, Preference};
+use std::mem;
 use std::sync::{Arc, Mutex};
-use crossbeam_queue::SegQueue;
-use crate::egui::Ui;
+use enum_iterator::all;
 
 fn main() -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions::default();
-    eframe::run_native("Replayer", native_options,
-                       Box::new(|cc| Box::new(ReplayerApp::new(cc))));
+    eframe::run_native(
+        "Replayer",
+        native_options,
+        Box::new(|cc| Box::new(ReplayerApp::new(cc))),
+    );
     Ok(())
 }
 
@@ -17,8 +21,8 @@ fn main() -> anyhow::Result<()> {
 enum MidiScenario {
     StartingUp,
     NoInputPorts(String),
-    InputPortSelected {in_port: MidiInputPort},
-    MultipleInputPorts {in_ports: MidiInputPorts}
+    InputPortSelected { in_port: MidiInputPort },
+    MultipleInputPorts { in_ports: MidiInputPorts },
 }
 
 struct ReplayerApp {
@@ -33,7 +37,9 @@ struct ReplayerApp {
     p_random_slider: Arc<Mutex<SliderValue<f64>>>,
     replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
     in_port: Option<MidiInputPort>,
-    in_port_name: Option<String>
+    in_port_name: Option<String>,
+    melody_pref: Preference,
+    variation_pref: Preference
 }
 
 impl ReplayerApp {
@@ -67,7 +73,9 @@ impl ReplayerApp {
             ai_name,
             human_synth_name,
             in_port: None,
-            in_port_name: None
+            in_port_name: None,
+            melody_pref: Preference::Neutral,
+            variation_pref: Preference::Neutral
         };
         app.startup_thread();
         app
@@ -77,20 +85,60 @@ impl ReplayerApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading(format!("Replayer ({})", self.in_port_name.as_ref().unwrap()));
             ui.horizontal(|ui| {
-                Self::radio_choice(ui, "Human Synthesizer Sound", self.human_synth_table.clone(), &mut self.human_synth_name);
-                Self::radio_choice(ui, "Variation Synthesizer Sound", self.ai_synth_table.clone(), &mut self.ai_synth_name);
-                Self::radio_choice(ui, "Variation Algorithm", self.ai_table.clone(), &mut self.ai_name);
+                Self::radio_choice(ui,"Human Synthesizer",self.human_synth_table.clone(),&mut self.human_synth_name);
+                Self::radio_choice(ui,"Variation Synthesizer",self.ai_synth_table.clone(),&mut self.ai_synth_name);
+                Self::radio_choice(ui,"Variation Algorithm",self.ai_table.clone(),&mut self.ai_name);
             });
             Self::update_table_choice(self.ai_table.clone(), self.ai_name.as_str());
-            Self::update_table_choice(self.human_synth_table.clone(), self.human_synth_name.as_str());
+            Self::update_table_choice(self.human_synth_table.clone(),self.human_synth_name.as_str());
             Self::update_table_choice(self.ai_synth_table.clone(), self.ai_synth_name.as_str());
 
-            Self::insert_slider(ui, self.p_random_slider.clone(), "Probability of Randomization");
+            Self::insert_slider(ui,self.p_random_slider.clone(),"Probability of Randomization");
             Self::insert_slider(ui, self.replay_delay_slider.clone(), "Replay Delay");
+
+            self.sqlite_choice(ui);
         });
     }
 
-    fn radio_choice<T: Clone>(ui: &mut Ui, header: &str, table: Arc<Mutex<ChooserTable<T>>>, tag: &mut String) {
+    fn sqlite_choice(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            if ui.button("<").clicked() {
+
+            }
+            ui.label("Melody timestamp here");
+            if ui.button(">").clicked() {
+
+            }
+            Self::preference_buttons(ui, &mut self.melody_pref);
+        });
+
+
+        ui.horizontal(|ui| {
+            if ui.button("<").clicked() {
+
+            }
+            ui.label("Variation timestamp here");
+            if ui.button(">").clicked() {
+
+            }
+            Self::preference_buttons(ui, &mut self.variation_pref);
+        });
+    }
+
+    fn preference_buttons(ui: &mut Ui, pref: &mut Preference) {
+        ui.horizontal(|ui| {
+            for preference in all::<Preference>() {
+                ui.radio_value(pref, preference, preference.to_string());
+            }
+        });
+    }
+
+    fn radio_choice<T: Clone>(
+        ui: &mut Ui,
+        header: &str,
+        table: Arc<Mutex<ChooserTable<T>>>,
+        tag: &mut String,
+    ) {
         ui.vertical(|ui| {
             let table = table.lock().unwrap();
             ui.label(header);
@@ -129,13 +177,15 @@ impl ReplayerApp {
                     let in_ports = midi_in.ports();
                     match in_ports.len() {
                         0 => MidiScenario::NoInputPorts("No MIDI devices found".to_string()),
-                        1 => MidiScenario::InputPortSelected {in_port: in_ports[0].clone()},
-                        _ => MidiScenario::MultipleInputPorts {in_ports: in_ports.clone()}
+                        1 => MidiScenario::InputPortSelected {
+                            in_port: in_ports[0].clone(),
+                        },
+                        _ => MidiScenario::MultipleInputPorts {
+                            in_ports: in_ports.clone(),
+                        },
                     }
                 }
-                Err(e) => {
-                    MidiScenario::NoInputPorts(e.to_string())
-                }
+                Err(e) => MidiScenario::NoInputPorts(e.to_string()),
             };
             {
                 let mut midi_scenario = midi_scenario.lock().unwrap();
@@ -153,7 +203,12 @@ impl ReplayerApp {
         });
     }
 
-    fn pick_midi_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame, in_ports: &MidiInputPorts) {
+    fn pick_midi_screen(
+        &mut self,
+        ctx: &egui::Context,
+        _frame: &mut eframe::Frame,
+        in_ports: &MidiInputPorts,
+    ) {
         if self.in_port.is_none() {
             self.in_port = Some(in_ports[0].clone());
         }
@@ -162,13 +217,19 @@ impl ReplayerApp {
             ui.vertical(|ui| {
                 for in_port in in_ports.iter() {
                     self.set_in_port_name(in_port);
-                    ui.radio_value(&mut self.in_port, Some(in_port.clone()), self.in_port_name.as_ref().unwrap().clone());
+                    ui.radio_value(
+                        &mut self.in_port,
+                        Some(in_port.clone()),
+                        self.in_port_name.as_ref().unwrap().clone(),
+                    );
                 }
             });
             if ui.button("Start Playing").clicked() {
                 {
                     let mut midi_scenario = self.midi_scenario.lock().unwrap();
-                    *midi_scenario = MidiScenario::InputPortSelected { in_port: self.in_port.clone().unwrap() };
+                    *midi_scenario = MidiScenario::InputPortSelected {
+                        in_port: self.in_port.clone().unwrap(),
+                    };
                 }
                 self.start_now();
             }
@@ -186,9 +247,23 @@ impl ReplayerApp {
         let input2ai = Arc::new(SegQueue::new());
         let ai2output = Arc::new(SegQueue::new());
 
-        start_output_thread(ai2output.clone(), self.human_synth_table.clone(), self.ai_synth_table.clone());
-        start_ai_thread(self.ai_table.clone(), input2ai.clone(), ai2output, self.replay_delay_slider.clone(), self.p_random_slider.clone());
-        start_input_thread(input2ai, midi_in.unwrap(), self.in_port.as_ref().unwrap().clone());
+        start_output_thread(
+            ai2output.clone(),
+            self.human_synth_table.clone(),
+            self.ai_synth_table.clone(),
+        );
+        start_ai_thread(
+            self.ai_table.clone(),
+            input2ai.clone(),
+            ai2output,
+            self.replay_delay_slider.clone(),
+            self.p_random_slider.clone(),
+        );
+        start_input_thread(
+            input2ai,
+            midi_in.unwrap(),
+            self.in_port.as_ref().unwrap().clone(),
+        );
     }
 
     fn set_in_port_name(&mut self, in_port: &MidiInputPort) {
@@ -210,14 +285,14 @@ impl eframe::App for ReplayerApp {
             MidiScenario::NoInputPorts(msg) => {
                 self.no_midi_screen(ctx, frame, msg.as_str());
             }
-            MidiScenario::InputPortSelected {in_port} => {
+            MidiScenario::InputPortSelected { in_port } => {
                 if self.in_port.is_none() {
                     self.in_port = Some(in_port);
                     self.start_now();
                 }
                 self.main_screen(ctx, frame)
             }
-            MidiScenario::MultipleInputPorts {in_ports} => {
+            MidiScenario::MultipleInputPorts { in_ports } => {
                 self.pick_midi_screen(ctx, frame, &in_ports);
             }
         }

@@ -1,10 +1,13 @@
-use std::sync::{Arc, Mutex};
 use anyhow::bail;
-use midir::{Ignore, MidiInput, MidiInputPort};
-use midi_msg::MidiMsg;
-use read_input::prelude::*;
 use crossbeam_queue::SegQueue;
-use musicserver1::{make_ai_table, start_ai_thread, prob_slider, replay_slider, make_synth_table, start_output_thread, start_input, user_pick_element, SynthChoice};
+use midi_msg::MidiMsg;
+use midir::{Ignore, MidiInput, MidiInputPort};
+use musicserver1::{
+    make_ai_table, make_synth_table, prob_slider, replay_slider, start_ai_thread, start_input,
+    start_output_thread, user_pick_element, SynthChoice,
+};
+use read_input::prelude::*;
+use std::sync::{Arc, Mutex};
 
 // MIDI input code based on:
 //   https://github.com/Boddlnagg/midir/blob/master/examples/test_read_input.rs
@@ -30,7 +33,6 @@ fn main() -> anyhow::Result<()> {
     run_input(input2ai, midi_in, in_port)
 }
 
-
 fn run_output(ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>) {
     println!("Select synth sound for human");
     let mut human_synth_table = make_synth_table();
@@ -38,11 +40,18 @@ fn run_output(ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>) {
     println!("Select synth sound for playback");
     let mut ai_synth_table = make_synth_table();
     ai_synth_table.console_pick();
-    start_output_thread(ai2output, Arc::new(Mutex::new(human_synth_table)),
-                        Arc::new(Mutex::new(ai_synth_table)));
+    start_output_thread(
+        ai2output,
+        Arc::new(Mutex::new(human_synth_table)),
+        Arc::new(Mutex::new(ai_synth_table)),
+    );
 }
 
-fn run_input(input2ai: Arc<SegQueue<MidiMsg>>, midi_in: MidiInput, in_port: MidiInputPort) -> anyhow::Result<()> {
+fn run_input(
+    input2ai: Arc<SegQueue<MidiMsg>>,
+    midi_in: MidiInput,
+    in_port: MidiInputPort,
+) -> anyhow::Result<()> {
     println!("\nOpening connection");
     let in_port_name = midi_in.port_name(&in_port)?;
     let _conn_in = start_input(input2ai, midi_in, in_port);
@@ -60,9 +69,13 @@ fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<(SynthChoice
     p_random.console_pick("Select probability of random variation: ");
     let mut replay_delay = replay_slider();
     replay_delay.console_pick("Select time delay before starting replay: ");
-    start_ai_thread(Arc::new(Mutex::new(ai_table)), input2ai, ai2output,
-                    Arc::new(Mutex::new(replay_delay)),
-                    Arc::new(Mutex::new(p_random)));
+    start_ai_thread(
+        Arc::new(Mutex::new(ai_table)),
+        input2ai,
+        ai2output,
+        Arc::new(Mutex::new(replay_delay)),
+        Arc::new(Mutex::new(p_random)),
+    );
 }
 
 fn get_midi_device(midi_in: &mut MidiInput) -> anyhow::Result<MidiInputPort> {
@@ -72,12 +85,17 @@ fn get_midi_device(midi_in: &mut MidiInput) -> anyhow::Result<MidiInputPort> {
     match in_ports.len() {
         0 => bail!("no input port found"),
         1 => {
-            println!("Choosing the only available input port: {}", midi_in.port_name(&in_ports[0]).unwrap());
+            println!(
+                "Choosing the only available input port: {}",
+                midi_in.port_name(&in_ports[0]).unwrap()
+            );
             Ok(in_ports[0].clone())
-        },
+        }
         _ => {
             println!("\nAvailable input ports:");
-            Ok(user_pick_element(in_ports.iter().cloned(), |p| midi_in.port_name(p).unwrap()))
+            Ok(user_pick_element(in_ports.iter().cloned(), |p| {
+                midi_in.port_name(p).unwrap()
+            }))
         }
     }
 }
