@@ -61,47 +61,6 @@ pub fn get_variations_of(main_id: i64) -> Vec<(i64,i64)> {
     result
 }
 
-pub fn get_variation_ids() -> Vec<(i64, i64, i64)> {
-    let connection = get_connection();
-    let mut statement = connection.prepare("SELECT row_id, timestamp, source FROM main_table WHERE source IS NOT NULL").unwrap();
-    let mut result = Vec::new();
-    while let State::Row = statement.next().unwrap() {
-        let row_id = statement.read::<i64>(0).unwrap();
-        let timestamp = statement.read::<i64>(1).unwrap();
-        let source = statement.read::<i64>(2).unwrap();
-        result.push((row_id, timestamp, source));
-    }
-    result
-}
-/*
-pub fn get_last_melodies() -> ((i64, Melody, i64), Option<(i64, Melody, i64)>) {
-    let row_id = {
-        let connection = get_connection();
-        let mut statement = connection.prepare("SELECT COUNT(*) from main_table;").unwrap();
-        statement.next().unwrap().read::<i64>(0).unwrap()
-    };
-    let ((m1_time, m1), m2) = get_melodies(row_id);
-    ((m1_time, m1, row_id), m2)
-}*/
-
-pub fn get_melodies(row_id: i64) -> ((i64, Melody), Option<(i64, Melody, i64)>) {
-    let connection = get_connection();
-    let mut statement = connection
-        .prepare("SELECT timestamp, source FROM main_table WHERE row_id = ?").unwrap()
-        .bind(1, row_id).unwrap();
-    statement.next().unwrap();
-    let timestamp = statement.read::<i64>(0).unwrap();
-    let source = statement.read::<Option<i64>>(1).unwrap();
-    ((timestamp, get_melody(row_id)), source.map(|source| {
-        let mut statement = connection
-            .prepare("SELECT timestamp from main_table WHERE row_id = ?").unwrap()
-            .bind(1, source).unwrap();
-        statement.next().unwrap();
-        let timestamp = statement.read::<i64>(0).unwrap();
-        (timestamp, get_melody(source), source)
-    }))
-}
-
 pub fn get_melody(row_id: i64) -> Melody {
     let connection = get_connection();
     let mut statement = connection
