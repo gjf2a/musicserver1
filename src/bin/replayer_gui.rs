@@ -15,7 +15,7 @@ fn main() -> anyhow::Result<()> {
     eframe::run_native(
         "Replayer",
         native_options,
-        Box::new(|cc| Box::new(ReplayerApp::new(cc))),
+        Box::new(|cc| Box::new(ReplayerApp::new(cc).unwrap())),
     );
     Ok(())
 }
@@ -120,7 +120,7 @@ struct ReplayerApp {
 }
 
 impl ReplayerApp {
-    fn new(_cc: &eframe::CreationContext<'_>) -> Self {
+    fn new(_cc: &eframe::CreationContext<'_>) -> anyhow::Result<Self> {
         // Customize egui here with cc.egui_ctx.set_fonts and cc.egui_ctx.set_visuals.
         // Restore app state using cc.storage (requires the "persistence" feature).
         // Use the cc.gl (a glow::Context) to create graphics shaders and buffers that you can use
@@ -137,10 +137,18 @@ impl ReplayerApp {
         let ai_synth_table = Arc::new(Mutex::new(ai_synth_table));
         let p_random_slider = Arc::new(Mutex::new(prob_slider()));
         let replay_delay_slider = Arc::new(Mutex::new(replay_slider()));
-        let database = Database::new();
-        let mut melody_info = VecTracker::new(MelodyInfo::get_main_melodies(database.clone()));
-        melody_info.go_to_end();
-        let variation_info = VecTracker::new(if melody_info.is_empty() {vec![]} else {melody_info.get().unwrap().get_variations_of()});
+        let database = Database::new()?;
+        let (melody_info, variation_info) = {
+            let database = database.lock().unwrap();
+            let mut melody_info = VecTracker::new(database.melodies());
+            if melody_info.is_empty() {
+                (melody_info, VecTracker::new(vec![]))
+            } else {
+                melody_info.go_to_end();
+                let variations = database.variations_of(melody_info.get().unwrap().get_row_id());
+                (melody_info, VecTracker::new(variations))
+            }
+        };
 
         let app = ReplayerApp {
             midi_scenario: Arc::new(Mutex::new(MidiScenario::StartingUp)),
@@ -162,7 +170,7 @@ impl ReplayerApp {
             database
         };
         app.startup_thread();
-        app
+        Ok(app)
     }
 
     fn main_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -189,28 +197,36 @@ impl ReplayerApp {
 
     fn update_melody_info(&mut self) {
         let old_len = self.melody_info.len();
-        self.melody_info.replace_vec(MelodyInfo::get_main_melodies(self.database.clone()));
-        let changed = self.melody_info.len() > old_len;
-        if changed {
+        let database = self.database.lock().unwrap();
+        if database.num_melodies() != old_len {
+            self.melody_info.replace_vec(database.melodies());
             self.melody_info.go_to_end();
-            self.melody_pref = self.melody_info.get().map_or(Preference::Neutral, |m| m.get_rating());
-        }
-        if !self.melody_info.is_empty() {
-            let old_len = self.variation_info.len();
-            self.variation_info.replace_vec(self.melody_info.get().unwrap().get_variations_of());
-            let changed = changed || self.variation_info.len() > old_len;
-            if changed {
-                self.variation_info.go_to_end();
-                self.variation_pref = self.variation_info.get().map_or(Preference::Neutral, |m| m.get_rating());
+            if let Some(info) = self.melody_info.get() {
+                self.melody_pref = info.get_rating();
+                if !self.melody_info.is_empty() {
+                    let rowid = self.melody_info.get().unwrap().get_row_id();
+                    self.variation_info.replace_vec(database.variations_of(rowid));
+                    self.variation_info.go_to_end();
+                    if let Some(info) = self.variation_info.get() {
+                        self.variation_pref = info.get_rating();
+                    }
+                }
             }
         }
     }
 
     fn sqlite_choice(&mut self, ui: &mut Ui) {
         Self::melody_iterate(ui, &mut self.melody_info, &mut self.melody_pref);
+        self.update_database_pref(self.melody_info.get().unwrap().get_row_id(), self.melody_pref);
         if !self.variation_info.is_empty() {
             Self::melody_iterate(ui, &mut self.variation_info, &mut self.variation_pref);
+            self.update_database_pref(self.variation_info.get().unwrap().get_row_id(), self.variation_pref);
         }
+    }
+
+    fn update_database_pref(&mut self, rowid: i64, pref: Preference) {
+        let mut database = self.database.lock().unwrap();
+        database.update_rating(rowid, pref).unwrap();
     }
 
     fn melody_iterate(ui: &mut Ui, melodies: &mut VecTracker<MelodyInfo>, pref: &mut Preference) {
@@ -230,7 +246,6 @@ impl ReplayerApp {
                 *pref = melodies.get().map_or(Preference::Neutral, |m| m.get_rating());
             }
             Self::preference_buttons(ui, pref);
-            melodies.get_mut().unwrap().update_rating(*pref);
         });
     }
 

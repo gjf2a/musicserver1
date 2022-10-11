@@ -5,119 +5,172 @@ use sqlite::{State,Connection};
 use anyhow::bail;
 use chrono::{Utc, NaiveDate, NaiveTime, Local, TimeZone};
 use std::str::FromStr;
+use std::collections::BTreeMap;
 
 const DATABASE_FILENAME: &str = "replayer_variations.db";
 
 #[derive(Clone, Debug)]
 pub struct Database {
-    filename: String
+    filename: String,
+    melodies: BTreeMap<i64, MelodyInfo>,
+    variations: BTreeMap<i64, MelodyInfo>,
+    melody2variations: BTreeMap<i64, Vec<i64>>,
+    melody_cache: BTreeMap<i64, Melody>
 }
 
 impl Database {
-    pub fn new() -> Arc<Mutex<Self>> {
-        Arc::new(Mutex::new(Database {filename: DATABASE_FILENAME.to_string()}))
+    pub fn new() -> anyhow::Result<Arc<Mutex<Self>>> {
+        let mut database = Database {filename: DATABASE_FILENAME.to_string(), melodies: BTreeMap::new(), variations: BTreeMap::new(), melody_cache: BTreeMap::new(), melody2variations: BTreeMap::new()};
+        let connection = database.get_connection()?;
+        let mut statement = connection.prepare("SELECT rowid, timestamp, rating, tag, source FROM main_table")?;
+        while let State::Row = statement.next().unwrap() {
+            let rowid = statement.read::<i64>(0)?;
+            let timestamp = statement.read::<i64>(1)?;
+            let rating = statement.read::<String>(2)?.parse::<Preference>()?;
+            let tag = statement.read::<String>(3)?;
+            let source = statement.read::<Option<i64>>(4)?;
+            let info = MelodyInfo {timestamp, rowid, rating, source, tag};
+            database.add_info(info.clone());
+        }
+        Ok(Arc::new(Mutex::new(database)))
     }
 
-    pub fn add_melody_and_variation(&mut self, melody: &Melody, variation: &Melody) {
-        let player_info = MelodyInfo::new(self.clone(), melody, None);
-        MelodyInfo::new(self.clone(), variation, Some(player_info.get_row_id()));
+    fn add_info(&mut self, info: MelodyInfo) {
+        (if let Some(source) = info.source {
+            self.add_variation(source, info.rowid);
+            &mut self.variations
+        } else {
+            &mut self.melodies
+        }).insert(info.rowid, info);
     }
 
-    fn get_connection(&self) -> Connection {
-        let connection = sqlite::open(self.filename.as_str()).unwrap();
-        connection.execute("CREATE TABLE IF NOT EXISTS main_table (timestamp INTEGER, rating TEXT, tag TEXT, source INTEGER);").unwrap();
-        connection.execute("CREATE TABLE IF NOT EXISTS melodies (row INTEGER, pitch INTEGER, duration FLOAT, velocity INTEGER);").unwrap();
-        connection
+    fn add_variation(&mut self, melody_row: i64, variation_row: i64) {
+        match self.melody2variations.get_mut(&melody_row) {
+            None => {self.melody2variations.insert(melody_row, vec![variation_row]);}
+            Some(vars) => {vars.push(variation_row);}
+        };
     }
-}
 
-#[derive(Clone, Debug)]
-pub struct MelodyInfo {
-    timestamp: i64,
-    row_id: i64,
-    rating: Preference,
-    source: Option<i64>,
-    tag: String,
-    melody: Option<Melody>,
-    database: Arc<Mutex<Database>>
-}
+    pub fn num_melodies(&self) -> usize {
+        self.melodies.len()
+    }
 
-impl MelodyInfo {
-    fn new(database: Arc<Mutex<Database>>, melody: &Melody, source: Option<i64>) -> Self {
+    pub fn num_variations_of(&self, rowid: i64) -> usize {
+        self.melody2variations.get(&rowid).map_or(0, |v| v.len())
+    }
+
+    pub fn melodies(&self) -> Vec<MelodyInfo> {
+        self.melodies.values().cloned().collect()
+    }
+
+    pub fn variations_of(&self, rowid: i64) -> Vec<MelodyInfo> {
+        self.melody2variations.get(&rowid).map_or(vec![], |v| {
+            v.iter().map(|vid| self.variations.get(vid).unwrap().clone()).collect()
+        })
+    }
+
+    pub fn info(&self, rowid: i64) -> Option<MelodyInfo> {
+        self.melodies.get(&rowid)
+            .or(self.variations.get(&rowid))
+            .map(|info| info.clone())
+    }
+
+    pub fn melody(&mut self, rowid: i64) -> anyhow::Result<Melody> {
+        let cached = self.melody_cache.get(&rowid);
+        if cached.is_some() {
+            Ok(cached.map(|m| m.clone()).unwrap())
+        } else {
+            let connection = self.get_connection()?;
+            let mut statement = connection
+                .prepare("SELECT pitch, duration, velocity from melodies WHERE row = ?")?
+                .bind(1, rowid)?;
+            let mut melody = Melody::new();
+            while let State::Row = statement.next()? {
+                let pitch = statement.read::<i64>(0)?;
+                let duration = statement.read::<f64>(1)?;
+                let velocity = statement.read::<i64>(2)?;
+                let note = Note::new(pitch as MidiByte, duration, velocity as MidiByte);
+                melody.add(note);
+            }
+            self.melody_cache.insert(rowid, melody.clone());
+            Ok(melody)
+        }
+    }
+
+    pub fn add_melody_and_variation(&mut self, melody: &Melody, variation: &Melody) -> anyhow::Result<()> {
+        let player_info = self.store_melody(melody, None)?;
+        self.store_melody(variation, Some(player_info.rowid))?;
+        Ok(())
+    }
+
+    pub fn update_rating(&mut self, rowid: i64, new_rating: Preference) -> anyhow::Result<()> {
+        let mut row_info = self.melodies.get(&rowid).or(self.variations.get(&rowid)).unwrap().clone();
+        if row_info.rating != new_rating {
+            row_info.rating = new_rating;
+            let new_rating = new_rating.to_string();
+            let connection = self.get_connection()?;
+            connection
+                .prepare("UPDATE main_table SET rating = ? WHERE rowid = ?").unwrap()
+                .bind(1, new_rating.as_str()).unwrap()
+                .bind(2, row_info.rowid).unwrap()
+                .next().unwrap();
+            self.add_info(row_info);
+        }
+        Ok(())
+    }
+
+    fn store_melody(&mut self, melody: &Melody, source: Option<i64>) -> anyhow::Result<MelodyInfo> {
         let timestamp = Utc::now().timestamp();
         let rating = Preference::Neutral;
-        let dbase = database.clone();
-        let dbase = dbase.lock().unwrap();
-        let connection = dbase.get_connection();
+        let connection = self.get_connection()?;
         let tag = "";
         connection
-            .prepare("INSERT INTO main_table (timestamp, rating, source, tag) VALUES (?, ?, ?, ?)").unwrap()
-            .bind(1, timestamp).unwrap()
-            .bind(2, rating.to_string().as_str()).unwrap()
-            .bind(3, source).unwrap()
-            .bind(4, tag).unwrap()
-            .next().unwrap();
-        let mut statement = connection.prepare("SELECT last_insert_rowid()").unwrap();
-        statement.next().unwrap();
-        let row_id = statement.read::<i64>(0).unwrap();
+            .prepare("INSERT INTO main_table (timestamp, rating, source, tag) VALUES (?, ?, ?, ?)")?
+            .bind(1, timestamp)?
+            .bind(2, rating.to_string().as_str())?
+            .bind(3, source)?
+            .bind(4, tag)?
+            .next()?;
+        let mut statement = connection.prepare("SELECT last_insert_rowid()")?;
+        statement.next()?;
+        let rowid = statement.read::<i64>(0)?;
 
         for note in melody.iter() {
             connection
                 .prepare("INSERT INTO melodies (row, pitch, duration, velocity) VALUES (?, ?, ?, ?);").unwrap()
-                .bind(1, row_id).unwrap()
+                .bind(1, rowid).unwrap()
                 .bind(2, note.pitch() as i64).unwrap()
                 .bind(3, note.duration()).unwrap()
                 .bind(4, note.velocity() as i64).unwrap()
                 .next().unwrap();
         }
 
-        MelodyInfo {row_id, timestamp, melody: Some(melody.clone()), tag: tag.to_string(), source, rating, database }
+        let info = MelodyInfo { rowid, timestamp, tag: tag.to_string(), source, rating };
+        self.add_info(info.clone());
+        self.melody_cache.insert(info.rowid, melody.clone());
+        Ok(info)
     }
 
-    pub fn get_main_melodies(database: Arc<Mutex<Database>>) -> Vec<Self> {
-        let dbase = database.lock().unwrap();
-        let connection = dbase.get_connection();
-        let mut statement = connection.prepare("SELECT timestamp, rowid, tag, rating FROM main_table WHERE source IS NULL").unwrap();
-        let mut result = Vec::new();
-        while let State::Row = statement.next().unwrap() {
-            let timestamp = statement.read::<i64>(0).unwrap();
-            let row_id = statement.read::<i64>(1).unwrap();
-            let tag = statement.read::<String>(2).unwrap();
-            let rating = statement.read::<String>(3).unwrap().parse::<Preference>().unwrap();
-            result.push(MelodyInfo {row_id, timestamp, melody: None, tag, source: None, rating, database: database.clone()});
-        }
-        result
+    fn get_connection(&self) -> anyhow::Result<Connection> {
+        let connection = sqlite::open(self.filename.as_str()).unwrap();
+        connection.execute("CREATE TABLE IF NOT EXISTS main_table (timestamp INTEGER, rating TEXT, tag TEXT, source INTEGER);")?;
+        connection.execute("CREATE TABLE IF NOT EXISTS melodies (row INTEGER, pitch INTEGER, duration FLOAT, velocity INTEGER);")?;
+        Ok(connection)
     }
+}
 
-    pub fn get_variations_of(&self) -> Vec<Self> {
-        let database = self.database.lock().unwrap();
-        let connection = database.get_connection();
-        let mut statement = connection
-            .prepare("SELECT timestamp, rowid, tag, rating FROM main_table WHERE source = ?").unwrap()
-            .bind(1, self.row_id).unwrap();
-        let mut result = Vec::new();
-        while let State::Row = statement.next().unwrap() {
-            let timestamp = statement.read::<i64>(0).unwrap();
-            let row_id = statement.read::<i64>(1).unwrap();
-            let tag = statement.read::<String>(2).unwrap();
-            let rating = statement.read::<String>(3).unwrap().parse::<Preference>().unwrap();
-            result.push(MelodyInfo {row_id, timestamp, melody: None, tag, source: Some(self.row_id), rating, database: self.database.clone()});
-        }
-        result
-    }
+#[derive(Clone, Debug)]
+pub struct MelodyInfo {
+    timestamp: i64,
+    rowid: i64,
+    rating: Preference,
+    source: Option<i64>,
+    tag: String
+}
 
-    pub fn get_melody(&mut self) -> Melody {
-        if let Some(melody) = &self.melody {
-            melody.clone()
-        } else {
-            let melody = get_melody(self.database.clone(), self.row_id);
-            self.melody = Some(melody.clone());
-            melody
-        }
-    }
-
+impl MelodyInfo {
     pub fn get_row_id(&self) -> i64 {
-        self.row_id
+        self.rowid
     }
 
     pub fn get_date(&self) -> NaiveDate {
@@ -131,37 +184,6 @@ impl MelodyInfo {
     pub fn get_rating(&self) -> Preference {
         self.rating
     }
-
-    pub fn update_rating(&mut self, new_rating: Preference) {
-        if self.rating != new_rating {
-            self.rating = new_rating;
-            let new_rating = new_rating.to_string();
-            let database = self.database.lock().unwrap();
-            let connection = database.get_connection();
-            connection
-                .prepare("UPDATE main_table SET rating = ? WHERE rowid = ?").unwrap()
-                .bind(1, new_rating.as_str()).unwrap()
-                .bind(2, self.row_id).unwrap()
-                .next().unwrap();
-        }
-    }
-}
-
-pub fn get_melody(database: Arc<Mutex<Database>>, row_id: i64) -> Melody {
-    let database = database.lock().unwrap();
-    let connection = database.get_connection();
-    let mut statement = connection
-        .prepare("SELECT pitch, duration, velocity from melodies WHERE row = ?").unwrap()
-        .bind(1, row_id).unwrap();
-    let mut melody = Melody::new();
-    while let State::Row = statement.next().unwrap() {
-        let pitch = statement.read::<i64>(0).unwrap();
-        let duration = statement.read::<f64>(1).unwrap();
-        let velocity = statement.read::<i64>(2).unwrap();
-        let note = Note::new(pitch as MidiByte, duration, velocity as MidiByte);
-        melody.add(note);
-    }
-    melody
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Sequence, Debug)]

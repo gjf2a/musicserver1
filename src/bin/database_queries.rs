@@ -1,16 +1,19 @@
 use musicserver1::{Database, MelodyInfo};
 
-fn main() {
-    let database = Database::new();
-    let main_melodies = MelodyInfo::get_main_melodies(database.clone());
-    for info in main_melodies.iter() {
-        println!("{info:?}");
-        println!("{:?} {:?}", info.get_date(), info.get_time());
-        let variations = info.get_variations_of();
-        for info in variations.iter() {
-            println!("{info:?}");
-            println!("{:?} {:?}", info.get_date(), info.get_time());
+fn main() -> anyhow::Result<()> {
+    let database = Database::new()?;
+    let database = database.lock().unwrap();
+    for info in database.melodies() {
+        print_info(&info);
+        for var_info in database.variations_of(info.get_row_id()) {
+            print_info(&var_info);
         }
         println!();
     }
+    Ok(())
+}
+
+fn print_info(info: &MelodyInfo) {
+    println!("{info:?}");
+    println!("{:?} {:?}", info.get_date(), info.get_time());
 }

@@ -1,4 +1,4 @@
-use crate::{Database, arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue, SynthChoice, MelodyInfo};
+use crate::{Database, arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue, SynthChoice};
 use crossbeam_queue::SegQueue;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use std::sync::{Arc, Mutex};
@@ -40,8 +40,8 @@ pub fn start_ai_thread(
             println!("Intervals: {:?}", player_melody.diatonic_intervals());
             performer.perform_variation(&player_melody);
             if performer.get_last_variation().len() > 0 {
-                let database = database.lock().unwrap();
-                database.add_melody_and_variation(&player_melody, performer.get_last_variation());
+                let mut database = database.lock().unwrap();
+                database.add_melody_and_variation(&player_melody, performer.get_last_variation()).unwrap();
             }
         }
     });
