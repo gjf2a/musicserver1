@@ -35,20 +35,19 @@ pub fn start_ai_thread(
             input2ai.clone(),
             ai2output.clone(),
             replay_delay_slider.clone(),
+            ui2ai
         );
         let mut performer =
             Performer::new(p_random_slider.clone(), ai_table.clone(), ai2output.clone());
         loop {
-            let player_melody = recorder.record();
+            let player_melody = recorder.record(&mut database);
             let variation = performer.create_variation(&player_melody);
             if variation.len() > 0 {
                 let info = database.add_melody_and_variation(&player_melody, &variation).unwrap();
                 ai2ui.push(info);
+                println!("pushed info");
             }
             performer.send_variation(&variation);
-            if let Some(info) = ui2ai.pop() {
-                database.update_rating(info.get_row_id(), info.get_rating()).unwrap();
-            }
         }
     });
 }
@@ -59,6 +58,7 @@ struct PlayerRecorder {
     replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
     waiting: Option<PendingNote>,
     player_melody: Melody,
+    ui2ai: Arc<SegQueue<MelodyInfo>>,
 }
 
 impl PlayerRecorder {
@@ -66,6 +66,7 @@ impl PlayerRecorder {
         input2ai: Arc<SegQueue<MidiMsg>>,
         ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
         replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
+        ui2ai: Arc<SegQueue<MelodyInfo>>,
     ) -> Self {
         PlayerRecorder {
             input2ai,
@@ -73,10 +74,11 @@ impl PlayerRecorder {
             replay_delay_slider,
             waiting: None,
             player_melody: Melody::new(),
+            ui2ai
         }
     }
 
-    fn record(&mut self) -> Melody {
+    fn record(&mut self, database: &mut Database) -> Melody {
         self.waiting = None;
         let mut player_finished = false;
         while !player_finished {
@@ -86,6 +88,10 @@ impl PlayerRecorder {
 
             if let Some(pending_note) = self.waiting {
                 player_finished = self.check_if_finished(pending_note);
+            }
+
+            if let Some(info) = self.ui2ai.pop() {
+                database.update_rating(info.get_row_id(), info.get_rating()).unwrap();
             }
         }
         let mut result = Melody::new();

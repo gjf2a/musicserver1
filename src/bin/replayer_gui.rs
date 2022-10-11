@@ -200,6 +200,7 @@ impl ReplayerApp {
 
     fn update_melody_info(&mut self) {
         if let Some((player_info, variation_info)) = self.ai2ui.pop() {
+            println!("popped info");
             self.melody_pref = player_info.get_rating();
             self.melody_info.items.push(player_info);
             self.melody_info.go_to_end();
@@ -213,12 +214,14 @@ impl ReplayerApp {
         let start_pref = self.melody_pref;
         Self::melody_iterate(ui, &mut self.melody_info, &mut self.melody_pref);
         if self.melody_pref != start_pref {
+            self.melody_info.get_mut().unwrap().set_rating(self.melody_pref);
             self.ui2ai.push(self.melody_info.get().cloned().unwrap());
         }
         if !self.variation_info.is_empty() {
             let start_pref = self.variation_pref;
             Self::melody_iterate(ui, &mut self.variation_info, &mut self.variation_pref);
             if self.variation_pref != start_pref {
+                self.variation_info.get_mut().unwrap().set_rating(self.variation_pref);
                 self.ui2ai.push(self.variation_info.get().cloned().unwrap());
             }
         }

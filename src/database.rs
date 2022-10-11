@@ -104,8 +104,11 @@ impl Database {
     }
 
     pub fn update_rating(&mut self, rowid: i64, new_rating: Preference) -> anyhow::Result<()> {
+        println!("update_rating: {new_rating}");
         let mut row_info = self.melodies.get(&rowid).or(self.variations.get(&rowid)).unwrap().clone();
+        println!("current rating: {}", row_info.rating);
         if row_info.rating != new_rating {
+            println!("Updating...");
             row_info.rating = new_rating;
             let new_rating = new_rating.to_string();
             let connection = self.get_connection()?;
@@ -183,6 +186,10 @@ impl MelodyInfo {
 
     pub fn get_rating(&self) -> Preference {
         self.rating
+    }
+
+    pub fn set_rating(&mut self, pref: Preference) {
+        self.rating = pref;
     }
 }
 
