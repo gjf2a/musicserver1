@@ -22,7 +22,7 @@ pub struct MelodyInfo {
     rating: Preference,
     source: Option<i64>,
     tag: String,
-    melody: Melody
+    melody: Option<Melody>
 }
 
 impl MelodyInfo {
@@ -52,7 +52,7 @@ impl MelodyInfo {
                 .next().unwrap();
         }
 
-        MelodyInfo {row_id, timestamp, melody: melody.clone(), tag: tag.to_string(), source, rating}
+        MelodyInfo {row_id, timestamp, melody: Some(melody.clone()), tag: tag.to_string(), source, rating}
     }
 
     pub fn get_main_melodies() -> Vec<Self> {
@@ -64,7 +64,7 @@ impl MelodyInfo {
             let row_id = statement.read::<i64>(1).unwrap();
             let tag = statement.read::<String>(2).unwrap();
             let rating = statement.read::<String>(3).unwrap().parse::<Preference>().unwrap();
-            result.push(MelodyInfo {row_id, timestamp, melody: get_melody(row_id), tag, source: None, rating});
+            result.push(MelodyInfo {row_id, timestamp, melody: None, tag, source: None, rating});
         }
         result
     }
@@ -80,9 +80,19 @@ impl MelodyInfo {
             let row_id = statement.read::<i64>(1).unwrap();
             let tag = statement.read::<String>(2).unwrap();
             let rating = statement.read::<String>(3).unwrap().parse::<Preference>().unwrap();
-            result.push(MelodyInfo {row_id, timestamp, melody: get_melody(row_id), tag, source: Some(self.row_id), rating});
+            result.push(MelodyInfo {row_id, timestamp, melody: None, tag, source: Some(self.row_id), rating});
         }
         result
+    }
+
+    pub fn get_melody(&mut self) -> Melody {
+        if let Some(melody) = &self.melody {
+            melody.clone()
+        } else {
+            let melody = get_melody(self.row_id);
+            self.melody = Some(melody.clone());
+            melody
+        }
     }
 
     pub fn get_row_id(&self) -> i64 {

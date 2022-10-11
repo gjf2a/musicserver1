@@ -2,10 +2,13 @@ use crate::egui::Ui;
 use crossbeam_queue::SegQueue;
 use eframe::egui;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
-use musicserver1::{make_ai_table, make_synth_table, prob_slider, replay_slider, start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue, SynthTable, Preference};
+use musicserver1::{make_ai_table, make_synth_table, prob_slider, replay_slider, start_ai_thread,
+                   start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue,
+                   SynthTable, Preference, MelodyInfo};
 use std::mem;
 use std::sync::{Arc, Mutex};
 use enum_iterator::all;
+use bare_metal_modulo::*;
 
 fn main() -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions::default();
@@ -39,7 +42,11 @@ struct ReplayerApp {
     in_port: Option<MidiInputPort>,
     in_port_name: Option<String>,
     melody_pref: Preference,
-    variation_pref: Preference
+    variation_pref: Preference,
+    melody_info: Vec<MelodyInfo>,
+    melody: ModNum<usize>,
+    variation_info: Vec<MelodyInfo>,
+    variation: ModNum<usize>
 }
 
 impl ReplayerApp {
@@ -60,6 +67,11 @@ impl ReplayerApp {
         let ai_synth_table = Arc::new(Mutex::new(ai_synth_table));
         let p_random_slider = Arc::new(Mutex::new(prob_slider()));
         let replay_delay_slider = Arc::new(Mutex::new(replay_slider()));
+        let melody_info = MelodyInfo::get_main_melodies();
+        let melody = ModNum::new(melody_info.len() - 1, melody_info.len());
+        // TODO: This won't work in the absence of melodies. Rethink.
+        let variation_info = melody_info.last().unwrap().get_variations_of();
+        let variation = ModNum::new(0, variation_info.len());
 
         let app = ReplayerApp {
             midi_scenario: Arc::new(Mutex::new(MidiScenario::StartingUp)),
@@ -75,7 +87,11 @@ impl ReplayerApp {
             in_port: None,
             in_port_name: None,
             melody_pref: Preference::Neutral,
-            variation_pref: Preference::Neutral
+            variation_pref: Preference::Neutral,
+            melody_info,
+            melody,
+            variation_info,
+            variation
         };
         app.startup_thread();
         app
@@ -101,27 +117,27 @@ impl ReplayerApp {
     }
 
     fn sqlite_choice(&mut self, ui: &mut Ui) {
+        Self::melody_iterate(ui, &mut self.melody, &self.melody_info, &mut self.melody_pref);
+        Self::melody_iterate(ui, &mut self.variation, &self.variation_info, &mut self.variation_pref);
+
+        self.melody_info = MelodyInfo::get_main_melodies();
+        self.melody = ModNum::new(self.melody.a(), self.melody_info.len());
+        self.variation_info = self.melody_info[self.melody.a()].get_variations_of();
+        self.variation = ModNum::new(self.variation.a(), self.variation_info.len());
+    }
+
+    fn melody_iterate(ui: &mut Ui, index: &mut ModNum<usize>, melodies: &Vec<MelodyInfo>, pref: &mut Preference) {
         ui.horizontal(|ui| {
-            if ui.button("<").clicked() {
-
+            let info = &melodies[index.a()];
+            if *index >= 1 && ui.button("<").clicked() {
+                *index -= 1;
             }
-            ui.label("Melody timestamp here");
-            if ui.button(">").clicked() {
-
+            let stamp = format!("{:?} {:?}", info.get_date(), info.get_time());
+            ui.label(stamp.as_str());
+            if *index + 1 > 0 && ui.button(">").clicked() {
+                *index += 1;
             }
-            Self::preference_buttons(ui, &mut self.melody_pref);
-        });
-
-
-        ui.horizontal(|ui| {
-            if ui.button("<").clicked() {
-
-            }
-            ui.label("Variation timestamp here");
-            if ui.button(">").clicked() {
-
-            }
-            Self::preference_buttons(ui, &mut self.variation_pref);
+            Self::preference_buttons(ui, pref);
         });
     }
 
