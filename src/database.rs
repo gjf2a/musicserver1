@@ -18,6 +18,11 @@ impl Database {
         Arc::new(Mutex::new(Database {filename: DATABASE_FILENAME.to_string()}))
     }
 
+    pub fn add_melody_and_variation(&mut self, melody: &Melody, variation: &Melody) {
+        let player_info = MelodyInfo::new(self.clone(), melody, None);
+        MelodyInfo::new(self.clone(), variation, Some(player_info.get_row_id()));
+    }
+
     fn get_connection(&self) -> Connection {
         let connection = sqlite::open(self.filename.as_str()).unwrap();
         connection.execute("CREATE TABLE IF NOT EXISTS main_table (timestamp INTEGER, rating TEXT, tag TEXT, source INTEGER);").unwrap();
@@ -38,7 +43,7 @@ pub struct MelodyInfo {
 }
 
 impl MelodyInfo {
-    pub fn new(database: Arc<Mutex<Database>>, melody: &Melody, source: Option<i64>) -> Self {
+    fn new(database: Arc<Mutex<Database>>, melody: &Melody, source: Option<i64>) -> Self {
         let timestamp = Utc::now().timestamp();
         let rating = Preference::Neutral;
         let dbase = database.clone();

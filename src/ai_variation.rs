@@ -40,8 +40,8 @@ pub fn start_ai_thread(
             println!("Intervals: {:?}", player_melody.diatonic_intervals());
             performer.perform_variation(&player_melody);
             if performer.get_last_variation().len() > 0 {
-                let player_info = MelodyInfo::new(database.clone(), &player_melody, None);
-                MelodyInfo::new(database.clone(), performer.get_last_variation(), Some(player_info.get_row_id()));
+                let database = database.lock().unwrap();
+                database.add_melody_and_variation(&player_melody, performer.get_last_variation());
             }
         }
     });
