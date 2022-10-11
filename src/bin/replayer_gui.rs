@@ -44,6 +44,8 @@ impl <T:Clone> VecTracker<T> {
         }
     }
 
+    pub fn len(&self) -> usize {self.items.len()}
+
     pub fn is_empty(&self) -> bool {self.items.is_empty()}
 
     pub fn get(&self) -> &T {
@@ -178,9 +180,17 @@ impl ReplayerApp {
                 self.sqlite_choice(ui);
             }
 
+            let old_len = self.melody_info.len();
             self.melody_info.replace_vec(MelodyInfo::get_main_melodies(self.database.clone()));
+            let changed = self.melody_info.len() > old_len;
+            if changed {
+                self.melody_info.go_to_end();
+            }
             if !self.melody_info.is_empty() {
                 self.variation_info.replace_vec(self.melody_info.get().get_variations_of(self.database.clone()));
+                if changed {
+                    self.variation_info.go_to_end();
+                }
             }
         });
     }
