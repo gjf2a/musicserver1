@@ -48,8 +48,12 @@ impl <T:Clone> VecTracker<T> {
 
     pub fn is_empty(&self) -> bool {self.items.is_empty()}
 
-    pub fn get(&self) -> &T {
-        &self.items[self.tracker.unwrap().a()]
+    pub fn get(&self) -> Option<&T> {
+        self.items.get(self.tracker.unwrap().a())
+    }
+
+    pub fn get_mut(&mut self) -> Option<&mut T> {
+        self.items.get_mut(self.tracker.unwrap().a())
     }
 
     pub fn replace_vec(&mut self, new_v: Vec<T>) {
@@ -136,7 +140,7 @@ impl ReplayerApp {
         let database = Database::new();
         let mut melody_info = VecTracker::new(MelodyInfo::get_main_melodies(database.clone()));
         melody_info.go_to_end();
-        let variation_info = VecTracker::new(if melody_info.is_empty() {vec![]} else {melody_info.get().get_variations_of(database.clone())});
+        let variation_info = VecTracker::new(if melody_info.is_empty() {vec![]} else {melody_info.get().unwrap().get_variations_of()});
 
         let app = ReplayerApp {
             midi_scenario: Arc::new(Mutex::new(MidiScenario::StartingUp)),
@@ -185,11 +189,15 @@ impl ReplayerApp {
             let changed = self.melody_info.len() > old_len;
             if changed {
                 self.melody_info.go_to_end();
+                self.melody_pref = self.melody_info.get().map_or(Preference::Neutral, |m| m.get_rating());
             }
             if !self.melody_info.is_empty() {
-                self.variation_info.replace_vec(self.melody_info.get().get_variations_of(self.database.clone()));
+                let old_len = self.variation_info.len();
+                self.variation_info.replace_vec(self.melody_info.get().unwrap().get_variations_of());
+                let changed = changed || self.variation_info.len() > old_len;
                 if changed {
                     self.variation_info.go_to_end();
+                    self.variation_pref = self.variation_info.get().map_or(Preference::Neutral, |m| m.get_rating());
                 }
             }
         });
@@ -205,7 +213,7 @@ impl ReplayerApp {
     fn melody_iterate(ui: &mut Ui, melodies: &mut VecTracker<MelodyInfo>, pref: &mut Preference) {
         ui.horizontal(|ui| {
             let stamp = {
-                let info = melodies.get();
+                let info = melodies.get().unwrap();
                 format!("{:?} {:?}", info.get_date(), info.get_time())
             };
 
@@ -217,6 +225,7 @@ impl ReplayerApp {
                 melodies.go_right();
             }
             Self::preference_buttons(ui, pref);
+            melodies.get_mut().unwrap().update_rating(*pref);
         });
     }
 
@@ -228,12 +237,8 @@ impl ReplayerApp {
         });
     }
 
-    fn radio_choice<T: Clone>(
-        ui: &mut Ui,
-        header: &str,
-        table: Arc<Mutex<ChooserTable<T>>>,
-        tag: &mut String,
-    ) {
+    fn radio_choice<T: Clone>(ui: &mut Ui, header: &str, table: Arc<Mutex<ChooserTable<T>>>,
+                              tag: &mut String) {
         ui.vertical(|ui| {
             let table = table.lock().unwrap();
             ui.label(header);
@@ -298,12 +303,7 @@ impl ReplayerApp {
         });
     }
 
-    fn pick_midi_screen(
-        &mut self,
-        ctx: &egui::Context,
-        _frame: &mut eframe::Frame,
-        in_ports: &MidiInputPorts,
-    ) {
+    fn pick_midi_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame, in_ports: &MidiInputPorts) {
         if self.in_port.is_none() {
             self.in_port = Some(in_ports[0].clone());
         }

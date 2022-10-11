@@ -8,7 +8,7 @@ use std::str::FromStr;
 
 const DATABASE_FILENAME: &str = "replayer_variations.db";
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Database {
     filename: String
 }
@@ -26,22 +26,24 @@ impl Database {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Debug)]
 pub struct MelodyInfo {
     timestamp: i64,
     row_id: i64,
     rating: Preference,
     source: Option<i64>,
     tag: String,
-    melody: Option<Melody>
+    melody: Option<Melody>,
+    database: Arc<Mutex<Database>>
 }
 
 impl MelodyInfo {
     pub fn new(database: Arc<Mutex<Database>>, melody: &Melody, source: Option<i64>) -> Self {
         let timestamp = Utc::now().timestamp();
         let rating = Preference::Neutral;
-        let database = database.lock().unwrap();
-        let connection = database.get_connection();
+        let dbase = database.clone();
+        let dbase = dbase.lock().unwrap();
+        let connection = dbase.get_connection();
         let tag = "";
         connection
             .prepare("INSERT INTO main_table (timestamp, rating, source, tag) VALUES (?, ?, ?, ?)").unwrap()
@@ -64,12 +66,12 @@ impl MelodyInfo {
                 .next().unwrap();
         }
 
-        MelodyInfo {row_id, timestamp, melody: Some(melody.clone()), tag: tag.to_string(), source, rating}
+        MelodyInfo {row_id, timestamp, melody: Some(melody.clone()), tag: tag.to_string(), source, rating, database }
     }
 
     pub fn get_main_melodies(database: Arc<Mutex<Database>>) -> Vec<Self> {
-        let database = database.lock().unwrap();
-        let connection = database.get_connection();
+        let dbase = database.lock().unwrap();
+        let connection = dbase.get_connection();
         let mut statement = connection.prepare("SELECT timestamp, rowid, tag, rating FROM main_table WHERE source IS NULL").unwrap();
         let mut result = Vec::new();
         while let State::Row = statement.next().unwrap() {
@@ -77,13 +79,13 @@ impl MelodyInfo {
             let row_id = statement.read::<i64>(1).unwrap();
             let tag = statement.read::<String>(2).unwrap();
             let rating = statement.read::<String>(3).unwrap().parse::<Preference>().unwrap();
-            result.push(MelodyInfo {row_id, timestamp, melody: None, tag, source: None, rating});
+            result.push(MelodyInfo {row_id, timestamp, melody: None, tag, source: None, rating, database: database.clone()});
         }
         result
     }
 
-    pub fn get_variations_of(&self, database: Arc<Mutex<Database>>) -> Vec<Self> {
-        let database = database.lock().unwrap();
+    pub fn get_variations_of(&self) -> Vec<Self> {
+        let database = self.database.lock().unwrap();
         let connection = database.get_connection();
         let mut statement = connection
             .prepare("SELECT timestamp, rowid, tag, rating FROM main_table WHERE source = ?").unwrap()
@@ -94,16 +96,16 @@ impl MelodyInfo {
             let row_id = statement.read::<i64>(1).unwrap();
             let tag = statement.read::<String>(2).unwrap();
             let rating = statement.read::<String>(3).unwrap().parse::<Preference>().unwrap();
-            result.push(MelodyInfo {row_id, timestamp, melody: None, tag, source: Some(self.row_id), rating});
+            result.push(MelodyInfo {row_id, timestamp, melody: None, tag, source: Some(self.row_id), rating, database: self.database.clone()});
         }
         result
     }
 
-    pub fn get_melody(&mut self, database: Arc<Mutex<Database>>) -> Melody {
+    pub fn get_melody(&mut self) -> Melody {
         if let Some(melody) = &self.melody {
             melody.clone()
         } else {
-            let melody = get_melody(database, self.row_id);
+            let melody = get_melody(self.database.clone(), self.row_id);
             self.melody = Some(melody.clone());
             melody
         }
@@ -119,6 +121,24 @@ impl MelodyInfo {
 
     pub fn get_time(&self) -> NaiveTime {
         Local.timestamp(self.timestamp, 0).time()
+    }
+
+    pub fn get_rating(&self) -> Preference {
+        self.rating
+    }
+
+    pub fn update_rating(&mut self, new_rating: Preference) {
+        if self.rating != new_rating {
+            self.rating = new_rating;
+            let new_rating = new_rating.to_string();
+            let database = self.database.lock().unwrap();
+            let connection = database.get_connection();
+            connection
+                .prepare("UPDATE main_table SET rating = ? WHERE rowid = ?").unwrap()
+                .bind(1, new_rating.as_str()).unwrap()
+                .bind(2, self.row_id).unwrap()
+                .next().unwrap();
+        }
     }
 }
 
