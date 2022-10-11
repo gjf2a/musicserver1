@@ -200,7 +200,6 @@ impl ReplayerApp {
 
     fn update_melody_info(&mut self) {
         if let Some((player_info, variation_info)) = self.ai2ui.pop() {
-            println!("popped info");
             self.melody_pref = player_info.get_rating();
             self.melody_info.items.push(player_info);
             self.melody_info.go_to_end();

@@ -45,7 +45,6 @@ pub fn start_ai_thread(
             if variation.len() > 0 {
                 let info = database.add_melody_and_variation(&player_melody, &variation).unwrap();
                 ai2ui.push(info);
-                println!("pushed info");
             }
             performer.send_variation(&variation);
         }
