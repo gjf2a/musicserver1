@@ -183,24 +183,27 @@ impl ReplayerApp {
             if !self.melody_info.is_empty() {
                 self.sqlite_choice(ui);
             }
-
-            let old_len = self.melody_info.len();
-            self.melody_info.replace_vec(MelodyInfo::get_main_melodies(self.database.clone()));
-            let changed = self.melody_info.len() > old_len;
-            if changed {
-                self.melody_info.go_to_end();
-                self.melody_pref = self.melody_info.get().map_or(Preference::Neutral, |m| m.get_rating());
-            }
-            if !self.melody_info.is_empty() {
-                let old_len = self.variation_info.len();
-                self.variation_info.replace_vec(self.melody_info.get().unwrap().get_variations_of());
-                let changed = changed || self.variation_info.len() > old_len;
-                if changed {
-                    self.variation_info.go_to_end();
-                    self.variation_pref = self.variation_info.get().map_or(Preference::Neutral, |m| m.get_rating());
-                }
-            }
+            self.update_melody_info();
         });
+    }
+
+    fn update_melody_info(&mut self) {
+        let old_len = self.melody_info.len();
+        self.melody_info.replace_vec(MelodyInfo::get_main_melodies(self.database.clone()));
+        let changed = self.melody_info.len() > old_len;
+        if changed {
+            self.melody_info.go_to_end();
+            self.melody_pref = self.melody_info.get().map_or(Preference::Neutral, |m| m.get_rating());
+        }
+        if !self.melody_info.is_empty() {
+            let old_len = self.variation_info.len();
+            self.variation_info.replace_vec(self.melody_info.get().unwrap().get_variations_of());
+            let changed = changed || self.variation_info.len() > old_len;
+            if changed {
+                self.variation_info.go_to_end();
+                self.variation_pref = self.variation_info.get().map_or(Preference::Neutral, |m| m.get_rating());
+            }
+        }
     }
 
     fn sqlite_choice(&mut self, ui: &mut Ui) {
@@ -219,10 +222,12 @@ impl ReplayerApp {
 
             if !melodies.at_start() && ui.button("<").clicked() {
                 melodies.go_left();
+                *pref = melodies.get().map_or(Preference::Neutral, |m| m.get_rating());
             }
             ui.label(stamp.as_str());
             if !melodies.at_end() && ui.button(">").clicked() {
                 melodies.go_right();
+                *pref = melodies.get().map_or(Preference::Neutral, |m| m.get_rating());
             }
             Self::preference_buttons(ui, pref);
             melodies.get_mut().unwrap().update_rating(*pref);
