@@ -18,7 +18,7 @@ fn get_connection() -> Connection {
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct MelodyInfo {
     timestamp: i64,
-    row_id: Option<i64>,
+    row_id: i64,
     rating: Preference,
     source: Option<i64>,
     tag: String,
@@ -27,9 +27,32 @@ pub struct MelodyInfo {
 
 impl MelodyInfo {
     pub fn new(melody: &Melody, source: Option<i64>) -> Self {
-        let mut result = MelodyInfo {row_id: None, timestamp: Utc::now().timestamp(), melody: melody.clone(), tag: "".to_string(), source, rating: Preference::Neutral};
-        result.store();
-        result
+        let timestamp = Utc::now().timestamp();
+        let rating = Preference::Neutral;
+        let connection = get_connection();
+        let tag = "";
+        connection
+            .prepare("INSERT INTO main_table (timestamp, rating, source, tag) VALUES (?, ?, ?, ?)").unwrap()
+            .bind(1, timestamp).unwrap()
+            .bind(2, rating.to_string().as_str()).unwrap()
+            .bind(3, source).unwrap()
+            .bind(4, tag).unwrap()
+            .next().unwrap();
+        let mut statement = connection.prepare("SELECT last_insert_rowid()").unwrap();
+        statement.next().unwrap();
+        let row_id = statement.read::<i64>(0).unwrap();
+
+        for note in melody.iter() {
+            connection
+                .prepare("INSERT INTO melodies (row, pitch, duration, velocity) VALUES (?, ?, ?, ?);").unwrap()
+                .bind(1, row_id).unwrap()
+                .bind(2, note.pitch() as i64).unwrap()
+                .bind(3, note.duration()).unwrap()
+                .bind(4, note.velocity() as i64).unwrap()
+                .next().unwrap();
+        }
+
+        MelodyInfo {row_id, timestamp, melody: melody.clone(), tag: tag.to_string(), source, rating}
     }
 
     pub fn get_main_melodies() -> Vec<Self> {
@@ -41,7 +64,7 @@ impl MelodyInfo {
             let row_id = statement.read::<i64>(1).unwrap();
             let tag = statement.read::<String>(2).unwrap();
             let rating = statement.read::<String>(3).unwrap().parse::<Preference>().unwrap();
-            result.push(MelodyInfo {row_id: Some(row_id), timestamp, melody: get_melody(row_id), tag, source: None, rating});
+            result.push(MelodyInfo {row_id, timestamp, melody: get_melody(row_id), tag, source: None, rating});
         }
         result
     }
@@ -50,19 +73,19 @@ impl MelodyInfo {
         let connection = get_connection();
         let mut statement = connection
             .prepare("SELECT timestamp, rowid, tag, rating FROM main_table WHERE source = ?").unwrap()
-            .bind(1, self.row_id.unwrap()).unwrap();
+            .bind(1, self.row_id).unwrap();
         let mut result = Vec::new();
         while let State::Row = statement.next().unwrap() {
             let timestamp = statement.read::<i64>(0).unwrap();
             let row_id = statement.read::<i64>(1).unwrap();
             let tag = statement.read::<String>(2).unwrap();
             let rating = statement.read::<String>(3).unwrap().parse::<Preference>().unwrap();
-            result.push(MelodyInfo {row_id: Some(row_id), timestamp, melody: get_melody(row_id), tag, source: self.row_id, rating});
+            result.push(MelodyInfo {row_id, timestamp, melody: get_melody(row_id), tag, source: Some(self.row_id), rating});
         }
         result
     }
 
-    pub fn get_row_id(&self) -> Option<i64> {
+    pub fn get_row_id(&self) -> i64 {
         self.row_id
     }
 
@@ -72,29 +95,6 @@ impl MelodyInfo {
 
     pub fn get_time(&self) -> NaiveTime {
         Local.timestamp(self.timestamp, 0).time()
-    }
-
-    pub fn store(&mut self) {
-        let connection = get_connection();
-        let p = format!("INSERT INTO main_table (timestamp, rating, source, tag) VALUES (?, ?, ?, {})", self.tag);
-        connection
-            .prepare(p.as_str()).unwrap()
-            .bind(1, self.timestamp).unwrap()
-            .bind(2, self.rating.to_string().as_str()).unwrap()
-            .bind(3, self.source).unwrap()
-            .next().unwrap();
-        let mut statement = connection.prepare("SELECT last_insert_rowid()").unwrap();
-        statement.next().unwrap();
-        self.row_id = Some(statement.read::<i64>(0).unwrap());
-        for note in self.melody.iter() {
-            connection
-                .prepare("INSERT INTO melodies (row, pitch, duration, velocity) VALUES (?, ?, ?, ?);").unwrap()
-                .bind(1, self.row_id).unwrap()
-                .bind(2, note.pitch() as i64).unwrap()
-                .bind(3, note.duration()).unwrap()
-                .bind(4, note.velocity() as i64).unwrap()
-                .next().unwrap();
-        }
     }
 }
 

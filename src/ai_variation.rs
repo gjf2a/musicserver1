@@ -40,7 +40,7 @@ pub fn start_ai_thread(
             performer.perform_variation(&player_melody);
             if performer.get_last_variation().len() > 0 {
                 let player_info = MelodyInfo::new(&player_melody, None);
-                MelodyInfo::new(performer.get_last_variation(), player_info.get_row_id());
+                MelodyInfo::new(performer.get_last_variation(), Some(player_info.get_row_id()));
             }
         }
     });
