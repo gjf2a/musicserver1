@@ -1094,7 +1094,7 @@ mod tests {
             let mut different_count = 0;
             for i in 0..var.len() {
                 assert_eq!(var[i].duration, tune[i].duration);
-                assert_eq!(var[i].intensity, tune[i].intensity);
+                assert_eq!(var[i].velocity, tune[i].velocity);
                 assert!(!scale.contains(tune[i].pitch) || scale.contains(var[i].pitch));
                 if var[i].pitch != tune[i].pitch {
                     different_count += 1;
@@ -1302,7 +1302,7 @@ mod tests {
             let mut different_count = 0;
             for i in 0..var.len() {
                 assert_eq!(var[i].duration, melody[i].duration);
-                assert_eq!(var[i].intensity, melody[i].intensity);
+                assert_eq!(var[i].velocity, melody[i].velocity);
                 assert!(!scale.contains(melody[i].pitch) || scale.contains(var[i].pitch));
                 if var[i].pitch != melody[i].pitch {
                     different_count += 1;

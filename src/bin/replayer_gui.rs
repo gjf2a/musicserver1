@@ -4,7 +4,7 @@ use eframe::egui;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
 use musicserver1::{make_ai_table, make_synth_table, prob_slider, replay_slider, start_ai_thread,
                    start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue,
-                   SynthTable, Preference, MelodyInfo};
+                   SynthTable, Preference, MelodyInfo, Database};
 use std::mem;
 use std::sync::{Arc, Mutex};
 use enum_iterator::all;
@@ -110,6 +110,7 @@ struct ReplayerApp {
     variation_pref: Preference,
     melody_info: VecTracker<MelodyInfo>,
     variation_info: VecTracker<MelodyInfo>,
+    database: Arc<Mutex<Database>>
 }
 
 impl ReplayerApp {
@@ -130,9 +131,10 @@ impl ReplayerApp {
         let ai_synth_table = Arc::new(Mutex::new(ai_synth_table));
         let p_random_slider = Arc::new(Mutex::new(prob_slider()));
         let replay_delay_slider = Arc::new(Mutex::new(replay_slider()));
-        let mut melody_info = VecTracker::new(MelodyInfo::get_main_melodies());
+        let database = Database::new();
+        let mut melody_info = VecTracker::new(MelodyInfo::get_main_melodies(database.clone()));
         melody_info.go_to_end();
-        let variation_info = VecTracker::new(if melody_info.is_empty() {vec![]} else {melody_info.get().get_variations_of()});
+        let variation_info = VecTracker::new(if melody_info.is_empty() {vec![]} else {melody_info.get().get_variations_of(database.clone())});
 
         let app = ReplayerApp {
             midi_scenario: Arc::new(Mutex::new(MidiScenario::StartingUp)),
@@ -150,7 +152,8 @@ impl ReplayerApp {
             melody_pref: Preference::Neutral,
             variation_pref: Preference::Neutral,
             melody_info,
-            variation_info
+            variation_info,
+            database
         };
         app.startup_thread();
         app
@@ -175,9 +178,9 @@ impl ReplayerApp {
                 self.sqlite_choice(ui);
             }
 
-            self.melody_info.replace_vec(MelodyInfo::get_main_melodies());
+            self.melody_info.replace_vec(MelodyInfo::get_main_melodies(self.database.clone()));
             if !self.melody_info.is_empty() {
-                self.variation_info.replace_vec(self.melody_info.get().get_variations_of());
+                self.variation_info.replace_vec(self.melody_info.get().get_variations_of(self.database.clone()));
             }
         });
     }
@@ -340,6 +343,7 @@ impl ReplayerApp {
             ai2output,
             self.replay_delay_slider.clone(),
             self.p_random_slider.clone(),
+            self.database.clone()
         );
         start_input_thread(
             input2ai,

@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter};
+use std::{fmt::{Display, Formatter}, sync::{Arc, Mutex}};
 use enum_iterator::Sequence;
 use crate::{MidiByte,Melody,Note};
 use sqlite::{State,Connection};
@@ -8,11 +8,22 @@ use std::str::FromStr;
 
 const DATABASE_FILENAME: &str = "replayer_variations.db";
 
-fn get_connection() -> Connection {
-    let connection = sqlite::open(DATABASE_FILENAME).unwrap();
-    connection.execute("CREATE TABLE IF NOT EXISTS main_table (timestamp INTEGER, rating TEXT, tag TEXT, source INTEGER);").unwrap();
-    connection.execute("CREATE TABLE IF NOT EXISTS melodies (row INTEGER, pitch INTEGER, duration FLOAT, velocity INTEGER);").unwrap();
-    connection
+#[derive(Clone)]
+pub struct Database {
+    filename: String
+}
+
+impl Database {
+    pub fn new() -> Arc<Mutex<Self>> {
+        Arc::new(Mutex::new(Database {filename: DATABASE_FILENAME.to_string()}))
+    }
+
+    fn get_connection(&self) -> Connection {
+        let connection = sqlite::open(self.filename.as_str()).unwrap();
+        connection.execute("CREATE TABLE IF NOT EXISTS main_table (timestamp INTEGER, rating TEXT, tag TEXT, source INTEGER);").unwrap();
+        connection.execute("CREATE TABLE IF NOT EXISTS melodies (row INTEGER, pitch INTEGER, duration FLOAT, velocity INTEGER);").unwrap();
+        connection
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -26,11 +37,11 @@ pub struct MelodyInfo {
 }
 
 impl MelodyInfo {
-    pub fn new(melody: &Melody, source: Option<i64>) -> Self {
-        println!("MelodyInfo::new()");
+    pub fn new(database: Arc<Mutex<Database>>, melody: &Melody, source: Option<i64>) -> Self {
         let timestamp = Utc::now().timestamp();
         let rating = Preference::Neutral;
-        let connection = get_connection();
+        let database = database.lock().unwrap();
+        let connection = database.get_connection();
         let tag = "";
         connection
             .prepare("INSERT INTO main_table (timestamp, rating, source, tag) VALUES (?, ?, ?, ?)").unwrap()
@@ -52,14 +63,13 @@ impl MelodyInfo {
                 .bind(4, note.velocity() as i64).unwrap()
                 .next().unwrap();
         }
-        println!("quitting MelodyInfo::new()");
 
         MelodyInfo {row_id, timestamp, melody: Some(melody.clone()), tag: tag.to_string(), source, rating}
     }
 
-    pub fn get_main_melodies() -> Vec<Self> {
-        println!("get_main_melodies");
-        let connection = get_connection();
+    pub fn get_main_melodies(database: Arc<Mutex<Database>>) -> Vec<Self> {
+        let database = database.lock().unwrap();
+        let connection = database.get_connection();
         let mut statement = connection.prepare("SELECT timestamp, rowid, tag, rating FROM main_table WHERE source IS NULL").unwrap();
         let mut result = Vec::new();
         while let State::Row = statement.next().unwrap() {
@@ -69,13 +79,12 @@ impl MelodyInfo {
             let rating = statement.read::<String>(3).unwrap().parse::<Preference>().unwrap();
             result.push(MelodyInfo {row_id, timestamp, melody: None, tag, source: None, rating});
         }
-        println!("quitting get_main_melodies");
         result
     }
 
-    pub fn get_variations_of(&self) -> Vec<Self> {
-        println!("get_variations_of");
-        let connection = get_connection();
+    pub fn get_variations_of(&self, database: Arc<Mutex<Database>>) -> Vec<Self> {
+        let database = database.lock().unwrap();
+        let connection = database.get_connection();
         let mut statement = connection
             .prepare("SELECT timestamp, rowid, tag, rating FROM main_table WHERE source = ?").unwrap()
             .bind(1, self.row_id).unwrap();
@@ -87,15 +96,14 @@ impl MelodyInfo {
             let rating = statement.read::<String>(3).unwrap().parse::<Preference>().unwrap();
             result.push(MelodyInfo {row_id, timestamp, melody: None, tag, source: Some(self.row_id), rating});
         }
-        println!("quitting get_variations_of");
         result
     }
 
-    pub fn get_melody(&mut self) -> Melody {
+    pub fn get_melody(&mut self, database: Arc<Mutex<Database>>) -> Melody {
         if let Some(melody) = &self.melody {
             melody.clone()
         } else {
-            let melody = get_melody(self.row_id);
+            let melody = get_melody(database, self.row_id);
             self.melody = Some(melody.clone());
             melody
         }
@@ -114,9 +122,9 @@ impl MelodyInfo {
     }
 }
 
-pub fn get_melody(row_id: i64) -> Melody {
-    println!("get_melody");
-    let connection = get_connection();
+pub fn get_melody(database: Arc<Mutex<Database>>, row_id: i64) -> Melody {
+    let database = database.lock().unwrap();
+    let connection = database.get_connection();
     let mut statement = connection
         .prepare("SELECT pitch, duration, velocity from melodies WHERE row = ?").unwrap()
         .bind(1, row_id).unwrap();
@@ -128,7 +136,6 @@ pub fn get_melody(row_id: i64) -> Melody {
         let note = Note::new(pitch as MidiByte, duration, velocity as MidiByte);
         melody.add(note);
     }
-    println!("quitting get_melody");
     melody
 }
 

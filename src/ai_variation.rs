@@ -1,4 +1,4 @@
-use crate::{arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue, SynthChoice, MelodyInfo};
+use crate::{Database, arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue, SynthChoice, MelodyInfo};
 use crossbeam_queue::SegQueue;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use std::sync::{Arc, Mutex};
@@ -25,6 +25,7 @@ pub fn start_ai_thread(
     ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
     replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
     p_random_slider: Arc<Mutex<SliderValue<f64>>>,
+    database: Arc<Mutex<Database>>
 ) {
     std::thread::spawn(move || {
         let mut recorder = PlayerRecorder::new(
@@ -39,8 +40,8 @@ pub fn start_ai_thread(
             println!("Intervals: {:?}", player_melody.diatonic_intervals());
             performer.perform_variation(&player_melody);
             if performer.get_last_variation().len() > 0 {
-                let player_info = MelodyInfo::new(&player_melody, None);
-                MelodyInfo::new(performer.get_last_variation(), Some(player_info.get_row_id()));
+                let player_info = MelodyInfo::new(database.clone(), &player_melody, None);
+                MelodyInfo::new(database.clone(), performer.get_last_variation(), Some(player_info.get_row_id()));
             }
         }
     });
