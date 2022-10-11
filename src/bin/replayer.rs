@@ -73,6 +73,8 @@ fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<(SynthChoice
         Arc::new(Mutex::new(ai_table)),
         input2ai,
         ai2output,
+        Arc::new(SegQueue::new()),
+        Arc::new(SegQueue::new()),
         Arc::new(Mutex::new(replay_delay)),
         Arc::new(Mutex::new(p_random)),
         Database::new().unwrap()

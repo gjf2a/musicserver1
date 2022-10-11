@@ -116,7 +116,9 @@ struct ReplayerApp {
     variation_pref: Preference,
     melody_info: VecTracker<MelodyInfo>,
     variation_info: VecTracker<MelodyInfo>,
-    database: Arc<Mutex<Database>>
+    database: Option<Database>,
+    ai2ui: Arc<SegQueue<(MelodyInfo,MelodyInfo)>>,
+    ui2ai: Arc<SegQueue<MelodyInfo>>
 }
 
 impl ReplayerApp {
@@ -139,7 +141,6 @@ impl ReplayerApp {
         let replay_delay_slider = Arc::new(Mutex::new(replay_slider()));
         let database = Database::new()?;
         let (melody_info, variation_info) = {
-            let database = database.lock().unwrap();
             let mut melody_info = VecTracker::new(database.melodies());
             if melody_info.is_empty() {
                 (melody_info, VecTracker::new(vec![]))
@@ -167,7 +168,9 @@ impl ReplayerApp {
             variation_pref: Preference::Neutral,
             melody_info,
             variation_info,
-            database
+            database: Some(database),
+            ai2ui: Arc::new(SegQueue::new()),
+            ui2ai: Arc::new(SegQueue::new())
         };
         app.startup_thread();
         Ok(app)
@@ -196,37 +199,29 @@ impl ReplayerApp {
     }
 
     fn update_melody_info(&mut self) {
-        let old_len = self.melody_info.len();
-        let database = self.database.lock().unwrap();
-        if database.num_melodies() != old_len {
-            self.melody_info.replace_vec(database.melodies());
+        if let Some((player_info, variation_info)) = self.ai2ui.pop() {
+            self.melody_pref = player_info.get_rating();
+            self.melody_info.items.push(player_info);
             self.melody_info.go_to_end();
-            if let Some(info) = self.melody_info.get() {
-                self.melody_pref = info.get_rating();
-                if !self.melody_info.is_empty() {
-                    let rowid = self.melody_info.get().unwrap().get_row_id();
-                    self.variation_info.replace_vec(database.variations_of(rowid));
-                    self.variation_info.go_to_end();
-                    if let Some(info) = self.variation_info.get() {
-                        self.variation_pref = info.get_rating();
-                    }
-                }
-            }
+            self.variation_pref = variation_info.get_rating();
+            self.variation_info.items.push(variation_info);
+            self.variation_info.go_to_end();
         }
     }
 
     fn sqlite_choice(&mut self, ui: &mut Ui) {
+        let start_pref = self.melody_pref;
         Self::melody_iterate(ui, &mut self.melody_info, &mut self.melody_pref);
-        self.update_database_pref(self.melody_info.get().unwrap().get_row_id(), self.melody_pref);
-        if !self.variation_info.is_empty() {
-            Self::melody_iterate(ui, &mut self.variation_info, &mut self.variation_pref);
-            self.update_database_pref(self.variation_info.get().unwrap().get_row_id(), self.variation_pref);
+        if self.melody_pref != start_pref {
+            self.ui2ai.push(self.melody_info.get().cloned().unwrap());
         }
-    }
-
-    fn update_database_pref(&mut self, rowid: i64, pref: Preference) {
-        let mut database = self.database.lock().unwrap();
-        database.update_rating(rowid, pref).unwrap();
+        if !self.variation_info.is_empty() {
+            let start_pref = self.variation_pref;
+            Self::melody_iterate(ui, &mut self.variation_info, &mut self.variation_pref);
+            if self.variation_pref != start_pref {
+                self.ui2ai.push(self.variation_info.get().cloned().unwrap());
+            }
+        }
     }
 
     fn melody_iterate(ui: &mut Ui, melodies: &mut VecTracker<MelodyInfo>, pref: &mut Preference) {
@@ -361,6 +356,8 @@ impl ReplayerApp {
         }
         let input2ai = Arc::new(SegQueue::new());
         let ai2output = Arc::new(SegQueue::new());
+        let mut database = None;
+        mem::swap(&mut database, &mut self.database);
 
         start_output_thread(
             ai2output.clone(),
@@ -371,9 +368,11 @@ impl ReplayerApp {
             self.ai_table.clone(),
             input2ai.clone(),
             ai2output,
+            self.ai2ui.clone(),
+            self.ui2ai.clone(),
             self.replay_delay_slider.clone(),
             self.p_random_slider.clone(),
-            self.database.clone()
+            database.unwrap()
         );
         start_input_thread(
             input2ai,

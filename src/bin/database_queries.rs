@@ -2,7 +2,6 @@ use musicserver1::{Database, MelodyInfo};
 
 fn main() -> anyhow::Result<()> {
     let database = Database::new()?;
-    let database = database.lock().unwrap();
     for info in database.melodies() {
         print_info(&info);
         for var_info in database.variations_of(info.get_row_id()) {

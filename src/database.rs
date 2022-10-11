@@ -19,7 +19,7 @@ pub struct Database {
 }
 
 impl Database {
-    pub fn new() -> anyhow::Result<Arc<Mutex<Self>>> {
+    pub fn new() -> anyhow::Result<Self> {
         let mut database = Database {filename: DATABASE_FILENAME.to_string(), melodies: BTreeMap::new(), variations: BTreeMap::new(), melody_cache: BTreeMap::new(), melody2variations: BTreeMap::new()};
         let connection = database.get_connection()?;
         let mut statement = connection.prepare("SELECT rowid, timestamp, rating, tag, source FROM main_table")?;
@@ -32,7 +32,7 @@ impl Database {
             let info = MelodyInfo {timestamp, rowid, rating, source, tag};
             database.add_info(info.clone());
         }
-        Ok(Arc::new(Mutex::new(database)))
+        Ok(database)
     }
 
     fn add_info(&mut self, info: MelodyInfo) {
@@ -97,10 +97,10 @@ impl Database {
         }
     }
 
-    pub fn add_melody_and_variation(&mut self, melody: &Melody, variation: &Melody) -> anyhow::Result<()> {
+    pub fn add_melody_and_variation(&mut self, melody: &Melody, variation: &Melody) -> anyhow::Result<(MelodyInfo, MelodyInfo)> {
         let player_info = self.store_melody(melody, None)?;
-        self.store_melody(variation, Some(player_info.rowid))?;
-        Ok(())
+        let variation_info = self.store_melody(variation, Some(player_info.rowid))?;
+        Ok((player_info, variation_info))
     }
 
     pub fn update_rating(&mut self, rowid: i64, new_rating: Preference) -> anyhow::Result<()> {
