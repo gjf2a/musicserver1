@@ -28,6 +28,71 @@ enum MidiScenario {
     MultipleInputPorts { in_ports: MidiInputPorts },
 }
 
+#[derive(Clone, Debug)]
+pub struct VecTracker<T: Clone> {
+    items: Vec<T>,
+    tracker: Option<ModNum<usize>>
+}
+
+impl <T:Clone> VecTracker<T> {
+    pub fn new(items: Vec<T>) -> Self {
+        if items.len() > 0 {
+            let tracker = Some(ModNum::new(0, items.len()));
+            VecTracker {items, tracker}
+        } else {
+            VecTracker {items, tracker: None}
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {self.items.is_empty()}
+
+    pub fn get(&self) -> &T {
+        &self.items[self.tracker.unwrap().a()]
+    }
+
+    pub fn replace_vec(&mut self, new_v: Vec<T>) {
+        self.items = new_v;
+        self.tracker = if self.items.is_empty() {
+            None
+        } else {
+            let t = self.tracker.map_or(self.items.len() - 1, |t| t.a());
+            Some(ModNum::new(t, self.items.len()))
+        };
+    }
+
+    pub fn at_start(&self) -> bool {
+        self.tracker.map_or(false, |t| t == 0)
+    }
+
+    pub fn at_end(&self) -> bool {
+        self.tracker.map_or(false, |t| t == self.items.len() - 1)
+    }
+
+    pub fn go_to_start(&mut self) {
+        if !self.is_empty() {
+            self.tracker = Some(ModNum::new(0, self.items.len()));
+        }
+    }
+
+    pub fn go_to_end(&mut self) {
+        if !self.is_empty() {
+            self.tracker = Some(ModNum::new(self.items.len() - 1, self.items.len()));
+        }
+    }
+
+    pub fn go_left(&mut self) {
+        if !self.is_empty() && !self.at_start()  {
+            self.tracker = self.tracker.map(|t| t - 1);
+        }
+    }
+
+    pub fn go_right(&mut self) {
+        if !self.is_empty() && !self.at_end()  {
+            self.tracker = self.tracker.map(|t| t + 1);
+        }
+    }
+}
+
 struct ReplayerApp {
     midi_scenario: Arc<Mutex<MidiScenario>>,
     midi_in: Arc<Mutex<Option<MidiInput>>>,
@@ -43,10 +108,8 @@ struct ReplayerApp {
     in_port_name: Option<String>,
     melody_pref: Preference,
     variation_pref: Preference,
-    melody_info: Vec<MelodyInfo>,
-    melody: ModNum<usize>,
-    variation_info: Vec<MelodyInfo>,
-    variation: ModNum<usize>
+    melody_info: VecTracker<MelodyInfo>,
+    variation_info: VecTracker<MelodyInfo>,
 }
 
 impl ReplayerApp {
@@ -67,11 +130,9 @@ impl ReplayerApp {
         let ai_synth_table = Arc::new(Mutex::new(ai_synth_table));
         let p_random_slider = Arc::new(Mutex::new(prob_slider()));
         let replay_delay_slider = Arc::new(Mutex::new(replay_slider()));
-        let melody_info = MelodyInfo::get_main_melodies();
-        let melody = ModNum::new(melody_info.len() - 1, melody_info.len());
-        // TODO: This won't work in the absence of melodies. Rethink.
-        let variation_info = melody_info.last().unwrap().get_variations_of();
-        let variation = ModNum::new(0, variation_info.len());
+        let mut melody_info = VecTracker::new(MelodyInfo::get_main_melodies());
+        melody_info.go_to_end();
+        let variation_info = VecTracker::new(if melody_info.is_empty() {vec![]} else {melody_info.get().get_variations_of()});
 
         let app = ReplayerApp {
             midi_scenario: Arc::new(Mutex::new(MidiScenario::StartingUp)),
@@ -89,9 +150,7 @@ impl ReplayerApp {
             melody_pref: Preference::Neutral,
             variation_pref: Preference::Neutral,
             melody_info,
-            melody,
-            variation_info,
-            variation
+            variation_info
         };
         app.startup_thread();
         app
@@ -112,30 +171,37 @@ impl ReplayerApp {
             Self::insert_slider(ui,self.p_random_slider.clone(),"Probability of Randomization");
             Self::insert_slider(ui, self.replay_delay_slider.clone(), "Replay Delay");
 
-            self.sqlite_choice(ui);
+            if !self.melody_info.is_empty() {
+                self.sqlite_choice(ui);
+            }
+
+            self.melody_info.replace_vec(MelodyInfo::get_main_melodies());
+            if !self.melody_info.is_empty() {
+                self.variation_info.replace_vec(self.melody_info.get().get_variations_of());
+            }
         });
     }
 
     fn sqlite_choice(&mut self, ui: &mut Ui) {
-        Self::melody_iterate(ui, &mut self.melody, &self.melody_info, &mut self.melody_pref);
-        Self::melody_iterate(ui, &mut self.variation, &self.variation_info, &mut self.variation_pref);
-
-        self.melody_info = MelodyInfo::get_main_melodies();
-        self.melody = ModNum::new(self.melody.a(), self.melody_info.len());
-        self.variation_info = self.melody_info[self.melody.a()].get_variations_of();
-        self.variation = ModNum::new(self.variation.a(), self.variation_info.len());
+        Self::melody_iterate(ui, &mut self.melody_info, &mut self.melody_pref);
+        if !self.variation_info.is_empty() {
+            Self::melody_iterate(ui, &mut self.variation_info, &mut self.variation_pref);
+        }
     }
 
-    fn melody_iterate(ui: &mut Ui, index: &mut ModNum<usize>, melodies: &Vec<MelodyInfo>, pref: &mut Preference) {
+    fn melody_iterate(ui: &mut Ui, melodies: &mut VecTracker<MelodyInfo>, pref: &mut Preference) {
         ui.horizontal(|ui| {
-            let info = &melodies[index.a()];
-            if *index >= 1 && ui.button("<").clicked() {
-                *index -= 1;
+            let stamp = {
+                let info = melodies.get();
+                format!("{:?} {:?}", info.get_date(), info.get_time())
+            };
+
+            if !melodies.at_start() && ui.button("<").clicked() {
+                melodies.go_left();
             }
-            let stamp = format!("{:?} {:?}", info.get_date(), info.get_time());
             ui.label(stamp.as_str());
-            if *index + 1 > 0 && ui.button(">").clicked() {
-                *index += 1;
+            if !melodies.at_end() && ui.button(">").clicked() {
+                melodies.go_right();
             }
             Self::preference_buttons(ui, pref);
         });

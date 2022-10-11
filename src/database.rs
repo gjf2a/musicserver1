@@ -27,6 +27,7 @@ pub struct MelodyInfo {
 
 impl MelodyInfo {
     pub fn new(melody: &Melody, source: Option<i64>) -> Self {
+        println!("MelodyInfo::new()");
         let timestamp = Utc::now().timestamp();
         let rating = Preference::Neutral;
         let connection = get_connection();
@@ -51,11 +52,13 @@ impl MelodyInfo {
                 .bind(4, note.velocity() as i64).unwrap()
                 .next().unwrap();
         }
+        println!("quitting MelodyInfo::new()");
 
         MelodyInfo {row_id, timestamp, melody: Some(melody.clone()), tag: tag.to_string(), source, rating}
     }
 
     pub fn get_main_melodies() -> Vec<Self> {
+        println!("get_main_melodies");
         let connection = get_connection();
         let mut statement = connection.prepare("SELECT timestamp, rowid, tag, rating FROM main_table WHERE source IS NULL").unwrap();
         let mut result = Vec::new();
@@ -66,10 +69,12 @@ impl MelodyInfo {
             let rating = statement.read::<String>(3).unwrap().parse::<Preference>().unwrap();
             result.push(MelodyInfo {row_id, timestamp, melody: None, tag, source: None, rating});
         }
+        println!("quitting get_main_melodies");
         result
     }
 
     pub fn get_variations_of(&self) -> Vec<Self> {
+        println!("get_variations_of");
         let connection = get_connection();
         let mut statement = connection
             .prepare("SELECT timestamp, rowid, tag, rating FROM main_table WHERE source = ?").unwrap()
@@ -82,6 +87,7 @@ impl MelodyInfo {
             let rating = statement.read::<String>(3).unwrap().parse::<Preference>().unwrap();
             result.push(MelodyInfo {row_id, timestamp, melody: None, tag, source: Some(self.row_id), rating});
         }
+        println!("quitting get_variations_of");
         result
     }
 
@@ -109,6 +115,7 @@ impl MelodyInfo {
 }
 
 pub fn get_melody(row_id: i64) -> Melody {
+    println!("get_melody");
     let connection = get_connection();
     let mut statement = connection
         .prepare("SELECT pitch, duration, velocity from melodies WHERE row = ?").unwrap()
@@ -121,6 +128,7 @@ pub fn get_melody(row_id: i64) -> Melody {
         let note = Note::new(pitch as MidiByte, duration, velocity as MidiByte);
         melody.add(note);
     }
+    println!("quitting get_melody");
     melody
 }
 
