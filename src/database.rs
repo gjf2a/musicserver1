@@ -23,7 +23,7 @@ pub fn start_database_thread(
     std::thread::spawn(move || {
         loop {
             if let Some(info) = gui2dbase.pop() {
-                database.update_rating(info.get_row_id(), info.get_rating()).unwrap();
+                database.update_info(&info).unwrap();
             }
 
             if let Some(msg) = ai2dbase.pop() {
@@ -40,90 +40,45 @@ const DATABASE_FILENAME: &str = "replayer_variations.db";
 #[derive(Clone, Debug)]
 pub struct Database {
     filename: String,
-    melodies: BTreeMap<i64, MelodyInfo>,
-    variations: BTreeMap<i64, MelodyInfo>,
-    melody2variations: BTreeMap<i64, Vec<i64>>,
     melody_cache: BTreeMap<i64, Melody>
 }
 
-/*
-
-// A new database schema to consider:
-
+impl Database {
     fn get_connection(&self) -> anyhow::Result<Connection> {
+        // Good overview of indexing in SQLite: https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346
         let connection = sqlite::open(self.filename.as_str()).unwrap();
         connection.execute("CREATE TABLE IF NOT EXISTS melody_index (timestamp INTEGER, rating TEXT, tag TEXT);")?;
         connection.execute("CREATE TABLE IF NOT EXISTS melody_variation (melody_row INTEGER, variation_row INTEGER);")?;
         connection.execute("CREATE TABLE IF NOT EXISTS melodies (row INTEGER, pitch INTEGER, duration FLOAT, velocity INTEGER);")?;
         Ok(connection)
     }
-// Good overview of indexing in SQLite: https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346
 
-*/
-
-impl Database {
-
-    fn get_connection(&self) -> anyhow::Result<Connection> {
-        let connection = sqlite::open(self.filename.as_str()).unwrap();
-        connection.execute("CREATE TABLE IF NOT EXISTS main_table (timestamp INTEGER, rating TEXT, tag TEXT, source INTEGER);")?;
-        connection.execute("CREATE TABLE IF NOT EXISTS melodies (row INTEGER, pitch INTEGER, duration FLOAT, velocity INTEGER);")?;
-        Ok(connection)
+    pub fn new() -> Self {
+        Database {filename: DATABASE_FILENAME.to_string(), melody_cache: BTreeMap::new()}
     }
 
-    pub fn new() -> anyhow::Result<Self> {
-        let mut database = Database {filename: DATABASE_FILENAME.to_string(), melodies: BTreeMap::new(), variations: BTreeMap::new(), melody_cache: BTreeMap::new(), melody2variations: BTreeMap::new()};
+    pub fn get_melody_pairs(&self) -> anyhow::Result<Vec<(MelodyInfo,MelodyInfo)>> {
+        let mut result = vec![];
         let connection = database.get_connection()?;
-        let mut statement = connection.prepare("SELECT rowid, timestamp, rating, tag, source FROM main_table")?;
+        let mut statement = connection.prepare("SELECT melody_row, variation_row FROM melody_variation")?;
         while let State::Row = statement.next().unwrap() {
-            let rowid = statement.read::<i64>(0)?;
-            let timestamp = statement.read::<i64>(1)?;
-            let rating = statement.read::<String>(2)?.parse::<Preference>()?;
-            let tag = statement.read::<String>(3)?;
-            let source = statement.read::<Option<i64>>(4)?;
-            let info = MelodyInfo {timestamp, rowid, rating, source, tag};
-            database.add_info(info.clone());
+            let melody_row = statement.read::<i64>(0)?;
+            let variation_row = statement.read::<i64>(1)?;
+            result.push((Self::info_for(&connection, melody_row)?, Self::info_for(&connection, variation_row)?));
         }
-        Ok(database)
+        Ok(result)
     }
 
-    fn add_info(&mut self, info: MelodyInfo) {
-        (if let Some(source) = info.source {
-            self.add_variation(source, info.rowid);
-            &mut self.variations
+    fn info_for(connection: &Connection, rowid: i64) -> anyhow::Result<MelodyInfo> {
+        let mut statement = connection.prepare("SELECT rowid, timestamp, rating, tag FROM melody_index WHERE rowid = ?")?.bind(1, rowid)?;
+        if let State::Row = statement.next()? {
+            let timestamp = statement.read::<i64>(0)?;
+            let rating = statement.read::<String>(1)?.parse::<Preference>()?;
+            let tag = statement.read::<String>(2)?;
+            Ok(MelodyInfo {rowid, timestamp, rating, tag})
         } else {
-            &mut self.melodies
-        }).insert(info.rowid, info);
-    }
-
-    fn add_variation(&mut self, melody_row: i64, variation_row: i64) {
-        match self.melody2variations.get_mut(&melody_row) {
-            None => {self.melody2variations.insert(melody_row, vec![variation_row]);}
-            Some(vars) => {vars.push(variation_row);}
-        };
-    }
-
-    pub fn num_melodies(&self) -> usize {
-        self.melodies.len()
-    }
-
-    pub fn num_variations_of(&self, rowid: i64) -> usize {
-        self.melody2variations.get(&rowid).map_or(0, |v| v.len())
-    }
-
-    pub fn melodies(&self) -> Vec<MelodyInfo> {
-        self.melodies.values().cloned().collect()
-    }
-
-    pub fn variations_of(&self, rowid: i64) -> Vec<MelodyInfo> {
-        self.melody2variations.get(&rowid).map_or(vec![], |v| {
-            v.iter().map(|vid| self.variations.get(vid).unwrap().clone()).collect()
-        })
-    }
-
-    pub fn info(&self, rowid: i64) -> Option<MelodyInfo> {
-        self.melodies.get(&rowid)
-            .or(self.variations.get(&rowid))
-            .map(|info| info.clone())
+            bail!("{rowid} not in database.")
+        }
     }
 
     pub fn melody(&mut self, rowid: i64) -> anyhow::Result<Melody> {
@@ -148,40 +103,37 @@ impl Database {
         }
     }
 
-    pub fn add_melody_and_variation(&mut self, melody: &Melody, variation: &Melody) -> anyhow::Result<(MelodyInfo, MelodyInfo)> {
-        let player_info = self.store_melody(melody, None)?;
-        let variation_info = self.store_melody(variation, Some(player_info.rowid))?;
-        Ok((player_info, variation_info))
-    }
-
-    pub fn update_rating(&mut self, rowid: i64, new_rating: Preference) -> anyhow::Result<()> {
-        let mut row_info = self.melodies.get(&rowid).or(self.variations.get(&rowid)).unwrap().clone();
-        if row_info.rating != new_rating {
-            row_info.rating = new_rating;
-            let new_rating = new_rating.to_string();
-            let connection = self.get_connection()?;
-            connection
-                .prepare("UPDATE main_table SET rating = ? WHERE rowid = ?").unwrap()
-                .bind(1, new_rating.as_str()).unwrap()
-                .bind(2, row_info.rowid).unwrap()
-                .next().unwrap();
-            self.add_info(row_info);
-        }
+    pub fn update_info(&mut self, new_info: &MelodyInfo) -> anyhow::Result<()> {
+        let connection = self.get_connection()?;
+        connection.prepare("UPDATE melody_index SET timestamp = ?, rating = ?, tag = ? WHERE rowid = ?")?
+            .bind(1, new_info.timestamp)?
+            .bind(2, new_info.rating.to_string().as_str())?
+            .bind(3, new_info.tag.as_str())?
+            .next()?;
         Ok(())
     }
 
-    fn store_melody(&mut self, melody: &Melody, source: Option<i64>) -> anyhow::Result<MelodyInfo> {
+    pub fn add_melody_and_variation(&mut self, melody: &Melody, variation: &Melody) -> anyhow::Result<(MelodyInfo, MelodyInfo)> {
+        let player_info = self.store_melody(melody)?;
+        let variation_info = self.store_melody(variation)?;
+        let connection = self.get_connection()?;
+        connection.prepare("INSERT INTO melody_variation (melody_row, variation_row) VALUES (?,?)")?
+            .bind(1, player_info.rowid)?
+            .bind(2, variation_info.rowid)?.next().unwrap();
+        Ok((player_info, variation_info))
+    }
+
+    fn store_melody(&mut self, melody: &Melody) -> anyhow::Result<MelodyInfo> {
         let timestamp = Utc::now().timestamp();
         let rating = Preference::Neutral;
         let connection = self.get_connection()?;
         let tag = "";
         connection
-            .prepare("INSERT INTO main_table (timestamp, rating, source, tag) VALUES (?, ?, ?, ?)")?
+            .prepare("INSERT INTO melody_index (timestamp, rating, tag) VALUES (?, ?, ?)")?
             .bind(1, timestamp)?
             .bind(2, rating.to_string().as_str())?
-            .bind(3, source)?
-            .bind(4, tag)?
-            .next()?;
+            .bind(3, tag)?
+            .next().unwrap();
         let mut statement = connection.prepare("SELECT last_insert_rowid()")?;
         statement.next()?;
         let rowid = statement.read::<i64>(0)?;
@@ -196,7 +148,7 @@ impl Database {
                 .next().unwrap();
         }
 
-        let info = MelodyInfo { rowid, timestamp, tag: tag.to_string(), source, rating };
+        let info = MelodyInfo { rowid, timestamp, tag: tag.to_string(), rating };
         self.add_info(info.clone());
         self.melody_cache.insert(info.rowid, melody.clone());
         Ok(info)
@@ -205,10 +157,9 @@ impl Database {
 
 #[derive(Clone, Debug)]
 pub struct MelodyInfo {
-    timestamp: i64,
     rowid: i64,
+    timestamp: i64,
     rating: Preference,
-    source: Option<i64>,
     tag: String
 }
 

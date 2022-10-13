@@ -1,4 +1,4 @@
-use crate::egui::Ui;
+use eframe::egui::Ui;
 use crossbeam_queue::SegQueue;
 use eframe::egui;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
@@ -114,8 +114,7 @@ struct ReplayerApp {
     in_port_name: Option<String>,
     melody_pref: Preference,
     variation_pref: Preference,
-    melody_info: VecTracker<MelodyInfo>,
-    variation_info: VecTracker<MelodyInfo>,
+    melody_var_info: VecTracker<(MelodyInfo, MelodyInfo)>,
     database: Option<Database>,
     dbase2gui: Arc<SegQueue<(MelodyInfo,MelodyInfo)>>,
     gui2dbase: Arc<SegQueue<MelodyInfo>>,
@@ -140,15 +139,10 @@ impl ReplayerApp {
         let p_random_slider = Arc::new(Mutex::new(prob_slider()));
         let replay_delay_slider = Arc::new(Mutex::new(replay_slider()));
         let database = Database::new()?;
-        let (melody_info, variation_info) = {
-            let mut melody_info = VecTracker::new(database.melodies());
-            if melody_info.is_empty() {
-                (melody_info, VecTracker::new(vec![]))
-            } else {
-                melody_info.go_to_end();
-                let variations = database.variations_of(melody_info.get().unwrap().get_row_id());
-                (melody_info, VecTracker::new(variations))
-            }
+        let melody_var_info = {
+            let mut melody_var_info = VecTracker::new(database.get_melody_pairs()?);
+            melody_var_info.go_to_end();
+            melody_var_info
         };
 
         let app = ReplayerApp {
@@ -166,8 +160,7 @@ impl ReplayerApp {
             in_port_name: None,
             melody_pref: Preference::Neutral,
             variation_pref: Preference::Neutral,
-            melody_info,
-            variation_info,
+            melody_var_info,
             database: Some(database),
             dbase2gui: Arc::new(SegQueue::new()),
             gui2dbase: Arc::new(SegQueue::new())
@@ -191,8 +184,8 @@ impl ReplayerApp {
             Self::insert_slider(ui,self.p_random_slider.clone(),"Probability of Randomization");
             Self::insert_slider(ui, self.replay_delay_slider.clone(), "Replay Delay");
 
-            if !self.melody_info.is_empty() {
-                self.sqlite_choice(ui);
+            if !self.melody_var_info.is_empty() {
+                self.display_melody_info(ui);
             }
             self.update_melody_info();
         });
@@ -201,15 +194,13 @@ impl ReplayerApp {
     fn update_melody_info(&mut self) {
         if let Some((player_info, variation_info)) = self.dbase2gui.pop() {
             self.melody_pref = player_info.get_rating();
-            self.melody_info.items.push(player_info);
-            self.melody_info.go_to_end();
             self.variation_pref = variation_info.get_rating();
-            self.variation_info.items.push(variation_info);
-            self.variation_info.go_to_end();
+            self.melody_var_info.items.push((player_info, variation_info));
+            self.melody_var_info.go_to_end();
         }
     }
 
-    fn sqlite_choice(&mut self, ui: &mut Ui) {
+    fn display_melody_info(&mut self, ui: &mut Ui) {
         let start_pref = self.melody_pref;
         Self::melody_iterate(ui, &mut self.melody_info, &mut self.melody_pref);
         if self.melody_pref != start_pref {
