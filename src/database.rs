@@ -6,6 +6,34 @@ use anyhow::bail;
 use chrono::{Utc, NaiveDate, NaiveTime, Local, TimeZone};
 use std::str::FromStr;
 use std::collections::BTreeMap;
+use crossbeam_queue::SegQueue;
+
+#[derive(Clone, Debug)]
+pub struct FromAiMsg {
+    pub melody: Melody,
+    pub variation: Melody
+}
+
+pub fn start_database_thread(
+    dbase2gui: Arc<SegQueue<(MelodyInfo,MelodyInfo)>>,
+    gui2dbase: Arc<SegQueue<MelodyInfo>>,
+    ai2dbase: Arc<SegQueue<FromAiMsg>>,
+    mut database: Database
+) {
+    std::thread::spawn(move || {
+        loop {
+            if let Some(info) = gui2dbase.pop() {
+                database.update_rating(info.get_row_id(), info.get_rating()).unwrap();
+            }
+
+            if let Some(msg) = ai2dbase.pop() {
+                let info = database.add_melody_and_variation(&msg.melody, &msg.variation).unwrap();
+                dbase2gui.push(info);
+            }
+        }
+    });
+}
+
 
 const DATABASE_FILENAME: &str = "replayer_variations.db";
 
@@ -18,7 +46,30 @@ pub struct Database {
     melody_cache: BTreeMap<i64, Melody>
 }
 
+/*
+
+// A new database schema to consider:
+
+    fn get_connection(&self) -> anyhow::Result<Connection> {
+        let connection = sqlite::open(self.filename.as_str()).unwrap();
+        connection.execute("CREATE TABLE IF NOT EXISTS melody_index (timestamp INTEGER, rating TEXT, tag TEXT);")?;
+        connection.execute("CREATE TABLE IF NOT EXISTS melody_variation (melody_row INTEGER, variation_row INTEGER);")?;
+        connection.execute("CREATE TABLE IF NOT EXISTS melodies (row INTEGER, pitch INTEGER, duration FLOAT, velocity INTEGER);")?;
+        Ok(connection)
+    }
+// Good overview of indexing in SQLite: https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346
+
+*/
+
 impl Database {
+
+    fn get_connection(&self) -> anyhow::Result<Connection> {
+        let connection = sqlite::open(self.filename.as_str()).unwrap();
+        connection.execute("CREATE TABLE IF NOT EXISTS main_table (timestamp INTEGER, rating TEXT, tag TEXT, source INTEGER);")?;
+        connection.execute("CREATE TABLE IF NOT EXISTS melodies (row INTEGER, pitch INTEGER, duration FLOAT, velocity INTEGER);")?;
+        Ok(connection)
+    }
+
     pub fn new() -> anyhow::Result<Self> {
         let mut database = Database {filename: DATABASE_FILENAME.to_string(), melodies: BTreeMap::new(), variations: BTreeMap::new(), melody_cache: BTreeMap::new(), melody2variations: BTreeMap::new()};
         let connection = database.get_connection()?;
@@ -149,13 +200,6 @@ impl Database {
         self.add_info(info.clone());
         self.melody_cache.insert(info.rowid, melody.clone());
         Ok(info)
-    }
-
-    fn get_connection(&self) -> anyhow::Result<Connection> {
-        let connection = sqlite::open(self.filename.as_str()).unwrap();
-        connection.execute("CREATE TABLE IF NOT EXISTS main_table (timestamp INTEGER, rating TEXT, tag TEXT, source INTEGER);")?;
-        connection.execute("CREATE TABLE IF NOT EXISTS melodies (row INTEGER, pitch INTEGER, duration FLOAT, velocity INTEGER);")?;
-        Ok(connection)
     }
 }
 

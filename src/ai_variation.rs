@@ -1,5 +1,5 @@
 use std::env::var;
-use crate::{Database, arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue, SynthChoice, MelodyInfo};
+use crate::{Database, arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue, SynthChoice, MelodyInfo, FromAiMsg};
 use crossbeam_queue::SegQueue;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use std::sync::{Arc, Mutex};
@@ -24,27 +24,23 @@ pub fn start_ai_thread(
     ai_table: Arc<Mutex<AITable>>,
     input2ai: Arc<SegQueue<MidiMsg>>,
     ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
-    ai2ui: Arc<SegQueue<(MelodyInfo,MelodyInfo)>>,
-    ui2ai: Arc<SegQueue<MelodyInfo>>,
+    ai2dbase: Arc<SegQueue<FromAiMsg>>,
     replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
     p_random_slider: Arc<Mutex<SliderValue<f64>>>,
-    mut database: Database
 ) {
     std::thread::spawn(move || {
         let mut recorder = PlayerRecorder::new(
             input2ai.clone(),
             ai2output.clone(),
             replay_delay_slider.clone(),
-            ui2ai
         );
         let mut performer =
             Performer::new(p_random_slider.clone(), ai_table.clone(), ai2output.clone());
         loop {
-            let player_melody = recorder.record(&mut database);
-            let variation = performer.create_variation(&player_melody);
+            let melody = recorder.record();
+            let variation = performer.create_variation(&melody);
             if variation.len() > 0 {
-                let info = database.add_melody_and_variation(&player_melody, &variation).unwrap();
-                ai2ui.push(info);
+                ai2dbase.push(FromAiMsg {melody, variation: variation.clone()});
             }
             performer.send_variation(&variation);
         }
@@ -57,7 +53,6 @@ struct PlayerRecorder {
     replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
     waiting: Option<PendingNote>,
     player_melody: Melody,
-    ui2ai: Arc<SegQueue<MelodyInfo>>,
 }
 
 impl PlayerRecorder {
@@ -65,7 +60,6 @@ impl PlayerRecorder {
         input2ai: Arc<SegQueue<MidiMsg>>,
         ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
         replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
-        ui2ai: Arc<SegQueue<MelodyInfo>>,
     ) -> Self {
         PlayerRecorder {
             input2ai,
@@ -73,11 +67,10 @@ impl PlayerRecorder {
             replay_delay_slider,
             waiting: None,
             player_melody: Melody::new(),
-            ui2ai
         }
     }
 
-    fn record(&mut self, database: &mut Database) -> Melody {
+    fn record(&mut self) -> Melody {
         self.waiting = None;
         let mut player_finished = false;
         while !player_finished {
@@ -87,10 +80,6 @@ impl PlayerRecorder {
 
             if let Some(pending_note) = self.waiting {
                 player_finished = self.check_if_finished(pending_note);
-            }
-
-            if let Some(info) = self.ui2ai.pop() {
-                database.update_rating(info.get_row_id(), info.get_rating()).unwrap();
             }
         }
         let mut result = Melody::new();
@@ -147,10 +136,10 @@ impl Performer {
         }
     }
 
-    fn create_variation(&mut self, player_melody: &Melody) -> Melody {
+    fn create_variation(&mut self, melody: &Melody) -> Melody {
         let p_random = self.p_random_slider.lock().unwrap();
         let ai_table = self.ai_table.lock().unwrap();
-        (ai_table.current_choice())(&mut self.maker, &player_melody, p_random.get_current())
+        (ai_table.current_choice())(&mut self.maker, &melody, p_random.get_current())
     }
 
     fn send_variation(&self, variation: &Melody) {

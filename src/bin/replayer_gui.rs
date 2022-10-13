@@ -4,7 +4,7 @@ use eframe::egui;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
 use musicserver1::{make_ai_table, make_synth_table, prob_slider, replay_slider, start_ai_thread,
                    start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue,
-                   SynthTable, Preference, MelodyInfo, Database};
+                   SynthTable, Preference, MelodyInfo, Database, start_database_thread};
 use std::mem;
 use std::sync::{Arc, Mutex};
 use enum_iterator::all;
@@ -117,8 +117,8 @@ struct ReplayerApp {
     melody_info: VecTracker<MelodyInfo>,
     variation_info: VecTracker<MelodyInfo>,
     database: Option<Database>,
-    ai2ui: Arc<SegQueue<(MelodyInfo,MelodyInfo)>>,
-    ui2ai: Arc<SegQueue<MelodyInfo>>
+    dbase2gui: Arc<SegQueue<(MelodyInfo,MelodyInfo)>>,
+    gui2dbase: Arc<SegQueue<MelodyInfo>>,
 }
 
 impl ReplayerApp {
@@ -169,8 +169,8 @@ impl ReplayerApp {
             melody_info,
             variation_info,
             database: Some(database),
-            ai2ui: Arc::new(SegQueue::new()),
-            ui2ai: Arc::new(SegQueue::new())
+            dbase2gui: Arc::new(SegQueue::new()),
+            gui2dbase: Arc::new(SegQueue::new())
         };
         app.startup_thread();
         Ok(app)
@@ -199,7 +199,7 @@ impl ReplayerApp {
     }
 
     fn update_melody_info(&mut self) {
-        if let Some((player_info, variation_info)) = self.ai2ui.pop() {
+        if let Some((player_info, variation_info)) = self.dbase2gui.pop() {
             self.melody_pref = player_info.get_rating();
             self.melody_info.items.push(player_info);
             self.melody_info.go_to_end();
@@ -214,14 +214,14 @@ impl ReplayerApp {
         Self::melody_iterate(ui, &mut self.melody_info, &mut self.melody_pref);
         if self.melody_pref != start_pref {
             self.melody_info.get_mut().unwrap().set_rating(self.melody_pref);
-            self.ui2ai.push(self.melody_info.get().cloned().unwrap());
+            self.gui2dbase.push(self.melody_info.get().cloned().unwrap());
         }
         if !self.variation_info.is_empty() {
             let start_pref = self.variation_pref;
             Self::melody_iterate(ui, &mut self.variation_info, &mut self.variation_pref);
             if self.variation_pref != start_pref {
                 self.variation_info.get_mut().unwrap().set_rating(self.variation_pref);
-                self.ui2ai.push(self.variation_info.get().cloned().unwrap());
+                self.gui2dbase.push(self.variation_info.get().cloned().unwrap());
             }
         }
     }
@@ -358,6 +358,7 @@ impl ReplayerApp {
         }
         let input2ai = Arc::new(SegQueue::new());
         let ai2output = Arc::new(SegQueue::new());
+        let ai2dbase = Arc::new(SegQueue::new());
         let mut database = None;
         mem::swap(&mut database, &mut self.database);
 
@@ -370,17 +371,16 @@ impl ReplayerApp {
             self.ai_table.clone(),
             input2ai.clone(),
             ai2output,
-            self.ai2ui.clone(),
-            self.ui2ai.clone(),
+            ai2dbase.clone(),
             self.replay_delay_slider.clone(),
-            self.p_random_slider.clone(),
-            database.unwrap()
+            self.p_random_slider.clone()
         );
         start_input_thread(
             input2ai,
             midi_in.unwrap(),
             self.in_port.as_ref().unwrap().clone(),
         );
+        start_database_thread(self.dbase2gui.clone(), self.gui2dbase.clone(), ai2dbase, database.unwrap());
     }
 
     fn set_in_port_name(&mut self, in_port: &MidiInputPort) {
