@@ -1,4 +1,4 @@
-use std::{fmt::{Display, Formatter}, sync::{Arc, Mutex}};
+use std::{fmt::{Display, Formatter}, sync::Arc};
 use enum_iterator::Sequence;
 use crate::{MidiByte,Melody,Note};
 use sqlite::{State,Connection};
@@ -34,7 +34,6 @@ pub fn start_database_thread(
     });
 }
 
-
 const DATABASE_FILENAME: &str = "replayer_variations.db";
 
 #[derive(Clone, Debug)]
@@ -59,7 +58,7 @@ impl Database {
 
     pub fn get_melody_pairs(&self) -> anyhow::Result<Vec<(MelodyInfo,MelodyInfo)>> {
         let mut result = vec![];
-        let connection = database.get_connection()?;
+        let connection = self.get_connection()?;
         let mut statement = connection.prepare("SELECT melody_row, variation_row FROM melody_variation")?;
         while let State::Row = statement.next().unwrap() {
             let melody_row = statement.read::<i64>(0)?;
@@ -72,9 +71,9 @@ impl Database {
     fn info_for(connection: &Connection, rowid: i64) -> anyhow::Result<MelodyInfo> {
         let mut statement = connection.prepare("SELECT rowid, timestamp, rating, tag FROM melody_index WHERE rowid = ?")?.bind(1, rowid)?;
         if let State::Row = statement.next()? {
-            let timestamp = statement.read::<i64>(0)?;
-            let rating = statement.read::<String>(1)?.parse::<Preference>()?;
-            let tag = statement.read::<String>(2)?;
+            let timestamp = statement.read::<i64>(1)?;
+            let rating = statement.read::<String>(2)?.parse::<Preference>()?;
+            let tag = statement.read::<String>(3)?;
             Ok(MelodyInfo {rowid, timestamp, rating, tag})
         } else {
             bail!("{rowid} not in database.")
@@ -149,7 +148,6 @@ impl Database {
         }
 
         let info = MelodyInfo { rowid, timestamp, tag: tag.to_string(), rating };
-        self.add_info(info.clone());
         self.melody_cache.insert(info.rowid, melody.clone());
         Ok(info)
     }
@@ -174,6 +172,10 @@ impl MelodyInfo {
 
     pub fn get_time(&self) -> NaiveTime {
         Local.timestamp(self.timestamp, 0).time()
+    }
+
+    pub fn date_time_stamp(&self) -> String {
+        format!("{:?} {:?}", self.get_date(), self.get_time())
     }
 
     pub fn get_rating(&self) -> Preference {

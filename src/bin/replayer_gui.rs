@@ -138,9 +138,9 @@ impl ReplayerApp {
         let ai_synth_table = Arc::new(Mutex::new(ai_synth_table));
         let p_random_slider = Arc::new(Mutex::new(prob_slider()));
         let replay_delay_slider = Arc::new(Mutex::new(replay_slider()));
-        let database = Database::new()?;
+        let database = Database::new();
         let melody_var_info = {
-            let mut melody_var_info = VecTracker::new(database.get_melody_pairs()?);
+            let mut melody_var_info = VecTracker::new(database.get_melody_pairs().unwrap());
             melody_var_info.go_to_end();
             melody_var_info
         };
@@ -201,39 +201,42 @@ impl ReplayerApp {
     }
 
     fn display_melody_info(&mut self, ui: &mut Ui) {
-        let start_pref = self.melody_pref;
-        Self::melody_iterate(ui, &mut self.melody_info, &mut self.melody_pref);
-        if self.melody_pref != start_pref {
-            self.melody_info.get_mut().unwrap().set_rating(self.melody_pref);
-            self.gui2dbase.push(self.melody_info.get().cloned().unwrap());
-        }
-        if !self.variation_info.is_empty() {
-            let start_pref = self.variation_pref;
-            Self::melody_iterate(ui, &mut self.variation_info, &mut self.variation_pref);
-            if self.variation_pref != start_pref {
-                self.variation_info.get_mut().unwrap().set_rating(self.variation_pref);
-                self.gui2dbase.push(self.variation_info.get().cloned().unwrap());
-            }
-        }
-    }
+        let (melody_info, variation_info) = self.melody_var_info.get().cloned().unwrap();
+        let (melody_stamp, variation_stamp) = (melody_info.date_time_stamp(), variation_info.date_time_stamp());
 
-    fn melody_iterate(ui: &mut Ui, melodies: &mut VecTracker<MelodyInfo>, pref: &mut Preference) {
         ui.horizontal(|ui| {
-            let stamp = {
-                let info = melodies.get().unwrap();
-                format!("{:?} {:?}", info.get_date(), info.get_time())
-            };
+            if !self.melody_var_info.at_start() && ui.button("<").clicked() {
+                self.melody_var_info.go_left();
+                self.melody_pref = melody_info.get_rating();
+                self.variation_pref = variation_info.get_rating();
+            }
 
-            if !melodies.at_start() && ui.button("<").clicked() {
-                melodies.go_left();
-                *pref = melodies.get().map_or(Preference::Neutral, |m| m.get_rating());
+            let start_melody_pref = self.melody_pref;
+            let start_variation_pref = self.variation_pref;
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.label(melody_stamp);
+                    Self::preference_buttons(ui, &mut self.melody_pref);
+                });
+                ui.horizontal(|ui| {
+                    ui.label(variation_stamp);
+                    Self::preference_buttons(ui, &mut self.variation_pref);
+                });
+            });
+            if !self.melody_var_info.at_end() && ui.button(">").clicked() {
+                self.melody_var_info.go_right();
+                self.melody_pref = melody_info.get_rating();
+                self.variation_pref = variation_info.get_rating();
             }
-            ui.label(stamp.as_str());
-            if !melodies.at_end() && ui.button(">").clicked() {
-                melodies.go_right();
-                *pref = melodies.get().map_or(Preference::Neutral, |m| m.get_rating());
+
+            if start_melody_pref != self.melody_pref {
+                self.melody_var_info.get_mut().unwrap().0.set_rating(self.melody_pref);
+                self.gui2dbase.push(self.melody_var_info.get().cloned().unwrap().0);
             }
-            Self::preference_buttons(ui, pref);
+            if start_variation_pref != self.variation_pref {
+                self.melody_var_info.get_mut().unwrap().1.set_rating(self.variation_pref);
+                self.gui2dbase.push(self.melody_var_info.get().cloned().unwrap().1);
+            }
         });
     }
 
