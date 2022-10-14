@@ -63,14 +63,14 @@ fn find_subs_of_length<T: SeqItem>(items: &Vec<T>, length: usize) -> Vec<Subsequ
         .collect()
 }
 
-fn find_maximal_repeated_subs<T: SeqItem>(items: &Vec<T>) -> Vec<Subsequences> {
+pub fn find_maximal_repeated_subs<T: SeqItem>(items: &Vec<T>, min_sub_length: usize) -> Vec<Subsequences> {
     let mut result = vec![];
     for length in (1..=items.len()).rev() {
         for mut sub in find_subs_of_length(&items, length) {
             for result_sub in result.iter() {
                 sub.remove_superseded(result_sub);
             }
-            if sub.len() > 1 {
+            if sub.len() >= min_sub_length {
                 result.push(sub);
             }
         }
@@ -90,7 +90,7 @@ mod tests {
             0, 1, 0, 0, 0, 0, 2, 0, 0, 0, 2, 0, -1, 0, -1, 0, 7, 0, -7, 0, -1, 0, -2, 0, 1, 0, -2,
             0, 1, 0, 1, 0, 0, 0, -1, 0, -1, 0, 1, 0, 1, 0, -2, 0,
         ];
-        let subs = find_maximal_repeated_subs(&example);
+        let subs = find_maximal_repeated_subs(&example, 2);
         let expected: VecSet<Subsequences> = [
             (15, vec![10, 46]),
             (7, vec![4, 36]),

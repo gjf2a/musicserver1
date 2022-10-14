@@ -9,6 +9,7 @@ use rand::prelude::SliceRandom;
 use std::cmp::{max, min};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::time::Instant;
+use crate::find_maximal_repeated_subs;
 
 pub type MidiByte = i16;
 
@@ -201,33 +202,22 @@ impl Melody {
                 }
             }
         }
-        if result.len() == length {
-            Some(result)
-        } else {
-            None
-        }
+        if result.len() == length {Some(result)} else {None}
     }
 
     pub fn from(s: &str) -> Self {
         let mut notes = Vec::new();
         let mut nums = s.split(",");
-        loop {
-            match nums.next() {
-                Some(note) => {
-                    let note = note.parse().unwrap();
-                    let duration = nums.next().unwrap().parse().unwrap();
-                    let f_intensity: OrderedFloat<f64> = nums.next().unwrap().parse().unwrap();
-                    let intensity = (f_intensity.into_inner() * MAX_MIDI_VALUE as f64) as MidiByte;
-                    notes.push(Note {
-                        pitch: note,
-                        duration,
-                        velocity: intensity,
-                    });
-                }
-                _ => {
-                    break;
-                }
-            }
+        while let Some(note) = nums.next() {
+            let note = note.parse().unwrap();
+            let duration = nums.next().unwrap().parse().unwrap();
+            let f_intensity: OrderedFloat<f64> = nums.next().unwrap().parse().unwrap();
+            let intensity = (f_intensity.into_inner() * MAX_MIDI_VALUE as f64) as MidiByte;
+            notes.push(Note {
+                pitch: note,
+                duration,
+                velocity: intensity,
+            });
         }
         Melody { notes }
     }
@@ -476,10 +466,7 @@ impl MelodyMaker {
         Self::keepers2chain(&keepers, melody)
     }
 
-    pub fn locked_in_figures(
-        &self,
-        melody: &Melody,
-    ) -> VecDeque<(usize, Option<(MelodicFigure, usize)>)> {
+    pub fn locked_in_figures(&self, melody: &Melody) -> VecDeque<(usize, Option<(MelodicFigure, usize)>)> {
         let all_matched = self.all_figure_matches(melody);
         let figure2count = collect_from_into!(
             all_matched.iter().copied().map(|(_, f, _)| f),
@@ -510,10 +497,7 @@ impl MelodyMaker {
         Self::keepers2chain(&keepers, melody)
     }
 
-    fn keepers2chain(
-        keepers: &BTreeMap<usize, (MelodicFigure, usize)>,
-        melody: &Melody,
-    ) -> VecDeque<(usize, Option<(MelodicFigure, usize)>)> {
+    fn keepers2chain(keepers: &BTreeMap<usize, (MelodicFigure, usize)>, melody: &Melody) -> VecDeque<(usize, Option<(MelodicFigure, usize)>)> {
         let mut covered = HashSet::new();
         let mut result = VecDeque::new();
         for i in 0..melody.len() {
@@ -674,7 +658,15 @@ impl MelodyMaker {
             |s, f| s.pick_remembered_figure(f, p_remap),
         )
     }
+/*
+    pub fn create_motive_mapped_variation(&mut self, original: &Melody, p_rewrite: f64) -> Melody {
+        let intervals = original.diatonic_intervals();
+        let motives = find_maximal_repeated_subs(&intervals, 2);
 
+    }
+
+
+ */
     fn pick_remembered_figure(&mut self, figure: MelodicFigure, p_remap: f64) -> MelodicFigure {
         match self.figure_mappings.get(&figure) {
             None => {
