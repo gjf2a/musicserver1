@@ -109,6 +109,7 @@ impl Database {
             .bind(1, new_info.timestamp)?
             .bind(2, new_info.rating.to_string().as_str())?
             .bind(3, new_info.tag.as_str())?
+            .bind(4, new_info.rowid)?
             .next()?;
         Ok(())
     }
