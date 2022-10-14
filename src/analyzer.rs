@@ -9,7 +9,6 @@ use rand::prelude::SliceRandom;
 use std::cmp::{max, min};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::time::Instant;
-use crate::find_maximal_repeated_subs;
 
 pub type MidiByte = i16;
 
@@ -395,11 +394,8 @@ impl MelodyMaker {
         let scale = melody.best_scale_for();
         for length in FIGURE_LENGTHS.iter() {
             if let Some(pitches) = melody.pitch_subsequence_at(start, *length) {
-                if let Some(step_gap) = scale
-                    .diatonic_steps_between(*pitches.first().unwrap(), *pitches.last().unwrap())
-                {
-                    if let Some(candidates) = self.figure_tables.get(length).unwrap().get(&step_gap)
-                    {
+                if let Some(step_gap) = scale.diatonic_steps_between(*pitches.first().unwrap(), *pitches.last().unwrap()) {
+                    if let Some(candidates) = self.figure_tables.get(length).unwrap().get(&step_gap) {
                         for candidate in candidates.iter() {
                             if let Some(match_len) = candidate.match_length(melody, &scale, start) {
                                 return Some((*candidate, match_len));
@@ -586,30 +582,33 @@ impl MelodyMaker {
             if !next_already_added {
                 notes.push(original[i]);
             }
-            match figure {
-                None => {
-                    next_already_added = false;
-                }
+            next_already_added = match figure {
+                None => false,
                 Some((figure, match_len)) => {
-                    let generator = if rand::random::<f64>() < p_rewrite {
-                        figure_picker(self, figure)
-                    } else {
-                        figure
-                    };
-                    let pitches =
-                        generator.make_pitches(notes.last().unwrap().pitch, &scale);
-                    let mut pitch = 0;
-                    for m in 1..match_len {
-                        if original[i + m].pitch != original[i + m - 1].pitch {
-                            pitch += 1;
-                        }
-                        notes.push(original[i + m].repitched(pitches[pitch]));
-                    }
-                    next_already_added = true;
+                    self.push_notes_for(&mut notes, figure, match_len, p_rewrite, &mut figure_picker, i, original, &scale);
+                    true
                 }
-            }
+            };
         }
         Melody { notes }
+    }
+
+    fn push_notes_for<P: FnMut(&mut Self, MelodicFigure) -> MelodicFigure>(&mut self, notes: &mut Vec<Note>, figure: MelodicFigure, match_len: usize, p_rewrite: f64,
+                      figure_picker: &mut P, i: usize, original: &Melody, scale: &MusicMode) {
+        let generator = if rand::random::<f64>() < p_rewrite {
+            figure_picker(self, figure)
+        } else {
+            figure
+        };
+        let pitches =
+            generator.make_pitches(notes.last().unwrap().pitch, &scale);
+        let mut pitch = 0;
+        for m in 1..match_len {
+            if original[i + m].pitch != original[i + m - 1].pitch {
+                pitch += 1;
+            }
+            notes.push(original[i + m].repitched(pitches[pitch]));
+        }
     }
 
     pub fn pick_figure(&mut self, figure: MelodicFigure) -> MelodicFigure {
@@ -658,15 +657,7 @@ impl MelodyMaker {
             |s, f| s.pick_remembered_figure(f, p_remap),
         )
     }
-/*
-    pub fn create_motive_mapped_variation(&mut self, original: &Melody, p_rewrite: f64) -> Melody {
-        let intervals = original.diatonic_intervals();
-        let motives = find_maximal_repeated_subs(&intervals, 2);
 
-    }
-
-
- */
     fn pick_remembered_figure(&mut self, figure: MelodicFigure, p_remap: f64) -> MelodicFigure {
         match self.figure_mappings.get(&figure) {
             None => {
