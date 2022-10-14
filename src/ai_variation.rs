@@ -1,5 +1,4 @@
-use std::env::var;
-use crate::{Database, arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue, SynthChoice, MelodyInfo, FromAiMsg};
+use crate::{arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue, SynthChoice, FromAiMsg};
 use crossbeam_queue::SegQueue;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use std::sync::{Arc, Mutex};
