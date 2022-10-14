@@ -408,6 +408,37 @@ impl MelodyMaker {
         None
     }
 
+    pub fn ornamented(&self, melody: &Melody, p_ornament: f64, d_ornament: i64) -> Melody {
+        let scale = melody.best_scale_for();
+        let mut result = Melody::new();
+        let mut countdown = d_ornament;
+        let mut prev_note = melody[0];
+        for note in melody.iter() {
+            if countdown <= 0 {
+                if rand::random::<f64>() < p_ornament {
+                    if let Some(gap) = scale.diatonic_steps_between(prev_note.pitch, note.pitch) {
+                        let sizes = self.figure_tables.keys().collect::<Vec<_>>();
+                        let size = sizes[rand::random::<usize>() % sizes.len()];
+                        if let Some(candidates) = self.figure_tables.get(size).unwrap().get(&gap) {
+                            let figure = candidates[rand::random::<usize>() % candidates.len()];
+                            let ornament_pitches = figure.make_pitches(prev_note.pitch, &scale);
+                            for i in 1..(ornament_pitches.len() - 1) {
+                                result.add(prev_note.repitched(ornament_pitches[i]));
+                            }
+                        }
+                    }
+                }
+                // TODO: Maybe p_ornament/2 chance of adding another?
+                countdown = d_ornament; // +/- some random fudge factor
+            } else {
+                countdown -= 1;
+            }
+            prev_note = *note;
+            result.add(*note);
+        }
+        result
+    }
+
     pub fn is_chain(chain: &VecDeque<(usize, Option<(MelodicFigure, usize)>)>) -> bool {
         let mut current = 0;
         for (i, f) in chain.iter() {

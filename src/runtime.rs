@@ -103,6 +103,10 @@ pub fn prob_slider() -> SliderValue<f64> {
     SliderValue::new(1.0, 0.0, 1.0)
 }
 
+pub fn ornament_gap_slider() -> SliderValue<i64> {
+    SliderValue::new(4, 1, 20)
+}
+
 pub fn user_pick_element<T: Clone, S: Fn(&T) -> String>(
     choices: impl Iterator<Item = T>,
     show: S,

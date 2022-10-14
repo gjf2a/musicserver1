@@ -1,14 +1,17 @@
 use eframe::egui::Ui;
 use crossbeam_queue::SegQueue;
 use eframe::egui;
+use eframe::emath::Numeric;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
-use musicserver1::{make_ai_table, make_synth_table, prob_slider, replay_slider, start_ai_thread,
-                   start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue,
-                   SynthTable, Preference, MelodyInfo, Database, start_database_thread};
+use musicserver1::{make_ai_table, make_synth_table, prob_slider, ornament_gap_slider, replay_slider,
+                   start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable,
+                   SliderValue, SynthTable, Preference, MelodyInfo, Database,
+                   start_database_thread};
 use std::mem;
 use std::sync::{Arc, Mutex};
 use enum_iterator::all;
 use bare_metal_modulo::*;
+use std::str::FromStr;
 
 fn main() -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions::default();
@@ -109,6 +112,8 @@ struct ReplayerApp {
     ai_synth_name: String,
     ai_synth_table: Arc<Mutex<SynthTable>>,
     p_random_slider: Arc<Mutex<SliderValue<f64>>>,
+    p_ornament_slider: Arc<Mutex<SliderValue<f64>>>,
+    ornament_gap_slider: Arc<Mutex<SliderValue<i64>>>,
     replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
     in_port: Option<MidiInputPort>,
     in_port_name: Option<String>,
@@ -137,6 +142,8 @@ impl ReplayerApp {
         let human_synth_table = Arc::new(Mutex::new(human_synth_table));
         let ai_synth_table = Arc::new(Mutex::new(ai_synth_table));
         let p_random_slider = Arc::new(Mutex::new(prob_slider()));
+        let p_ornament_slider = Arc::new(Mutex::new(prob_slider()));
+        let ornament_gap_slider = Arc::new(Mutex::new(ornament_gap_slider()));
         let replay_delay_slider = Arc::new(Mutex::new(replay_slider()));
         let database = Database::new();
         let melody_var_info = {
@@ -149,6 +156,8 @@ impl ReplayerApp {
             midi_scenario: Arc::new(Mutex::new(MidiScenario::StartingUp)),
             midi_in: Arc::new(Mutex::new(None)),
             p_random_slider: p_random_slider.clone(),
+            p_ornament_slider: p_ornament_slider.clone(),
+            ornament_gap_slider: ornament_gap_slider.clone(),
             replay_delay_slider: replay_delay_slider.clone(),
             ai_table: ai_table.clone(),
             human_synth_table: human_synth_table.clone(),
@@ -182,6 +191,8 @@ impl ReplayerApp {
             Self::update_table_choice(self.ai_synth_table.clone(), self.ai_synth_name.as_str());
 
             Self::insert_slider(ui,self.p_random_slider.clone(),"Probability of Randomization");
+            Self::insert_slider(ui, self.p_ornament_slider.clone(), "Probablity of Ornamentation");
+            Self::insert_slider(ui, self.ornament_gap_slider.clone(), "Notes Between Ornaments");
             Self::insert_slider(ui, self.replay_delay_slider.clone(), "Replay Delay");
 
             if !self.melody_var_info.is_empty() {
@@ -266,7 +277,7 @@ impl ReplayerApp {
         table.choose(tag);
     }
 
-    fn insert_slider(ui: &mut Ui, slider: Arc<Mutex<SliderValue<f64>>>, text: &str) {
+    fn insert_slider<N:FromStr + Numeric>(ui: &mut Ui, slider: Arc<Mutex<SliderValue<N>>>, text: &str) {
         let mut slider = slider.lock().unwrap();
         let mut value = slider.get_current();
         ui.add(egui::Slider::new(&mut value, slider.make_range()).text(text));
