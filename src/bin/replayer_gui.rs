@@ -207,6 +207,7 @@ impl ReplayerApp {
         ui.horizontal(|ui| {
             if !self.melody_var_info.at_start() && ui.button("<").clicked() {
                 self.melody_var_info.go_left();
+                let (melody_info, variation_info) = self.melody_var_info.get().unwrap();
                 self.melody_pref = melody_info.get_rating();
                 self.variation_pref = variation_info.get_rating();
             }
@@ -225,16 +226,19 @@ impl ReplayerApp {
             });
             if !self.melody_var_info.at_end() && ui.button(">").clicked() {
                 self.melody_var_info.go_right();
+                let (melody_info, variation_info) = self.melody_var_info.get().unwrap();
                 self.melody_pref = melody_info.get_rating();
                 self.variation_pref = variation_info.get_rating();
             }
 
             if start_melody_pref != self.melody_pref {
                 self.melody_var_info.get_mut().unwrap().0.set_rating(self.melody_pref);
+                println!("{:?}", self.melody_var_info.get().cloned().unwrap().0);
                 self.gui2dbase.push(self.melody_var_info.get().cloned().unwrap().0);
             }
             if start_variation_pref != self.variation_pref {
                 self.melody_var_info.get_mut().unwrap().1.set_rating(self.variation_pref);
+                println!("{:?}", self.melody_var_info.get().cloned().unwrap().1);
                 self.gui2dbase.push(self.melody_var_info.get().cloned().unwrap().1);
             }
         });
