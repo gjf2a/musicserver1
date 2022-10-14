@@ -10,11 +10,8 @@ pub type AITable = ChooserTable<Arc<AIFuncType>>;
 pub fn make_ai_table() -> AITable {
     let ai_funcs: Vec<(&str, Arc<AIFuncType>)> = arc_vec![
         ("Bypass", |_, _, _| Melody::new()),
-        ("Playback", |_, melody, _| melody.clone()),
-        ("Greedy Choice", MelodyMaker::create_variation_1),
-        ("Emphasis-Anchored Choice", MelodyMaker::create_variation_2),
-        ("Consistent Figure Replacement", MelodyMaker::create_variation_4),
-        ("Consistent Anchored Replacement", MelodyMaker::create_variation_3)
+        ("Emphasis-Anchored Choice", MelodyMaker::create_emphasis_variation),
+        ("Consistent Figure Replacement", MelodyMaker::create_figure_mapped_variation)
     ];
     ChooserTable::from(&ai_funcs)
 }

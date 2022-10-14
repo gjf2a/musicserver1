@@ -572,7 +572,7 @@ impl MelodyMaker {
         }
     }
 
-    pub fn create_variation_1(&mut self, original: &Melody, p_rewrite: f64) -> Melody {
+    pub fn create_greedy_variation(&mut self, original: &Melody, p_rewrite: f64) -> Melody {
         self.chain_variation_creator(
             original,
             p_rewrite,
@@ -598,37 +598,30 @@ impl MelodyMaker {
         assert!(Self::is_chain(&figure_chain));
         let mut notes = vec![];
         let mut next_already_added = false;
-        loop {
-            match figure_chain.pop_front() {
+        while let Some((i, figure)) = figure_chain.pop_front() {
+            if !next_already_added {
+                notes.push(original[i]);
+            }
+            match figure {
                 None => {
-                    break;
+                    next_already_added = false;
                 }
-                Some((i, figure)) => {
-                    if !next_already_added {
-                        notes.push(original[i]);
-                    }
-                    match figure {
-                        None => {
-                            next_already_added = false;
+                Some((figure, match_len)) => {
+                    let generator = if rand::random::<f64>() < p_rewrite {
+                        figure_picker(self, figure)
+                    } else {
+                        figure
+                    };
+                    let pitches =
+                        generator.make_pitches(notes.last().unwrap().pitch, &scale);
+                    let mut pitch = 0;
+                    for m in 1..match_len {
+                        if original[i + m].pitch != original[i + m - 1].pitch {
+                            pitch += 1;
                         }
-                        Some((figure, match_len)) => {
-                            let generator = if rand::random::<f64>() < p_rewrite {
-                                figure_picker(self, figure)
-                            } else {
-                                figure
-                            };
-                            let pitches =
-                                generator.make_pitches(notes.last().unwrap().pitch, &scale);
-                            let mut pitch = 0;
-                            for m in 1..match_len {
-                                if original[i + m].pitch != original[i + m - 1].pitch {
-                                    pitch += 1;
-                                }
-                                notes.push(original[i + m].repitched(pitches[pitch]));
-                            }
-                            next_already_added = true;
-                        }
+                        notes.push(original[i + m].repitched(pitches[pitch]));
                     }
+                    next_already_added = true;
                 }
             }
         }
@@ -653,7 +646,7 @@ impl MelodyMaker {
         }
     }
 
-    pub fn create_variation_2(&mut self, original: &Melody, p_rewrite: f64) -> Melody {
+    pub fn create_emphasis_variation(&mut self, original: &Melody, p_rewrite: f64) -> Melody {
         self.chain_variation_creator(
             original,
             p_rewrite,
@@ -662,7 +655,7 @@ impl MelodyMaker {
         )
     }
 
-    pub fn create_variation_3(&mut self, original: &Melody, p_rewrite: f64) -> Melody {
+    pub fn create_figure_mapped_emphasis_variation(&mut self, original: &Melody, p_rewrite: f64) -> Melody {
         self.chain_variation_creator(
             original,
             1.0,
@@ -671,7 +664,7 @@ impl MelodyMaker {
         )
     }
 
-    pub fn create_variation_4(&mut self, original: &Melody, p_remap: f64) -> Melody {
+    pub fn create_figure_mapped_variation(&mut self, original: &Melody, p_remap: f64) -> Melody {
         assert_prob(p_remap);
         self.reset_figure_mappings();
         self.chain_variation_creator(
@@ -1006,7 +999,7 @@ mod tests {
         let m = "69,0.24,1.0,69,0.09,0.0,72,0.31,1.0,72,0.08,0.0,71,0.29,0.69";
         let notes = Melody::from(m);
         println!("{}", notes.view_notes());
-        assert_eq!(format!("{:?}", notes), "Melody { notes: [Note { pitch: 69, duration: OrderedFloat(0.24), intensity: 127 }, Note { pitch: 69, duration: OrderedFloat(0.09), intensity: 0 }, Note { pitch: 72, duration: OrderedFloat(0.31), intensity: 127 }, Note { pitch: 72, duration: OrderedFloat(0.08), intensity: 0 }, Note { pitch: 71, duration: OrderedFloat(0.29), intensity: 87 }] }");
+        assert_eq!(format!("{:?}", notes), "Melody { notes: [Note { pitch: 69, duration: OrderedFloat(0.24), velocity: 127 }, Note { pitch: 69, duration: OrderedFloat(0.09), velocity: 0 }, Note { pitch: 72, duration: OrderedFloat(0.31), velocity: 127 }, Note { pitch: 72, duration: OrderedFloat(0.08), velocity: 0 }, Note { pitch: 71, duration: OrderedFloat(0.29), velocity: 87 }] }");
     }
 
     fn test_natural_mode(root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>, notes: [MidiByte; 15]) {
@@ -1089,7 +1082,7 @@ mod tests {
         let scale = tune.best_scale_for();
         let mut maker = MelodyMaker::new();
         for _ in 0..20 {
-            let var = maker.create_variation_1(&tune, 0.9);
+            let var = maker.create_greedy_variation(&tune, 0.9);
             assert_eq!(var.len(), tune.len());
             let mut different_count = 0;
             for i in 0..var.len() {
@@ -1319,20 +1312,20 @@ mod tests {
 
     #[test]
     fn test_variation_1() {
-        test_variation_unchanged(MelodyMaker::create_variation_1);
-        test_variation_changed(MelodyMaker::create_variation_1, 0.50, 0.80);
+        test_variation_unchanged(MelodyMaker::create_greedy_variation);
+        test_variation_changed(MelodyMaker::create_greedy_variation, 0.50, 0.80);
     }
 
     #[test]
     fn test_variation_2() {
-        test_variation_unchanged(MelodyMaker::create_variation_2);
-        test_variation_changed(MelodyMaker::create_variation_2, 0.40, 0.60);
+        test_variation_unchanged(MelodyMaker::create_emphasis_variation);
+        test_variation_changed(MelodyMaker::create_emphasis_variation, 0.40, 0.60);
     }
 
     #[test]
     fn test_variation_4() {
-        test_variation_unchanged(MelodyMaker::create_variation_4);
-        test_variation_changed(MelodyMaker::create_variation_4, 0.25, 0.55);
+        test_variation_unchanged(MelodyMaker::create_figure_mapped_variation);
+        test_variation_changed(MelodyMaker::create_figure_mapped_variation, 0.25, 0.55);
     }
 
     #[test]
