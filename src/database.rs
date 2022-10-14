@@ -23,7 +23,6 @@ pub fn start_database_thread(
     std::thread::spawn(move || {
         loop {
             if let Some(info) = gui2dbase.pop() {
-                println!("Update {info:?}");
                 database.update_info(&info).unwrap();
             }
 
