@@ -24,7 +24,6 @@ pub fn start_ai_thread(
     ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
     ai2dbase: Arc<SegQueue<FromAiMsg>>,
     replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
-    p_ornament_slider: Arc<Mutex<SliderValue<f64>>>,
     ornament_gap_slider: Arc<Mutex<SliderValue<i64>>>,
     p_random_slider: Arc<Mutex<SliderValue<f64>>>,
 ) {
@@ -35,7 +34,7 @@ pub fn start_ai_thread(
             replay_delay_slider.clone(),
         );
         let mut performer =
-            Performer::new(p_random_slider.clone(), p_ornament_slider.clone(), ornament_gap_slider.clone(), ai_table.clone(), ai2output.clone());
+            Performer::new(p_random_slider.clone(), ornament_gap_slider.clone(), ai_table.clone(), ai2output.clone());
         loop {
             let melody = recorder.record();
             let variation = performer.create_variation(&melody);
@@ -118,7 +117,6 @@ impl PlayerRecorder {
 struct Performer {
     maker: MelodyMaker,
     p_random_slider: Arc<Mutex<SliderValue<f64>>>,
-    p_ornament_slider: Arc<Mutex<SliderValue<f64>>>,
     ornament_gap_slider: Arc<Mutex<SliderValue<i64>>>,
     ai_table: Arc<Mutex<AITable>>,
     ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>
@@ -127,7 +125,6 @@ struct Performer {
 impl Performer {
     fn new(
         p_random_slider: Arc<Mutex<SliderValue<f64>>>,
-        p_ornament_slider: Arc<Mutex<SliderValue<f64>>>,
         ornament_gap_slider: Arc<Mutex<SliderValue<i64>>>,
         ai_table: Arc<Mutex<AITable>>,
         ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
@@ -135,7 +132,6 @@ impl Performer {
         Performer {
             maker: MelodyMaker::new(),
             p_random_slider,
-            p_ornament_slider,
             ornament_gap_slider,
             ai_table,
             ai2output
@@ -149,14 +145,13 @@ impl Performer {
 
     fn create_variation(&mut self, melody: &Melody) -> Melody {
         let p_random = Self::from_slider(&self.p_random_slider);
-        let p_ornament = Self::from_slider(&self.p_ornament_slider);
         let ornament_gap = Self::from_slider(&self.ornament_gap_slider);
         let var_func = {
             let ai_table = self.ai_table.lock().unwrap();
             ai_table.current_choice()
         };
         let variation = var_func(&mut self.maker, &melody, p_random);
-        self.maker.ornamented(&variation, p_ornament, ornament_gap)
+        self.maker.ornamented(&variation, ornament_gap)
     }
 
     fn send_variation(&self, variation: &Melody) {

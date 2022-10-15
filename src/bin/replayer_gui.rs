@@ -112,7 +112,6 @@ struct ReplayerApp {
     ai_synth_name: String,
     ai_synth_table: Arc<Mutex<SynthTable>>,
     p_random_slider: Arc<Mutex<SliderValue<f64>>>,
-    p_ornament_slider: Arc<Mutex<SliderValue<f64>>>,
     ornament_gap_slider: Arc<Mutex<SliderValue<i64>>>,
     replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
     in_port: Option<MidiInputPort>,
@@ -142,7 +141,6 @@ impl ReplayerApp {
         let human_synth_table = Arc::new(Mutex::new(human_synth_table));
         let ai_synth_table = Arc::new(Mutex::new(ai_synth_table));
         let p_random_slider = Arc::new(Mutex::new(prob_slider()));
-        let p_ornament_slider = Arc::new(Mutex::new(prob_slider()));
         let ornament_gap_slider = Arc::new(Mutex::new(ornament_gap_slider()));
         let replay_delay_slider = Arc::new(Mutex::new(replay_slider()));
         let database = Database::new();
@@ -156,7 +154,6 @@ impl ReplayerApp {
             midi_scenario: Arc::new(Mutex::new(MidiScenario::StartingUp)),
             midi_in: Arc::new(Mutex::new(None)),
             p_random_slider: p_random_slider.clone(),
-            p_ornament_slider: p_ornament_slider.clone(),
             ornament_gap_slider: ornament_gap_slider.clone(),
             replay_delay_slider: replay_delay_slider.clone(),
             ai_table: ai_table.clone(),
@@ -191,7 +188,6 @@ impl ReplayerApp {
             Self::update_table_choice(self.ai_synth_table.clone(), self.ai_synth_name.as_str());
 
             Self::insert_slider(ui,self.p_random_slider.clone(),"Probability of Randomization");
-            Self::insert_slider(ui, self.p_ornament_slider.clone(), "Probablity of Ornamentation");
             Self::insert_slider(ui, self.ornament_gap_slider.clone(), "Notes Between Ornaments");
             Self::insert_slider(ui, self.replay_delay_slider.clone(), "Replay Delay");
 
@@ -380,7 +376,6 @@ impl ReplayerApp {
             ai2output,
             ai2dbase.clone(),
             self.replay_delay_slider.clone(),
-            self.p_ornament_slider.clone(),
             self.ornament_gap_slider.clone(),
             self.p_random_slider.clone()
         );

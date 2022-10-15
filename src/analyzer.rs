@@ -407,12 +407,11 @@ impl Neighbor {
         MelodyMaker::random_element_from(&choices)
     }
 
-    fn add_ornament_pitches(&self, result: &mut Melody, note: &mut Note, scale: &MusicMode, figure: MelodicFigure) {
+    fn add_ornament_pitches(&self, result: &mut Melody, note: Note, scale: &MusicMode, figure: MelodicFigure) {
         let ornament_pitches = self.direction.make_ornament_pitches(figure, note.pitch, self.pitch, scale);
-        let new_duration = note.duration.into_inner() / (ornament_pitches.len() + 1) as f64;
-        note.duration = OrderedFloat(new_duration);
+        let duration = OrderedFloat(note.duration.into_inner() / ornament_pitches.len() as f64);
         for pitch in ornament_pitches {
-            result.add(Note {pitch, duration: note.duration, velocity: note.velocity});
+            result.add(Note {pitch, duration, velocity: note.velocity});
         }
     }
 }
@@ -468,7 +467,7 @@ impl MelodyMaker {
         None
     }
 
-    pub fn ornamented(&self, melody: &Melody, p_ornament: f64, ornament_gap: i64) -> Melody {
+    pub fn ornamented(&self, melody: &Melody, ornament_gap: i64) -> Melody {
         if melody.len() == 0 {
             return melody.clone();
         }
@@ -477,27 +476,24 @@ impl MelodyMaker {
         let mut result = Melody::new();
         let mut countup = 1;
         for i in 0..melody.len() {
-            let mut note = melody[i];
             let neighbor = Neighbor::new(&melody, &scale, i);
+            let mut ornamented = false;
             if let Some(neighbor) = neighbor {
                 if let Some(figure) = self.choose_ornament_figure(neighbor.gap) {
-                    if note.duration >= min_duration {
-                        let p_choose = (countup as f64 / ornament_gap as f64) * p_ornament;
+                    if melody[i].duration >= min_duration {
+                        let p_choose = countup as f64 / ornament_gap as f64;
                         if rand::random::<f64>() < p_choose {
-                            neighbor.add_ornament_pitches(&mut result, &mut note, &scale, figure);
+                            neighbor.add_ornament_pitches(&mut result, melody[i], &scale, figure);
+                            ornamented = true;
                             countup = 1;
                         } else {
-                            result.add(note);
                             countup += 1;
                         }
-                    } else {
-                        result.add(note);
                     }
-                } else {
-                    result.add(note);
                 }
-            } else {
-                result.add(note);
+            }
+            if !ornamented {
+                result.add(melody[i]);
             }
         }
         result
@@ -516,29 +512,6 @@ impl MelodyMaker {
             .map(|v| v[rand::random::<usize>() % v.len()])
             .collect::<Vec<_>>();
         Self::random_element_from(&options)
-    }
-
-    fn add_ornament(&self, result: &mut Melody, scale: &MusicMode, prev_note: Note, note: &mut Note) {
-        if let Some(gap) = scale.diatonic_steps_between(prev_note.pitch, note.pitch) {
-            let sizes = self.figure_tables.keys().collect::<Vec<_>>();
-            let size = sizes[rand::random::<usize>() % sizes.len()];
-            if let Some(candidates) = self.figure_tables.get(size).unwrap().get(&gap) {
-                let figure = candidates[rand::random::<usize>() % candidates.len()];
-                Self::add_ornament_pitches(result, &scale, figure, prev_note, note);
-            }
-        }
-    }
-
-    fn add_ornament_pitches(result: &mut Melody, scale: &MusicMode, figure: MelodicFigure, prev_note: Note, note: &mut Note) {
-        let mut ornament_pitches = figure.make_pitches(prev_note.pitch, scale);
-        ornament_pitches.pop_front();
-        ornament_pitches.pop_back();
-        let new_duration = note.duration.into_inner() / (ornament_pitches.len() + 1) as f64;
-        note.duration = OrderedFloat(new_duration);
-        let new_velocity = (note.velocity + prev_note.velocity) / 2;
-        for pitch in ornament_pitches {
-            result.add(Note {pitch, duration: note.duration, velocity: new_velocity});
-        }
     }
 
     pub fn is_chain(chain: &VecDeque<(usize, Option<(MelodicFigure, usize)>)>) -> bool {
