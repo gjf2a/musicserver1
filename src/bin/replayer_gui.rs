@@ -380,6 +380,8 @@ impl ReplayerApp {
             ai2output,
             ai2dbase.clone(),
             self.replay_delay_slider.clone(),
+            self.p_ornament_slider.clone(),
+            self.ornament_gap_slider.clone(),
             self.p_random_slider.clone()
         );
         start_input_thread(

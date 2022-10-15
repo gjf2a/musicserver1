@@ -2,10 +2,7 @@ use anyhow::bail;
 use crossbeam_queue::SegQueue;
 use midi_msg::MidiMsg;
 use midir::{Ignore, MidiInput, MidiInputPort};
-use musicserver1::{
-    make_ai_table, make_synth_table, prob_slider, replay_slider, start_ai_thread, start_input,
-    start_output_thread, user_pick_element, SynthChoice
-};
+use musicserver1::{make_ai_table, make_synth_table, prob_slider, replay_slider, start_ai_thread, start_input, start_output_thread, user_pick_element, SynthChoice, ornament_gap_slider};
 use read_input::prelude::*;
 use std::sync::{Arc, Mutex};
 
@@ -67,6 +64,10 @@ fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<(SynthChoice
     ai_table.console_pick();
     let mut p_random = prob_slider();
     p_random.console_pick("Select probability of random variation: ");
+    let mut p_ornamentation = prob_slider();
+    p_ornamentation.console_pick("Select probability of ornamentation:" );
+    let mut ornament_gap = ornament_gap_slider();
+    ornament_gap.console_pick("Select number of notes between ornaments: ");
     let mut replay_delay = replay_slider();
     replay_delay.console_pick("Select time delay before starting replay: ");
     start_ai_thread(
@@ -75,6 +76,8 @@ fn run_ai(input2ai: Arc<SegQueue<MidiMsg>>, ai2output: Arc<SegQueue<(SynthChoice
         ai2output,
         Arc::new(SegQueue::new()),
         Arc::new(Mutex::new(replay_delay)),
+        Arc::new(Mutex::new(p_ornamentation)),
+        Arc::new(Mutex::new(ornament_gap)),
         Arc::new(Mutex::new(p_random))
     );
 }

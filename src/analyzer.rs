@@ -408,10 +408,10 @@ impl MelodyMaker {
         None
     }
 
-    pub fn ornamented(&self, melody: &Melody, p_ornament: f64, d_ornament: i64) -> Melody {
+    pub fn ornamented(&self, melody: &Melody, p_ornament: f64, ornament_gap: i64) -> Melody {
         let scale = melody.best_scale_for();
         let mut result = Melody::new();
-        let mut countdown = d_ornament;
+        let mut countdown = ornament_gap;
         let mut prev_note = melody[0];
         for note in melody.iter() {
             if countdown <= 0 {
@@ -429,7 +429,7 @@ impl MelodyMaker {
                     }
                 }
                 // TODO: Maybe p_ornament/2 chance of adding another?
-                countdown = d_ornament; // +/- some random fudge factor
+                countdown = ornament_gap; // +/- some random fudge factor
             } else {
                 countdown -= 1;
             }
