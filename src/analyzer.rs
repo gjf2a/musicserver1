@@ -409,34 +409,53 @@ impl MelodyMaker {
     }
 
     pub fn ornamented(&self, melody: &Melody, p_ornament: f64, ornament_gap: i64) -> Melody {
+        if melody.len() == 0 {
+            return melody.clone();
+        }
         let scale = melody.best_scale_for();
         let mut result = Melody::new();
         let mut countdown = ornament_gap;
         let mut prev_note = melody[0];
         for note in melody.iter() {
-            if countdown <= 0 {
-                if rand::random::<f64>() < p_ornament {
-                    if let Some(gap) = scale.diatonic_steps_between(prev_note.pitch, note.pitch) {
-                        let sizes = self.figure_tables.keys().collect::<Vec<_>>();
-                        let size = sizes[rand::random::<usize>() % sizes.len()];
-                        if let Some(candidates) = self.figure_tables.get(size).unwrap().get(&gap) {
-                            let figure = candidates[rand::random::<usize>() % candidates.len()];
-                            let ornament_pitches = figure.make_pitches(prev_note.pitch, &scale);
-                            for i in 1..(ornament_pitches.len() - 1) {
-                                result.add(prev_note.repitched(ornament_pitches[i]));
-                            }
-                        }
+            let mut note = *note;
+            if note.velocity > 0 {
+                if countdown <= 0 {
+                    if rand::random::<f64>() < p_ornament {
+                        self.add_ornament(&mut result, &scale, prev_note, &mut note);
                     }
+                    // TODO: Maybe p_ornament/2 chance of adding another?
+                    countdown = ornament_gap; // +/- some random fudge factor
+                } else {
+                    countdown -= 1;
                 }
-                // TODO: Maybe p_ornament/2 chance of adding another?
-                countdown = ornament_gap; // +/- some random fudge factor
-            } else {
-                countdown -= 1;
+                prev_note = note;
             }
-            prev_note = *note;
-            result.add(*note);
+            result.add(note);
         }
         result
+    }
+
+    fn add_ornament(&self, result: &mut Melody, scale: &MusicMode, prev_note: Note, note: &mut Note) {
+        if let Some(gap) = scale.diatonic_steps_between(prev_note.pitch, note.pitch) {
+            let sizes = self.figure_tables.keys().collect::<Vec<_>>();
+            let size = sizes[rand::random::<usize>() % sizes.len()];
+            if let Some(candidates) = self.figure_tables.get(size).unwrap().get(&gap) {
+                let figure = candidates[rand::random::<usize>() % candidates.len()];
+                Self::add_ornament_pitches(result, &scale, figure, prev_note, note);
+            }
+        }
+    }
+
+    fn add_ornament_pitches(result: &mut Melody, scale: &MusicMode, figure: MelodicFigure, prev_note: Note, note: &mut Note) {
+        let mut ornament_pitches = figure.make_pitches(prev_note.pitch, scale);
+        ornament_pitches.pop_front();
+        ornament_pitches.pop_back();
+        let new_duration = note.duration.into_inner() / (ornament_pitches.len() + 1) as f64;
+        note.duration = OrderedFloat(new_duration);
+        let new_velocity = (note.velocity + prev_note.velocity) / 2;
+        for pitch in ornament_pitches {
+            result.add(Note {pitch, duration: note.duration, velocity: new_velocity});
+        }
     }
 
     pub fn is_chain(chain: &VecDeque<(usize, Option<(MelodicFigure, usize)>)>) -> bool {
@@ -631,8 +650,7 @@ impl MelodyMaker {
         } else {
             figure
         };
-        let pitches =
-            generator.make_pitches(notes.last().unwrap().pitch, &scale);
+        let pitches = generator.make_pitches(notes.last().unwrap().pitch, &scale);
         let mut pitch = 0;
         for m in 1..match_len {
             if original[i + m].pitch != original[i + m - 1].pitch {
@@ -876,10 +894,10 @@ impl MelodicFigure {
 
     /// Generates a sequence of diatonic pitches derived from `scale` corresponding to
     /// `self.pattern()`. The sequence starts at `start_pitch` (which is included in the result).
-    pub fn make_pitches(&self, start_pitch: MidiByte, scale: &MusicMode) -> Vec<MidiByte> {
-        let mut result = vec![start_pitch];
+    pub fn make_pitches(&self, start_pitch: MidiByte, scale: &MusicMode) -> VecDeque<MidiByte> {
+        let mut result = VecDeque::from([start_pitch]);
         for interval in self.pattern() {
-            result.push(scale.next_pitch(*result.last().unwrap(), interval));
+            result.push_back(scale.next_pitch(*result.back().unwrap(), interval));
         }
         result
     }
@@ -1002,7 +1020,7 @@ mod tests {
     use bare_metal_modulo::ModNumC;
     use ordered_float::OrderedFloat;
     use std::cmp::{max, min};
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeSet, VecDeque};
 
     const EXAMPLE_MELODY: &str = "55,0.39,0.91,55,0.04,0.0,59,0.33,0.73,60,0.06,0.44,62,0.02,0.87,59,0.05,0.0,60,0.16,0.0,62,0.2,0.0,55,0.39,0.61,55,0.01,0.0,57,0.34,0.98,57,0.05,0.0,55,0.39,0.78,54,0.02,0.98,55,0.19,0.0,54,0.12,0.0,52,0.11,0.74,52,0.0,0.0,54,0.12,0.46,54,0.03,0.0,50,0.1,0.84,50,0.27,0.0,55,0.27,0.74,55,0.1,0.0,59,0.27,0.44,60,0.07,0.54,62,0.04,0.91,59,0.09,0.0,60,0.11,0.0,62,0.19,0.0,55,0.29,0.67,55,0.07,0.0,57,0.32,0.76,57,0.06,0.0,55,0.23,0.7,55,0.05,0.0,54,0.12,0.93,54,0.07,0.0,50,0.37,0.8,50,0.5,0.0,55,0.36,0.76,55,0.05,0.0,59,0.28,0.76,60,0.05,0.7,62,0.01,0.91,59,0.07,0.0,60,0.15,0.0,62,0.2,0.0,55,0.33,0.67,55,0.02,0.0,57,0.29,0.8,57,0.1,0.0,55,0.29,0.9,55,0.08,0.0,54,0.16,1.0,54,0.12,0.0,52,0.12,0.72,54,0.01,0.71,52,0.14,0.0,54,0.07,0.0,50,0.1,0.76,50,0.23,0.0,55,0.22,0.65,55,0.13,0.0,57,0.29,0.64,57,0.08,0.0,55,0.23,0.76,55,0.07,0.0,54,0.12,0.99,54,0.04,0.0,52,0.24,0.95,52,0.19,0.0,54,0.13,1.0,54,0.15,0.0,52,0.12,0.72,52,0.03,0.0,54,0.19,0.83,54,0.13,0.0,50,0.06,0.69,50,0.15,0.0,55,0.01,0.73,57,0.07,0.66,57,0.55,0.0,55,1.5,0.0";
     const COUNTDOWN_MELODY: &str = "66,0.42,1.0,66,0.55,0.0,73,0.17,1.0,73,0.01,0.0,71,0.13,0.77,71,0.0,0.0,73,0.45,0.41,73,0.13,0.0,66,0.85,0.8,66,0.32,0.0,74,0.16,1.0,74,0.0,0.0,74,0.37,0.87,74,0.03,0.0,73,0.2,1.0,73,0.03,0.0,71,0.03,0.06,71,0.04,0.0,71,0.93,1.0,71,0.27,0.0,74,0.16,1.0,74,0.03,0.0,73,0.13,1.0,73,0.03,0.0,74,0.45,1.0,74,0.12,0.0,66,0.58,0.8,66,0.5,0.0,71,0.15,0.75,71,0.02,0.0,71,0.13,0.81,71,0.03,0.0,71,0.21,1.0,71,0.08,0.0,69,0.24,0.94,69,0.08,0.0,68,0.22,0.65,68,0.07,0.0,71,0.24,1.0,71,0.06,0.0,69,0.68,1.0,69,0.15,0.0,73,0.16,1.0,73,0.03,0.0,71,0.14,0.91,71,0.03,0.0,73,0.29,1.0,73,0.22,0.0,66,0.61,0.64,66,0.45,0.0,74,0.15,0.87,74,0.04,0.0,74,0.14,0.83,74,0.02,0.0,74,0.2,1.0,74,0.13,0.0,73,0.29,0.96,73,0.0,0.0,72,0.04,0.49,72,0.03,0.0,71,1.01,1.0,71,0.41,0.0,74,0.14,0.94,74,0.04,0.0,73,0.13,0.8,73,0.03,0.0,74,0.49,1.0,74,0.12,0.0,66,0.93,0.54,66,0.19,0.0,71,0.16,0.81,71,0.02,0.0,71,0.13,0.79,71,0.03,0.0,71,0.21,0.87,71,0.11,0.0,69,0.24,0.86,69,0.08,0.0,68,0.24,0.67,68,0.07,0.0,71,0.24,1.0,71,0.11,0.0,69,0.75,0.86,69,0.05,0.0,68,0.18,0.71,68,0.02,0.0,69,0.16,0.89,69,0.04,0.0,71,0.02,0.99,71,0.0,0.0,83,0.01,1.0,83,0.0,0.0,71,0.56,0.98,71,0.16,0.0,69,0.19,1.0,69,0.04,0.0,71,0.2,1.0,71,0.05,0.0,73,0.24,1.0,73,0.0,0.0,72,0.03,0.62,72,0.07,0.0,71,0.2,0.91,71,0.03,0.0,69,0.01,0.06,69,0.06,0.0,69,0.18,0.73,69,0.11,0.0,68,0.19,0.46,68,0.18,0.0,66,0.51,0.76,66,0.17,0.0,74,0.56,1.0,74,0.01,0.0,73,1.09,0.79,73,0.07,0.0,75,0.16,0.9,75,0.03,0.0,73,0.16,0.84,73,0.03,0.0,71,0.18,0.57,71,0.03,0.0,73,0.78,0.64,73,0.06,0.0,73,0.14,0.91,73,0.04,0.0,73,0.14,0.87,73,0.04,0.0,73,0.26,0.81,73,0.1,0.0,71,0.23,0.91,71,0.07,0.0,69,0.19,0.98,69,0.1,0.0,68,0.23,0.59,68,0.15,0.0,66,1.22,0.68,66,2.0,0.0";
@@ -1378,7 +1396,7 @@ mod tests {
                     matched.make_pitches(melody[start].pitch, &scale),
                 ));
             } else {
-                figures.push((None, vec![melody[start].pitch]));
+                figures.push((None, VecDeque::from([melody[start].pitch])));
             }
             start += 1;
         }
@@ -1389,8 +1407,8 @@ mod tests {
                 println!(
                     "diatonic jump: {:?}",
                     scale.diatonic_steps_between(
-                        *figures[i - 1].1.last().unwrap(),
-                        *notes.first().unwrap()
+                        *figures[i - 1].1.back().unwrap(),
+                        *notes.front().unwrap()
                     )
                 );
             }
