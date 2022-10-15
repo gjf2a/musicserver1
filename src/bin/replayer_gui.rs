@@ -225,10 +225,12 @@ impl ReplayerApp {
                 ui.horizontal(|ui| {
                     ui.label(melody_stamp);
                     Self::preference_buttons(ui, &mut self.melody_pref);
+                    ui.label(melody_info.get_scale_name());
                 });
                 ui.horizontal(|ui| {
                     ui.label(variation_stamp);
                     Self::preference_buttons(ui, &mut self.variation_pref);
+                    ui.label(variation_info.get_scale_name());
                 });
             });
             if !self.melody_var_info.at_end() && ui.button(">").clicked() {

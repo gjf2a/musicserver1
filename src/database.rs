@@ -46,7 +46,7 @@ impl Database {
     fn get_connection(&self) -> anyhow::Result<Connection> {
         // Good overview of indexing in SQLite: https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346
         let connection = sqlite::open(self.filename.as_str()).unwrap();
-        connection.execute("CREATE TABLE IF NOT EXISTS melody_index (timestamp INTEGER, rating TEXT, tag TEXT);")?;
+        connection.execute("CREATE TABLE IF NOT EXISTS melody_index (timestamp INTEGER, rating TEXT, tag TEXT, scale_name TEXT);")?;
         connection.execute("CREATE TABLE IF NOT EXISTS melody_variation (melody_row INTEGER, variation_row INTEGER);")?;
         connection.execute("CREATE TABLE IF NOT EXISTS melodies (row INTEGER, pitch INTEGER, duration FLOAT, velocity INTEGER);")?;
         Ok(connection)
@@ -69,12 +69,13 @@ impl Database {
     }
 
     fn info_for(connection: &Connection, rowid: i64) -> anyhow::Result<MelodyInfo> {
-        let mut statement = connection.prepare("SELECT rowid, timestamp, rating, tag FROM melody_index WHERE rowid = ?")?.bind(1, rowid)?;
+        let mut statement = connection.prepare("SELECT rowid, timestamp, rating, tag, scale_name FROM melody_index WHERE rowid = ?")?.bind(1, rowid)?;
         if let State::Row = statement.next()? {
             let timestamp = statement.read::<i64>(1)?;
             let rating = statement.read::<String>(2)?.parse::<Preference>()?;
             let tag = statement.read::<String>(3)?;
-            Ok(MelodyInfo {rowid, timestamp, rating, tag})
+            let scale_name = statement.read::<String>(4)?;
+            Ok(MelodyInfo {rowid, timestamp, rating, tag, scale_name})
         } else {
             bail!("{rowid} not in database.")
         }
@@ -104,11 +105,10 @@ impl Database {
 
     pub fn update_info(&mut self, new_info: &MelodyInfo) -> anyhow::Result<()> {
         let connection = self.get_connection()?;
-        connection.prepare("UPDATE melody_index SET timestamp = ?, rating = ?, tag = ? WHERE rowid = ?")?
-            .bind(1, new_info.timestamp)?
-            .bind(2, new_info.rating.to_string().as_str())?
-            .bind(3, new_info.tag.as_str())?
-            .bind(4, new_info.rowid)?
+        connection.prepare("UPDATE melody_index SET rating = ?, tag = ? WHERE rowid = ?")?
+            .bind(1, new_info.rating.to_string().as_str())?
+            .bind(2, new_info.tag.as_str())?
+            .bind(3, new_info.rowid)?
             .next()?;
         Ok(())
     }
@@ -125,14 +125,16 @@ impl Database {
 
     fn store_melody(&mut self, melody: &Melody) -> anyhow::Result<MelodyInfo> {
         let timestamp = Utc::now().timestamp();
+        let scale = melody.best_scale_for();
         let rating = Preference::Neutral;
         let connection = self.get_connection()?;
         let tag = "";
         connection
-            .prepare("INSERT INTO melody_index (timestamp, rating, tag) VALUES (?, ?, ?)")?
+            .prepare("INSERT INTO melody_index (timestamp, rating, tag, scale_name) VALUES (?, ?, ?, ?)")?
             .bind(1, timestamp)?
             .bind(2, rating.to_string().as_str())?
             .bind(3, tag)?
+            .bind(4, scale.name().as_str())?
             .next().unwrap();
         let mut statement = connection.prepare("SELECT last_insert_rowid()")?;
         statement.next()?;
@@ -148,7 +150,7 @@ impl Database {
                 .next().unwrap();
         }
 
-        let info = MelodyInfo { rowid, timestamp, tag: tag.to_string(), rating };
+        let info = MelodyInfo { rowid, timestamp, tag: tag.to_string(), rating, scale_name: scale.name() };
         self.melody_cache.insert(info.rowid, melody.clone());
         Ok(info)
     }
@@ -159,7 +161,8 @@ pub struct MelodyInfo {
     rowid: i64,
     timestamp: i64,
     rating: Preference,
-    tag: String
+    tag: String,
+    scale_name: String
 }
 
 impl MelodyInfo {
@@ -177,6 +180,10 @@ impl MelodyInfo {
 
     pub fn date_time_stamp(&self) -> String {
         format!("{:?} {:?}", self.get_date(), self.get_time())
+    }
+
+    pub fn get_scale_name(&self) -> String {
+        self.scale_name.clone()
     }
 
     pub fn get_rating(&self) -> Preference {

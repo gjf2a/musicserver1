@@ -17,18 +17,49 @@ const NOTES_PER_OCTAVE: MidiByte = 12;
 const USIZE_NOTES_PER_OCTAVE: usize = NOTES_PER_OCTAVE as usize;
 const DIATONIC_SCALE_SIZE: usize = 7;
 const DIATONIC_SCALE_HOPS: [MidiByte; DIATONIC_SCALE_SIZE] = [2, 2, 1, 2, 2, 2, 1];
+
 const NOTE_NAMES: [&str; NOTES_PER_OCTAVE as usize] = [
     "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab", "A", "A#/Bb", "B",
 ];
+
 const MODE_NAMES: [&str; DIATONIC_SCALE_SIZE] = [
-    "ionian",
-    "dorian",
-    "phrygian",
-    "lydian",
-    "mixolydian",
-    "aeolian",
-    "locrian",
+    "Ionian",
+    "Dorian",
+    "Phrygian",
+    "Lydian",
+    "Mixolydian",
+    "Aeolian",
+    "Locrian",
 ];
+
+fn major_sharps_for(note_index: usize) -> usize {
+    if note_index % 2 == 0 {
+        note_index
+    } else {
+        (note_index + 6) % NOTES_PER_OCTAVE as usize
+    }
+}
+
+fn major_flats_for(note_index: usize) -> usize {
+    (NOTES_PER_OCTAVE as usize + (if note_index % 2 == 0 {0} else {6}) - note_index) % NOTES_PER_OCTAVE as usize
+}
+
+fn adjusted_note_index(note_index: usize, mode_index: usize) -> usize {
+    let mut note_index = note_index + NOTES_PER_OCTAVE as usize;
+    for i in 0..mode_index {
+        note_index -= DIATONIC_SCALE_HOPS[i] as usize;
+    }
+    note_index % NOTES_PER_OCTAVE as usize
+}
+
+fn sharps_for(note_index: usize, mode_index: usize) -> usize {
+    major_sharps_for(adjusted_note_index(note_index, mode_index))
+}
+
+fn flats_for(note_index: usize, mode_index: usize) -> usize {
+    major_flats_for(adjusted_note_index(note_index, mode_index))
+}
+
 const FIGURE_LENGTHS: [usize; 2] = [4, 3];
 
 fn assert_prob(p: f64) {
@@ -803,11 +834,15 @@ impl MusicMode {
     }
 
     pub fn name(&self) -> String {
-        format!(
-            "{} {}",
-            NOTE_NAMES[self.root() as usize],
-            MODE_NAMES[self.root_pos.a()]
-        )
+        let mut note_name = NOTE_NAMES[self.root() as usize];
+        if note_name.len() > 1 {
+            note_name = if sharps_for(self.root() as usize, self.root_pos.a()) > flats_for(self.root() as usize, self.root_pos.a()) {
+                &note_name[..2]
+            } else {
+                &note_name[3..]
+            };
+        }
+        format!("{} {}", note_name, MODE_NAMES[self.root_pos.a()])
     }
 
     pub fn new(root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>, root_note: MidiByte) -> Self {
@@ -1068,10 +1103,7 @@ impl MelodicFigureShape {
 
 #[cfg(test)]
 mod tests {
-    use crate::analyzer::{
-        FigureDirection, FigurePolarity, MelodicFigure, MelodicFigureShape, Melody, MelodyMaker,
-        MusicMode, DIATONIC_SCALE_SIZE,
-    };
+    use crate::analyzer::{FigureDirection, FigurePolarity, MelodicFigure, MelodicFigureShape, Melody, MelodyMaker, MusicMode, DIATONIC_SCALE_SIZE, major_sharps_for, major_flats_for, sharps_for, flats_for};
     use crate::{MidiByte, Note};
     use bare_metal_modulo::ModNumC;
     use ordered_float::OrderedFloat;
@@ -1497,5 +1529,18 @@ mod tests {
         m.synchronize_rests();
         println!("{m:?}");
         assert!(m.all_rests_synchronized());
+    }
+
+    #[test]
+    fn test_sharp_flat() {
+        for (chrom, sharp, flat) in [(0, 0, 0), (2, 2, 10), (4, 4, 8), (5, 11, 1), (7, 1, 11), (9, 3, 9)].iter() {
+            assert_eq!(major_sharps_for(*chrom), *sharp);
+            assert_eq!(major_flats_for(*chrom), *flat);
+        }
+
+        for (d_mode, sharp, flat) in [(0, 2, 10), (1, 0, 0), (2, 10, 2), (3, 3, 9), (4, 1, 11), (5, 11, 1), (6, 9, 3)].iter() {
+            assert_eq!(sharps_for(2, *d_mode), *sharp);
+            assert_eq!(flats_for(2, *d_mode), *flat);
+        }
     }
 }
