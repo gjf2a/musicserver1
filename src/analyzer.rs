@@ -204,6 +204,15 @@ impl Melody {
         if result.len() == length {Some(result)} else {None}
     }
 
+    pub fn median_duration_note_on(&self) -> OrderedFloat<f64> {
+        let mut durations = self.notes.iter()
+            .filter(|n| n.velocity > 0)
+            .map(|n| n.duration)
+            .collect::<Vec<_>>();
+        durations.sort();
+        durations[durations.len() / 2]
+    }
+
     pub fn from(s: &str) -> Self {
         let mut notes = Vec::new();
         let mut nums = s.split(",");
@@ -377,6 +386,57 @@ pub struct MelodyMaker {
     figure_mappings: HashMap<MelodicFigure, MelodicFigure>,
 }
 
+#[derive(Copy,Clone)]
+struct Neighbor {
+    gap: MidiByte,
+    pitch: MidiByte,
+    direction: BeforeAfter
+}
+
+impl Neighbor {
+    fn new(melody: &Melody, scale: &MusicMode, i: usize) -> Option<Self> {
+        let before = if i == 0 {None} else {
+            scale.diatonic_steps_between(melody[i - 1].pitch, melody[i].pitch)
+                .map(|s| Neighbor {gap: s, direction: BeforeAfter::Before, pitch: melody[i - 1].pitch})
+        };
+        let after = if i == melody.len() - 1 {None} else {
+            scale.diatonic_steps_between(melody[i].pitch, melody[i + 1].pitch)
+                .map(|s| Neighbor {gap: s, direction: BeforeAfter::After, pitch: melody[i + 1].pitch})
+        };
+        let choices = [before, after].iter().filter_map(|ba| *ba).collect::<Vec<_>>();
+        MelodyMaker::random_element_from(&choices)
+    }
+
+    fn add_ornament_pitches(&self, result: &mut Melody, note: &mut Note, scale: &MusicMode, figure: MelodicFigure) {
+        let ornament_pitches = self.direction.make_ornament_pitches(figure, note.pitch, self.pitch, scale);
+        let new_duration = note.duration.into_inner() / (ornament_pitches.len() + 1) as f64;
+        note.duration = OrderedFloat(new_duration);
+        for pitch in ornament_pitches {
+            result.add(Note {pitch, duration: note.duration, velocity: note.velocity});
+        }
+    }
+}
+
+#[derive(Copy, Clone)]
+enum BeforeAfter {
+    Before, After
+}
+
+impl BeforeAfter {
+    fn make_ornament_pitches(&self, figure: MelodicFigure, pitch: MidiByte, other: MidiByte, scale: &MusicMode) -> VecDeque<MidiByte> {
+        let start = match *self {
+            BeforeAfter::Before => other,
+            BeforeAfter::After => pitch
+        };
+        let mut ornament_pitches = figure.make_pitches(start, scale);
+        match *self {
+            BeforeAfter::Before => {ornament_pitches.pop_front();}
+            BeforeAfter::After => {ornament_pitches.pop_back();}
+        }
+        ornament_pitches
+    }
+}
+
 impl MelodyMaker {
     pub fn new() -> Self {
         MelodyMaker {
@@ -412,27 +472,50 @@ impl MelodyMaker {
         if melody.len() == 0 {
             return melody.clone();
         }
+        let min_duration = melody.median_duration_note_on();
         let scale = melody.best_scale_for();
         let mut result = Melody::new();
-        let mut countdown = ornament_gap;
-        let mut prev_note = melody[0];
-        for note in melody.iter() {
-            let mut note = *note;
-            if note.velocity > 0 {
-                if countdown <= 0 {
-                    if rand::random::<f64>() < p_ornament {
-                        self.add_ornament(&mut result, &scale, prev_note, &mut note);
+        let mut countup = 1;
+        for i in 0..melody.len() {
+            let mut note = melody[i];
+            let neighbor = Neighbor::new(&melody, &scale, i);
+            if let Some(neighbor) = neighbor {
+                if let Some(figure) = self.choose_ornament_figure(neighbor.gap) {
+                    if note.duration >= min_duration {
+                        let p_choose = (countup as f64 / ornament_gap as f64) * p_ornament;
+                        if rand::random::<f64>() < p_choose {
+                            neighbor.add_ornament_pitches(&mut result, &mut note, &scale, figure);
+                            countup = 1;
+                        } else {
+                            result.add(note);
+                            countup += 1;
+                        }
+                    } else {
+                        result.add(note);
                     }
-                    // TODO: Maybe p_ornament/2 chance of adding another?
-                    countdown = ornament_gap; // +/- some random fudge factor
                 } else {
-                    countdown -= 1;
+                    result.add(note);
                 }
-                prev_note = note;
+            } else {
+                result.add(note);
             }
-            result.add(note);
         }
         result
+    }
+
+    fn random_element_from<T: Copy>(v: &Vec<T>) -> Option<T> {
+        match v.len() {
+            0 => None,
+            _ => Some(v[rand::random::<usize>() % v.len()])
+        }
+    }
+
+    fn choose_ornament_figure(&self, gap: MidiByte) -> Option<MelodicFigure> {
+        let options = self.figure_tables.values()
+            .filter_map(|t| t.get(&gap))
+            .map(|v| v[rand::random::<usize>() % v.len()])
+            .collect::<Vec<_>>();
+        Self::random_element_from(&options)
     }
 
     fn add_ornament(&self, result: &mut Melody, scale: &MusicMode, prev_note: Note, note: &mut Note) {
