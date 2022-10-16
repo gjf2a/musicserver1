@@ -1,9 +1,8 @@
 use std::str::FromStr;
-use crate::{arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue, SynthChoice, FromAiMsg};
+use crate::{arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue, SynthChoice, FromAiMsg, send_recorded_melody};
 use crossbeam_queue::SegQueue;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use eframe::emath::Numeric;
 
 pub type AIFuncType = dyn Fn(&mut MelodyMaker, &Melody, f64) -> Melody + Send + Sync;
@@ -34,13 +33,13 @@ pub fn start_ai_thread(
             replay_delay_slider.clone(),
         );
         let mut performer =
-            Performer::new(p_random_slider.clone(), ornament_gap_slider.clone(), ai_table.clone(), ai2output.clone());
+            Performer::new(p_random_slider.clone(), ornament_gap_slider.clone(), ai_table.clone());
         loop {
             let melody = recorder.record();
             let variation = performer.create_variation(&melody);
             if variation.len() > 0 {
                 ai2dbase.push(FromAiMsg {melody, variation: variation.clone()});
-                performer.send_variation(&variation);
+                send_recorded_melody(&variation, SynthChoice::Ai, ai2output.clone());
             }
         }
     });
@@ -118,23 +117,20 @@ struct Performer {
     maker: MelodyMaker,
     p_random_slider: Arc<Mutex<SliderValue<f64>>>,
     ornament_gap_slider: Arc<Mutex<SliderValue<i64>>>,
-    ai_table: Arc<Mutex<AITable>>,
-    ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>
+    ai_table: Arc<Mutex<AITable>>
 }
 
 impl Performer {
     fn new(
         p_random_slider: Arc<Mutex<SliderValue<f64>>>,
         ornament_gap_slider: Arc<Mutex<SliderValue<i64>>>,
-        ai_table: Arc<Mutex<AITable>>,
-        ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
+        ai_table: Arc<Mutex<AITable>>
     ) -> Self {
         Performer {
             maker: MelodyMaker::new(),
             p_random_slider,
             ornament_gap_slider,
-            ai_table,
-            ai2output
+            ai_table
         }
     }
 
@@ -152,13 +148,5 @@ impl Performer {
         };
         let variation = var_func(&mut self.maker, &melody, p_random);
         self.maker.ornamented(&variation, ornament_gap)
-    }
-
-    fn send_variation(&self, variation: &Melody) {
-        for note in variation.iter() {
-            let (midi, duration) = note.to_midi();
-            self.ai2output.push((SynthChoice::Ai, midi));
-            std::thread::sleep(Duration::from_secs_f64(duration));
-        }
     }
 }

@@ -3,15 +3,13 @@ use crossbeam_queue::SegQueue;
 use eframe::egui;
 use eframe::emath::Numeric;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
-use musicserver1::{make_ai_table, make_synth_table, prob_slider, ornament_gap_slider, replay_slider,
-                   start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable,
-                   SliderValue, SynthTable, Preference, MelodyInfo, Database,
-                   start_database_thread};
-use std::mem;
+use musicserver1::{make_ai_table, make_synth_table, prob_slider, ornament_gap_slider, replay_slider, start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue, SynthTable, Preference, MelodyInfo, Database, start_database_thread, SynthChoice, send_recorded_melody, GuiDatabaseUpdate, Melody};
+use std::{mem, thread};
 use std::sync::{Arc, Mutex};
 use enum_iterator::all;
 use bare_metal_modulo::*;
 use std::str::FromStr;
+use midi_msg::MidiMsg;
 
 fn main() -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions::default();
@@ -121,7 +119,8 @@ struct ReplayerApp {
     melody_var_info: VecTracker<(MelodyInfo, MelodyInfo)>,
     database: Option<Database>,
     dbase2gui: Arc<SegQueue<(MelodyInfo,MelodyInfo)>>,
-    gui2dbase: Arc<SegQueue<MelodyInfo>>,
+    gui2dbase: Arc<SegQueue<GuiDatabaseUpdate>>,
+    ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>
 }
 
 impl ReplayerApp {
@@ -143,7 +142,7 @@ impl ReplayerApp {
         let p_random_slider = Arc::new(Mutex::new(prob_slider()));
         let ornament_gap_slider = Arc::new(Mutex::new(ornament_gap_slider()));
         let replay_delay_slider = Arc::new(Mutex::new(replay_slider()));
-        let database = Database::new();
+        let mut database = Database::new();
         let melody_var_info = {
             let mut melody_var_info = VecTracker::new(database.get_melody_pairs().unwrap());
             melody_var_info.go_to_end();
@@ -169,7 +168,8 @@ impl ReplayerApp {
             melody_var_info,
             database: Some(database),
             dbase2gui: Arc::new(SegQueue::new()),
-            gui2dbase: Arc::new(SegQueue::new())
+            gui2dbase: Arc::new(SegQueue::new()),
+            ai2output: Arc::new(SegQueue::new())
         };
         app.startup_thread();
         Ok(app)
@@ -226,11 +226,17 @@ impl ReplayerApp {
                     ui.label(melody_stamp);
                     Self::preference_buttons(ui, &mut self.melody_pref);
                     ui.label(melody_info.get_scale_name());
+                    if ui.button("Play").clicked() {
+                        self.play_melody_thread(melody_info.melody().clone(), SynthChoice::Human);
+                    }
                 });
                 ui.horizontal(|ui| {
                     ui.label(variation_stamp);
                     Self::preference_buttons(ui, &mut self.variation_pref);
                     ui.label(variation_info.get_scale_name());
+                    if ui.button("Play").clicked() {
+                        self.play_melody_thread(variation_info.melody().clone(), SynthChoice::Ai);
+                    }
                 });
             });
             if !self.melody_var_info.at_end() && ui.button(">").clicked() {
@@ -242,12 +248,19 @@ impl ReplayerApp {
 
             if start_melody_pref != self.melody_pref {
                 self.melody_var_info.get_mut().unwrap().0.set_rating(self.melody_pref);
-                self.gui2dbase.push(self.melody_var_info.get().cloned().unwrap().0);
+                self.gui2dbase.push(self.melody_var_info.get().cloned().unwrap().0.get_update());
             }
             if start_variation_pref != self.variation_pref {
                 self.melody_var_info.get_mut().unwrap().1.set_rating(self.variation_pref);
-                self.gui2dbase.push(self.melody_var_info.get().cloned().unwrap().1);
+                self.gui2dbase.push(self.melody_var_info.get().cloned().unwrap().1.get_update());
             }
+        });
+    }
+
+    fn play_melody_thread(&self, melody: Melody, synth: SynthChoice) {
+        let ai2output = self.ai2output.clone();
+        thread::spawn(move || {
+            send_recorded_melody(&melody, synth, ai2output);
         });
     }
 
@@ -362,20 +375,19 @@ impl ReplayerApp {
             mem::swap(&mut midi_in, &mut *self_midi_in);
         }
         let input2ai = Arc::new(SegQueue::new());
-        let ai2output = Arc::new(SegQueue::new());
         let ai2dbase = Arc::new(SegQueue::new());
         let mut database = None;
         mem::swap(&mut database, &mut self.database);
 
         start_output_thread(
-            ai2output.clone(),
+            self.ai2output.clone(),
             self.human_synth_table.clone(),
             self.ai_synth_table.clone(),
         );
         start_ai_thread(
             self.ai_table.clone(),
             input2ai.clone(),
-            ai2output,
+            self.ai2output.clone(),
             ai2dbase.clone(),
             self.replay_delay_slider.clone(),
             self.ornament_gap_slider.clone(),

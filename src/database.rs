@@ -14,9 +14,16 @@ pub struct FromAiMsg {
     pub variation: Melody
 }
 
+#[derive(Clone, Debug)]
+pub struct GuiDatabaseUpdate {
+    pub rowid: i64,
+    pub tag: String,
+    pub rating: Preference,
+}
+
 pub fn start_database_thread(
     dbase2gui: Arc<SegQueue<(MelodyInfo,MelodyInfo)>>,
-    gui2dbase: Arc<SegQueue<MelodyInfo>>,
+    gui2dbase: Arc<SegQueue<GuiDatabaseUpdate>>,
     ai2dbase: Arc<SegQueue<FromAiMsg>>,
     mut database: Database
 ) {
@@ -56,37 +63,39 @@ impl Database {
         Database {filename: DATABASE_FILENAME.to_string(), melody_cache: BTreeMap::new()}
     }
 
-    pub fn get_melody_pairs(&self) -> anyhow::Result<Vec<(MelodyInfo,MelodyInfo)>> {
+    pub fn get_melody_pairs(&mut self) -> anyhow::Result<Vec<(MelodyInfo,MelodyInfo)>> {
         let mut result = vec![];
         let connection = self.get_connection()?;
         let mut statement = connection.prepare("SELECT melody_row, variation_row FROM melody_variation")?;
         while let State::Row = statement.next().unwrap() {
             let melody_row = statement.read::<i64>(0)?;
             let variation_row = statement.read::<i64>(1)?;
-            result.push((Self::info_for(&connection, melody_row)?, Self::info_for(&connection, variation_row)?));
+            let melody = self.melody(&connection, melody_row)?;
+            let variation = self.melody(&connection, variation_row)?;
+            result.push((Self::info_for(&connection, melody_row, melody)?,
+                         Self::info_for(&connection, variation_row, variation)?));
         }
         Ok(result)
     }
 
-    fn info_for(connection: &Connection, rowid: i64) -> anyhow::Result<MelodyInfo> {
+    fn info_for(connection: &Connection, rowid: i64, melody: Melody) -> anyhow::Result<MelodyInfo> {
         let mut statement = connection.prepare("SELECT rowid, timestamp, rating, tag, scale_name FROM melody_index WHERE rowid = ?")?.bind(1, rowid)?;
         if let State::Row = statement.next()? {
             let timestamp = statement.read::<i64>(1)?;
             let rating = statement.read::<String>(2)?.parse::<Preference>()?;
             let tag = statement.read::<String>(3)?;
             let scale_name = statement.read::<String>(4)?;
-            Ok(MelodyInfo {rowid, timestamp, rating, tag, scale_name})
+            Ok(MelodyInfo {rowid, timestamp, rating, tag, scale_name, melody})
         } else {
             bail!("{rowid} not in database.")
         }
     }
 
-    pub fn melody(&mut self, rowid: i64) -> anyhow::Result<Melody> {
+    pub fn melody(&mut self, connection: &Connection, rowid: i64) -> anyhow::Result<Melody> {
         let cached = self.melody_cache.get(&rowid);
         if cached.is_some() {
             Ok(cached.map(|m| m.clone()).unwrap())
         } else {
-            let connection = self.get_connection()?;
             let mut statement = connection
                 .prepare("SELECT pitch, duration, velocity from melodies WHERE row = ?")?
                 .bind(1, rowid)?;
@@ -103,7 +112,7 @@ impl Database {
         }
     }
 
-    pub fn update_info(&mut self, new_info: &MelodyInfo) -> anyhow::Result<()> {
+    pub fn update_info(&mut self, new_info: &GuiDatabaseUpdate) -> anyhow::Result<()> {
         let connection = self.get_connection()?;
         connection.prepare("UPDATE melody_index SET rating = ?, tag = ? WHERE rowid = ?")?
             .bind(1, new_info.rating.to_string().as_str())?
@@ -150,7 +159,7 @@ impl Database {
                 .next().unwrap();
         }
 
-        let info = MelodyInfo { rowid, timestamp, tag: tag.to_string(), rating, scale_name: scale.name() };
+        let info = MelodyInfo { rowid, timestamp, tag: tag.to_string(), rating, scale_name: scale.name(), melody: melody.clone() };
         self.melody_cache.insert(info.rowid, melody.clone());
         Ok(info)
     }
@@ -162,7 +171,8 @@ pub struct MelodyInfo {
     timestamp: i64,
     rating: Preference,
     tag: String,
-    scale_name: String
+    scale_name: String,
+    melody: Melody
 }
 
 impl MelodyInfo {
@@ -192,6 +202,14 @@ impl MelodyInfo {
 
     pub fn set_rating(&mut self, pref: Preference) {
         self.rating = pref;
+    }
+
+    pub fn get_update(&self) -> GuiDatabaseUpdate {
+        GuiDatabaseUpdate {rowid: self.rowid, tag: self.tag.clone(), rating: self.rating}
+    }
+
+    pub fn melody(&self) -> &Melody {
+        &self.melody
     }
 }
 

@@ -2,6 +2,11 @@ use read_input::prelude::input;
 use read_input::InputBuild;
 use std::collections::btree_map::BTreeMap;
 use std::ops::RangeInclusive;
+use std::sync::Arc;
+use crate::Melody;
+use std::time::Duration;
+use crossbeam_queue::SegQueue;
+use midi_msg::MidiMsg;
 
 pub const SHOW_MIDI_MSG: bool = false;
 
@@ -120,4 +125,12 @@ pub fn user_pick_element<T: Clone, S: Fn(&T) -> String>(
         .inside(1..=choices.len())
         .get();
     choices[choice - 1].clone()
+}
+
+pub fn send_recorded_melody(melody: &Melody, synth: SynthChoice, ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>) {
+    for note in melody.iter() {
+        let (midi, duration) = note.to_midi();
+        ai2output.push((synth, midi));
+        std::thread::sleep(Duration::from_secs_f64(duration));
+    }
 }
