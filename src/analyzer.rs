@@ -235,10 +235,20 @@ impl Melody {
         if result.len() == length {Some(result)} else {None}
     }
 
+    pub fn duration_with_rest(&self, i: usize) -> OrderedFloat<f64> {
+        let mut result = self[i].duration;
+        let mut i = i + 1;
+        while i < self.len() && self[i].is_rest() {
+            result += self[i].duration;
+            i += 1;
+        }
+        result
+    }
+
     pub fn median_duration_note_on(&self) -> OrderedFloat<f64> {
-        let mut durations = self.notes.iter()
-            .filter(|n| n.velocity > 0)
-            .map(|n| n.duration)
+        let mut durations = (0..self.len())
+            .filter(|i| !self[*i].is_rest())
+            .map(|i| self.duration_with_rest(i))
             .collect::<Vec<_>>();
         durations.sort();
         durations[durations.len() / 2]
@@ -420,22 +430,26 @@ pub struct MelodyMaker {
 #[derive(Copy,Clone)]
 struct Neighbor {
     gap: MidiByte,
-    prev_pitch: MidiByte
+    prev_pitch: MidiByte,
+    velocity: MidiByte,
+    duration: f64
 }
 
 impl Neighbor {
     fn new(melody: &Melody, scale: &MusicMode, i: usize) -> Option<Self> {
-        if i == 0 {None} else {
+        if i == 0 || i >= melody.len() {
+            None
+        } else {
             scale.diatonic_steps_between(melody[i - 1].pitch, melody[i].pitch)
-                .map(|s| Neighbor {gap: s, prev_pitch: melody[i - 1].pitch})
+                .map(|s| Neighbor {gap: s, prev_pitch: melody[i - 1].pitch, velocity: melody[i].velocity, duration: melody.duration_with_rest(i).into_inner()})
         }
     }
 
-    fn add_ornament_pitches(&self, result: &mut Melody, note: Note, scale: &MusicMode, figure: MelodicFigure) {
+    fn add_ornament_pitches(&self, result: &mut Melody, scale: &MusicMode, figure: MelodicFigure) {
         let ornament_pitches = self.make_ornament_pitches(figure, scale);
-        let duration = OrderedFloat(note.duration.into_inner() / ornament_pitches.len() as f64);
+        let duration = OrderedFloat(self.duration / ornament_pitches.len() as f64);
         for pitch in ornament_pitches {
-            result.add(Note {pitch, duration, velocity: note.velocity});
+            result.add(Note {pitch, duration, velocity: self.velocity});
         }
     }
 
@@ -485,26 +499,36 @@ impl MelodyMaker {
         let scale = melody.best_scale_for();
         let mut result = Melody::new();
         let mut countup = 1;
-        for i in 0..melody.len() {
-            let neighbor = Neighbor::new(&melody, &scale, i);
+        let mut i = 0;
+        while i < melody.len() {
             let mut ornamented = false;
-            if let Some(neighbor) = neighbor {
-                if let Some(figure) = self.choose_ornament_figure(neighbor.gap) {
-                    if melody[i].duration >= min_duration {
-                        let p_choose = countup as f64 / ornament_gap as f64;
-                        if rand::random::<f64>() < p_choose {
-                            neighbor.add_ornament_pitches(&mut result, melody[i], &scale, figure);
-                            ornamented = true;
-                            countup = 1;
-                        } else {
-                            countup += 1;
+            if !melody[i].is_rest() {
+                let neighbor = Neighbor::new(&melody, &scale, i);
+                if let Some(neighbor) = neighbor {
+                    if let Some(figure) = self.choose_ornament_figure(neighbor.gap) {
+                        if melody.duration_with_rest(i) >= min_duration {
+                            let p_choose = countup as f64 / ornament_gap as f64;
+                            if rand::random::<f64>() < p_choose {
+                                neighbor.add_ornament_pitches(&mut result, &scale, figure);
+                                ornamented = true;
+                                countup = 1;
+                                i += 1;
+                                while i < melody.len() && melody[i].is_rest() {i += 1;}
+                            } else {
+                                countup += 1;
+                            }
                         }
                     }
                 }
             }
             if !ornamented {
                 result.add(melody[i]);
+                i += 1;
             }
+        }
+        let end = result.last_note();
+        if !end.is_rest() {
+            result.add(Note {pitch: end.pitch, velocity: 0, duration: end.duration});
         }
         result
     }

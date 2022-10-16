@@ -148,5 +148,6 @@ impl Performer {
         };
         let variation = var_func(&mut self.maker, &melody, p_random);
         self.maker.ornamented(&variation, ornament_gap)
+        //variation
     }
 }
