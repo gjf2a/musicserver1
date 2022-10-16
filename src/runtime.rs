@@ -128,14 +128,9 @@ pub fn user_pick_element<T: Clone, S: Fn(&T) -> String>(
 }
 
 pub fn send_recorded_melody(melody: &Melody, synth: SynthChoice, ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>) {
-    println!("Starting melody...");
     for note in melody.iter() {
         let (midi, duration) = note.to_midi();
-        println!("{midi:?} {duration:.2} ");
         ai2output.push((synth, midi));
         std::thread::sleep(Duration::from_secs_f64(duration));
     }
-    println!();
-    println!("finished");
-    println!();
 }
