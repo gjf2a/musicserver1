@@ -429,13 +429,15 @@ impl Neighbor {
         let before = if i == 0 {None} else {
             scale.diatonic_steps_between(melody[i - 1].pitch, melody[i].pitch)
                 .map(|s| Neighbor {gap: s, direction: BeforeAfter::Before, pitch: melody[i - 1].pitch})
-        };
+        };/*
         let after = if i == melody.len() - 1 {None} else {
             scale.diatonic_steps_between(melody[i].pitch, melody[i + 1].pitch)
                 .map(|s| Neighbor {gap: s, direction: BeforeAfter::After, pitch: melody[i + 1].pitch})
         };
         let choices = [before, after].iter().filter_map(|ba| *ba).collect::<Vec<_>>();
         MelodyMaker::random_element_from(&choices)
+        */
+        before
     }
 
     fn add_ornament_pitches(&self, result: &mut Melody, note: Note, scale: &MusicMode, figure: MelodicFigure) {
