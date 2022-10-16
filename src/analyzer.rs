@@ -420,51 +420,28 @@ pub struct MelodyMaker {
 #[derive(Copy,Clone)]
 struct Neighbor {
     gap: MidiByte,
-    pitch: MidiByte,
-    direction: BeforeAfter
+    prev_pitch: MidiByte
 }
 
 impl Neighbor {
     fn new(melody: &Melody, scale: &MusicMode, i: usize) -> Option<Self> {
-        let before = if i == 0 {None} else {
+        if i == 0 {None} else {
             scale.diatonic_steps_between(melody[i - 1].pitch, melody[i].pitch)
-                .map(|s| Neighbor {gap: s, direction: BeforeAfter::Before, pitch: melody[i - 1].pitch})
-        };/*
-        let after = if i == melody.len() - 1 {None} else {
-            scale.diatonic_steps_between(melody[i].pitch, melody[i + 1].pitch)
-                .map(|s| Neighbor {gap: s, direction: BeforeAfter::After, pitch: melody[i + 1].pitch})
-        };
-        let choices = [before, after].iter().filter_map(|ba| *ba).collect::<Vec<_>>();
-        MelodyMaker::random_element_from(&choices)
-        */
-        before
+                .map(|s| Neighbor {gap: s, prev_pitch: melody[i - 1].pitch})
+        }
     }
 
     fn add_ornament_pitches(&self, result: &mut Melody, note: Note, scale: &MusicMode, figure: MelodicFigure) {
-        let ornament_pitches = self.direction.make_ornament_pitches(figure, note.pitch, self.pitch, scale);
+        let ornament_pitches = self.make_ornament_pitches(figure, scale);
         let duration = OrderedFloat(note.duration.into_inner() / ornament_pitches.len() as f64);
         for pitch in ornament_pitches {
             result.add(Note {pitch, duration, velocity: note.velocity});
         }
     }
-}
 
-#[derive(Copy, Clone)]
-enum BeforeAfter {
-    Before, After
-}
-
-impl BeforeAfter {
-    fn make_ornament_pitches(&self, figure: MelodicFigure, pitch: MidiByte, other: MidiByte, scale: &MusicMode) -> VecDeque<MidiByte> {
-        let start = match *self {
-            BeforeAfter::Before => other,
-            BeforeAfter::After => pitch
-        };
-        let mut ornament_pitches = figure.make_pitches(start, scale);
-        match *self {
-            BeforeAfter::Before => {ornament_pitches.pop_front();}
-            BeforeAfter::After => {ornament_pitches.pop_back();}
-        }
+    fn make_ornament_pitches(&self, figure: MelodicFigure, scale: &MusicMode) -> VecDeque<MidiByte> {
+        let mut ornament_pitches = figure.make_pitches(self.prev_pitch, scale);
+        ornament_pitches.pop_front();
         ornament_pitches
     }
 }
