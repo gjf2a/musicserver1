@@ -209,7 +209,6 @@ impl ReplayerApp {
 
     fn display_melody_info(&mut self, ui: &mut Ui) {
         let (melody_info, variation_info) = self.melody_var_info.get().cloned().unwrap();
-        let (melody_stamp, variation_stamp) = (melody_info.date_time_stamp(), variation_info.date_time_stamp());
 
         ui.horizontal(|ui| {
             if !self.melody_var_info.at_start() && ui.button("<").clicked() {
@@ -222,22 +221,8 @@ impl ReplayerApp {
             let start_melody_pref = self.melody_pref;
             let start_variation_pref = self.variation_pref;
             ui.vertical(|ui| {
-                ui.horizontal(|ui| {
-                    ui.label(melody_stamp);
-                    Self::preference_buttons(ui, &mut self.melody_pref);
-                    ui.label(melody_info.get_scale_name());
-                    if ui.button("Play").clicked() {
-                        self.play_melody_thread(melody_info.melody().clone(), SynthChoice::Human);
-                    }
-                });
-                ui.horizontal(|ui| {
-                    ui.label(variation_stamp);
-                    Self::preference_buttons(ui, &mut self.variation_pref);
-                    ui.label(variation_info.get_scale_name());
-                    if ui.button("Play").clicked() {
-                        self.play_melody_thread(variation_info.melody().clone(), SynthChoice::Ai);
-                    }
-                });
+                Self::melody_buttons(self.ai2output.clone(), ui, &melody_info, &mut self.melody_pref, SynthChoice::Human);
+                Self::melody_buttons(self.ai2output.clone(), ui, &variation_info, &mut self.variation_pref, SynthChoice::Ai);
             });
             if !self.melody_var_info.at_end() && ui.button(">").clicked() {
                 self.melody_var_info.go_right();
@@ -257,8 +242,18 @@ impl ReplayerApp {
         });
     }
 
-    fn play_melody_thread(&self, melody: Melody, synth: SynthChoice) {
-        let ai2output = self.ai2output.clone();
+    fn melody_buttons(ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>, ui: &mut Ui, info: &MelodyInfo, pref: &mut Preference, synth: SynthChoice) {
+        ui.horizontal(|ui| {
+            ui.label(info.date_time_stamp());
+            Self::preference_buttons(ui, pref);
+            ui.label(info.get_scale_name());
+            if ui.button("Play").clicked() {
+                Self::play_melody_thread(ai2output,info.melody().clone(), synth);
+            }
+        });
+    }
+
+    fn play_melody_thread(ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>, melody: Melody, synth: SynthChoice) {
         thread::spawn(move || {
             send_recorded_melody(&melody, synth, ai2output);
         });
