@@ -371,7 +371,7 @@ impl ReplayerApp {
         let mut database = None;
         mem::swap(&mut database, &mut self.database);
 
-        self.start_database_update_thread(ctx);
+        self.start_update_from_database_thread(ctx);
 
         start_output_thread(
             self.ai2output.clone(),
@@ -395,7 +395,7 @@ impl ReplayerApp {
         start_database_thread(self.dbase2gui.clone(), self.gui2dbase.clone(), ai2dbase, database.unwrap());
     }
 
-    fn start_database_update_thread(&self, ctx: &egui::Context) {
+    fn start_update_from_database_thread(&self, ctx: &egui::Context) {
         let ctx = ctx.clone();
         let dbase2gui = self.dbase2gui.clone();
         let melody_pref = self.melody_pref.clone();
