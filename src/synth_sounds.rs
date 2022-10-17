@@ -2,9 +2,7 @@ use crate::{adsr_live, arc_vec, convert_midi, ChooserTable, SoundMsg, SynthFuncT
 use crossbeam_utils::atomic::AtomicCell;
 use fundsp::combinator::An;
 use fundsp::envelope::Envelope;
-use fundsp::hacker::{
-    envelope, lerp11, pulse, sin_hz, triangle, FrameMulScalar, Pipe, Unop, WaveSynth,
-};
+use fundsp::hacker::{envelope, lerp11, pulse, sin_hz, triangle, FrameMulScalar, Pipe, Unop, WaveSynth, moog, xerp11};
 use fundsp::prelude::{AudioUnit64, PulseWave};
 use std::sync::Arc;
 use typenum::{UInt, UTerm, B1};
@@ -14,7 +12,9 @@ pub fn make_synth_table() -> SynthTable {
         ("Pulse 1", pulse_1),
         ("Triangle 1", triangle_1),
         ("Pulse 2", pulse_2),
-        ("Triangle 2", triangle_2)
+        ("Triangle 2", triangle_2),
+        ("Pulse Moog", pulse_moog),
+        ("Triangle Moog", triangle_moog)
     ];
     ChooserTable::from(&synth_funcs)
 }
@@ -31,6 +31,16 @@ pub fn triangle_1(
 pub fn pulse_1(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
     let (pitch, volume) = convert_midi(pitch, volume);
     Box::new(env_pulse_sin(pitch) * adsr1(note_m) * volume)
+}
+
+pub fn pulse_moog(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
+    let (pitch, volume) = convert_midi(pitch, volume);
+    Box::new((env_pulse_sin(pitch) | envelope(|t| (xerp11(110.0, 11000.0, sin_hz(0.15, t)), 0.6))) >> moog() * adsr1(note_m) * volume)
+}
+
+pub fn triangle_moog(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
+    let (pitch, volume) = convert_midi(pitch, volume);
+    Box::new((env_triangle(pitch) | envelope(|t| (xerp11(110.0, 11000.0, sin_hz(0.15, t)), 0.6))) >> moog() * adsr1(note_m) * volume)
 }
 
 fn env_triangle(
