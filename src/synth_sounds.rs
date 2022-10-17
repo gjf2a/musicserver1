@@ -7,6 +7,14 @@ use fundsp::prelude::{AudioUnit64, PulseWave};
 use std::sync::Arc;
 use typenum::{UInt, UTerm, B1};
 
+// Moog envelope copied from fundsp/examples/beep.rs
+// I'm using a macro because I could not figure out how to write down the type for $an, which is
+// an An<AudioNode> of some sort.
+#[macro_export]
+macro_rules! moogify {
+    ($an:expr) => (($an | envelope(|t| (xerp11(110.0, 11000.0, sin_hz(0.15, t)), 0.6))) >> moog())
+}
+
 pub fn make_synth_table() -> SynthTable {
     let synth_funcs: Vec<(&str, Arc<SynthFuncType>)> = arc_vec![
         ("Pulse 1", pulse_1),
@@ -35,12 +43,12 @@ pub fn pulse_1(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<
 
 pub fn pulse_moog(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
     let (pitch, volume) = convert_midi(pitch, volume);
-    Box::new((env_pulse_sin(pitch) | envelope(|t| (xerp11(110.0, 11000.0, sin_hz(0.15, t)), 0.6))) >> moog() * adsr1(note_m) * volume)
+    Box::new(moogify!(env_pulse_sin(pitch)) * adsr1(note_m) * volume)
 }
 
 pub fn triangle_moog(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
     let (pitch, volume) = convert_midi(pitch, volume);
-    Box::new((env_triangle(pitch) | envelope(|t| (xerp11(110.0, 11000.0, sin_hz(0.15, t)), 0.6))) >> moog() * adsr1(note_m) * volume)
+    Box::new(moogify!(env_triangle(pitch)) * adsr1(note_m) * volume)
 }
 
 fn env_triangle(
@@ -55,6 +63,7 @@ fn env_triangle(
     envelope(move |_t| pitch) >> triangle()
 }
 
+// Pulse envelope copied from fundsp/examples/beep.rs
 fn env_pulse_sin(
     pitch: f64,
 ) -> An<Pipe<f64, Envelope<f64, f64, impl Fn(f64) -> (f64, f64) + Sized, (f64, f64)>, PulseWave<f64>>>

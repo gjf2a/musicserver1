@@ -1,7 +1,7 @@
 use musicserver1::{Database, MelodyInfo};
 
 fn main() {
-    let database = Database::new();
+    let mut database = Database::new();
     for (info1, info2) in database.get_melody_pairs().unwrap() {
         print_info(&info1);
         print_info(&info2);
