@@ -3,6 +3,7 @@ use crate::{arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue
 use crossbeam_queue::SegQueue;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use std::sync::{Arc, Mutex};
+use crossbeam_utils::atomic::AtomicCell;
 use eframe::emath::Numeric;
 
 pub type AIFuncType = dyn Fn(&mut MelodyMaker, &Melody, f64) -> Melody + Send + Sync;
@@ -22,18 +23,19 @@ pub fn start_ai_thread(
     input2ai: Arc<SegQueue<MidiMsg>>,
     ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
     ai2dbase: Arc<SegQueue<FromAiMsg>>,
-    replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
-    ornament_gap_slider: Arc<Mutex<SliderValue<i64>>>,
-    p_random_slider: Arc<Mutex<SliderValue<f64>>>,
+    replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
+    ornament_gap_slider: Arc<AtomicCell<SliderValue<i64>>>,
+    p_random_slider: Arc<AtomicCell<SliderValue<f64>>>,
+    p_ornament_slider: Arc<AtomicCell<SliderValue<f64>>>,
 ) {
     std::thread::spawn(move || {
         let mut recorder = PlayerRecorder::new(
-            input2ai.clone(),
+            input2ai,
             ai2output.clone(),
-            replay_delay_slider.clone(),
+            replay_delay_slider,
         );
         let mut performer =
-            Performer::new(p_random_slider.clone(), ornament_gap_slider.clone(), ai_table.clone());
+            Performer::new(p_random_slider, p_ornament_slider,ornament_gap_slider, ai_table);
         loop {
             let melody = recorder.record();
             let variation = performer.create_variation(&melody);
@@ -48,7 +50,7 @@ pub fn start_ai_thread(
 struct PlayerRecorder {
     input2ai: Arc<SegQueue<MidiMsg>>,
     ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
-    replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
+    replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
     waiting: Option<PendingNote>,
     player_melody: Melody,
 }
@@ -57,7 +59,7 @@ impl PlayerRecorder {
     fn new(
         input2ai: Arc<SegQueue<MidiMsg>>,
         ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
-        replay_delay_slider: Arc<Mutex<SliderValue<f64>>>,
+        replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
     ) -> Self {
         PlayerRecorder {
             input2ai,
@@ -103,8 +105,8 @@ impl PlayerRecorder {
     }
 
     fn check_if_finished(&mut self, pending_note: PendingNote) -> bool {
-        let replay_delay = self.replay_delay_slider.lock().unwrap();
-        if pending_note.is_rest() && pending_note.elapsed() > replay_delay.get_current() {
+        let replay_delay = self.replay_delay_slider.load();
+        if pending_note.is_rest() && pending_note.elapsed() > replay_delay.current() {
             self.player_melody.add(pending_note.into());
             true
         } else {
@@ -115,39 +117,41 @@ impl PlayerRecorder {
 
 struct Performer {
     maker: MelodyMaker,
-    p_random_slider: Arc<Mutex<SliderValue<f64>>>,
-    ornament_gap_slider: Arc<Mutex<SliderValue<i64>>>,
+    p_random_slider: Arc<AtomicCell<SliderValue<f64>>>,
+    p_ornament_slider: Arc<AtomicCell<SliderValue<f64>>>,
+    ornament_gap_slider: Arc<AtomicCell<SliderValue<i64>>>,
     ai_table: Arc<Mutex<AITable>>
 }
 
 impl Performer {
     fn new(
-        p_random_slider: Arc<Mutex<SliderValue<f64>>>,
-        ornament_gap_slider: Arc<Mutex<SliderValue<i64>>>,
+        p_random_slider: Arc<AtomicCell<SliderValue<f64>>>,
+        p_ornament_slider: Arc<AtomicCell<SliderValue<f64>>>,
+        ornament_gap_slider: Arc<AtomicCell<SliderValue<i64>>>,
         ai_table: Arc<Mutex<AITable>>
     ) -> Self {
         Performer {
             maker: MelodyMaker::new(),
             p_random_slider,
+            p_ornament_slider,
             ornament_gap_slider,
             ai_table
         }
     }
 
-    fn from_slider<N:FromStr + Numeric>(slider: &Arc<Mutex<SliderValue<N>>>) -> N {
-        let slider = slider.lock().unwrap();
-        slider.get_current()
+    fn from_slider<N:FromStr + Numeric>(slider: &Arc<AtomicCell<SliderValue<N>>>) -> N {
+        slider.load().current()
     }
 
     fn create_variation(&mut self, melody: &Melody) -> Melody {
         let p_random = Self::from_slider(&self.p_random_slider);
+        let p_ornament = Self::from_slider(&self.p_ornament_slider);
         let ornament_gap = Self::from_slider(&self.ornament_gap_slider);
         let var_func = {
             let ai_table = self.ai_table.lock().unwrap();
             ai_table.current_choice()
         };
         let variation = var_func(&mut self.maker, &melody, p_random);
-        self.maker.ornamented(&variation, ornament_gap)
-        //variation
+        self.maker.ornamented(&variation, p_ornament, ornament_gap)
     }
 }

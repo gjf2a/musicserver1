@@ -87,11 +87,15 @@ impl<T: Copy + Clone + std::str::FromStr + PartialOrd + 'static> SliderValue<T> 
         self.lo..=self.hi
     }
 
+    pub fn slid(&self, new_current: T) -> Self {
+        SliderValue {current: new_current, lo: self.lo, hi: self.hi}
+    }
+
     pub fn set_current(&mut self, new_current: T) {
         self.current = new_current;
     }
 
-    pub fn get_current(&self) -> T {
+    pub fn current(&self) -> T {
         self.current
     }
 

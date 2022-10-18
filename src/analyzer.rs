@@ -491,7 +491,7 @@ impl MelodyMaker {
         None
     }
 
-    pub fn ornamented(&self, melody: &Melody, ornament_gap: i64) -> Melody {
+    pub fn ornamented(&self, melody: &Melody, p_ornament: f64, ornament_gap: i64) -> Melody {
         if melody.len() == 0 {
             return melody.clone();
         }
@@ -507,7 +507,7 @@ impl MelodyMaker {
                 if let Some(neighbor) = neighbor {
                     if let Some(figure) = self.choose_ornament_figure(neighbor.gap) {
                         if melody.duration_with_rest(i) >= min_duration {
-                            let p_choose = countup as f64 / ornament_gap as f64;
+                            let p_choose = p_ornament * countup as f64 / ornament_gap as f64;
                             if rand::random::<f64>() < p_choose {
                                 neighbor.add_ornament_pitches(&mut result, &scale, figure);
                                 ornamented = true;

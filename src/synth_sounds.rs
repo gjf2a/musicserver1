@@ -2,17 +2,17 @@ use crate::{adsr_live, arc_vec, convert_midi, ChooserTable, SoundMsg, SynthFuncT
 use crossbeam_utils::atomic::AtomicCell;
 use fundsp::combinator::An;
 use fundsp::envelope::Envelope;
-use fundsp::hacker::{envelope, lerp11, pulse, sin_hz, triangle, FrameMulScalar, Pipe, Unop, WaveSynth, moog, xerp11};
+use fundsp::hacker::{envelope, lerp11, pulse, sin_hz, triangle, FrameMulScalar, Pipe, Unop, WaveSynth, moog_q, xerp11};
 use fundsp::prelude::{AudioUnit64, PulseWave};
 use std::sync::Arc;
 use typenum::{UInt, UTerm, B1};
 
-// Moog envelope copied from fundsp/examples/beep.rs
+// Moog envelope adapted from fundsp/examples/beep.rs
 // I'm using a macro because I could not figure out how to write down the type for $an, which is
 // an An<AudioNode> of some sort.
 #[macro_export]
 macro_rules! moogify {
-    ($an:expr) => (($an | envelope(|t| (xerp11(110.0, 11000.0, sin_hz(0.15, t)), 0.6))) >> moog())
+    ($an:expr) => (($an | envelope(|t| xerp11(110.0, 11000.0, sin_hz(0.60, t)))) >> moog_q(0.6))
 }
 
 pub fn make_synth_table() -> SynthTable {
@@ -22,6 +22,7 @@ pub fn make_synth_table() -> SynthTable {
         ("Pulse 2", pulse_2),
         ("Triangle 2", triangle_2),
         ("Pulse Moog", pulse_moog),
+        ("Pulse Moog 2", pulse_moog2),
         ("Triangle Moog", triangle_moog)
     ];
     ChooserTable::from(&synth_funcs)
@@ -44,6 +45,11 @@ pub fn pulse_1(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<
 pub fn pulse_moog(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
     let (pitch, volume) = convert_midi(pitch, volume);
     Box::new(moogify!(env_pulse_sin(pitch)) * adsr1(note_m) * volume)
+}
+
+pub fn pulse_moog2(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
+    let (pitch, volume) = convert_midi(pitch, volume);
+    Box::new(moogify!(env_pulse_sin(pitch)) * adsr2(note_m) * volume)
 }
 
 pub fn triangle_moog(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
