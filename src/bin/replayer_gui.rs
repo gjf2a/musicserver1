@@ -119,8 +119,8 @@ struct ReplayerApp {
     replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
     in_port: Option<MidiInputPort>,
     in_port_name: Option<String>,
-    melody_pref: Arc<Mutex<Preference>>,
-    variation_pref: Arc<Mutex<Preference>>,
+    melody_pref: Arc<AtomicCell<Preference>>,
+    variation_pref: Arc<AtomicCell<Preference>>,
     melody_var_info: Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo)>>>,
     database: Option<Database>,
     dbase2gui: Arc<SegQueue<(MelodyInfo,MelodyInfo)>>,
@@ -170,8 +170,8 @@ impl ReplayerApp {
             human_synth_name,
             in_port: None,
             in_port_name: None,
-            melody_pref: Arc::new(Mutex::new(Preference::Neutral)),
-            variation_pref: Arc::new(Mutex::new(Preference::Neutral)),
+            melody_pref: Arc::new(AtomicCell::new(Preference::Neutral)),
+            variation_pref: Arc::new(AtomicCell::new(Preference::Neutral)),
             melody_var_info,
             database: Some(database),
             dbase2gui: Arc::new(SegQueue::new()),
@@ -211,43 +211,41 @@ impl ReplayerApp {
 
     fn display_melody_info(&mut self, ui: &mut Ui) {
         let mut melody_var_info = self.melody_var_info.lock().unwrap();
-        let mut melody_pref = self.melody_pref.lock().unwrap();
-        let mut variation_pref = self.variation_pref.lock().unwrap();
         let (melody_info, variation_info) = melody_var_info.get().cloned().unwrap();
 
         ui.horizontal(|ui| {
             if !melody_var_info.at_start() && ui.button("<").clicked() {
                 melody_var_info.go_left();
                 let (melody_info, variation_info) = melody_var_info.get().unwrap();
-                *melody_pref = melody_info.get_rating();
-                *variation_pref = variation_info.get_rating();
+                self.melody_pref.store(melody_info.get_rating());
+                self.variation_pref.store(variation_info.get_rating());
             }
 
-            let start_melody_pref = *melody_pref;
-            let start_variation_pref = *variation_pref;
+            let start_melody_pref = self.melody_pref.load();
+            let start_variation_pref = self.variation_pref.load();
             ui.vertical(|ui| {
-                Self::melody_buttons(self.ai2output.clone(), ui, &melody_info, &mut melody_pref, SynthChoice::Human);
-                Self::melody_buttons(self.ai2output.clone(), ui, &variation_info, &mut variation_pref, SynthChoice::Ai);
+                Self::melody_buttons(self.ai2output.clone(), ui, &melody_info, self.melody_pref.clone(), SynthChoice::Human);
+                Self::melody_buttons(self.ai2output.clone(), ui, &variation_info, self.variation_pref.clone(), SynthChoice::Ai);
             });
             if !melody_var_info.at_end() && ui.button(">").clicked() {
                 melody_var_info.go_right();
                 let (melody_info, variation_info) = melody_var_info.get().unwrap();
-                *melody_pref = melody_info.get_rating();
-                *variation_pref = variation_info.get_rating();
+                self.melody_pref.store(melody_info.get_rating());
+                self.variation_pref.store(variation_info.get_rating());
             }
 
-            if start_melody_pref != *melody_pref {
-                melody_var_info.get_mut().unwrap().0.set_rating(*melody_pref);
+            if start_melody_pref != self.melody_pref.load() {
+                melody_var_info.get_mut().unwrap().0.set_rating(self.melody_pref.load());
                 self.gui2dbase.push(melody_var_info.get().cloned().unwrap().0.get_update());
             }
-            if start_variation_pref != *variation_pref {
-                melody_var_info.get_mut().unwrap().1.set_rating(*variation_pref);
+            if start_variation_pref != self.variation_pref.load() {
+                melody_var_info.get_mut().unwrap().1.set_rating(self.variation_pref.load());
                 self.gui2dbase.push(melody_var_info.get().cloned().unwrap().1.get_update());
             }
         });
     }
 
-    fn melody_buttons(ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>, ui: &mut Ui, info: &MelodyInfo, pref: &mut Preference, synth: SynthChoice) {
+    fn melody_buttons(ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>, ui: &mut Ui, info: &MelodyInfo, pref: Arc<AtomicCell<Preference>>, synth: SynthChoice) {
         ui.horizontal(|ui| {
             ui.label(info.date_time_stamp());
             Self::preference_buttons(ui, pref);
@@ -264,12 +262,14 @@ impl ReplayerApp {
         });
     }
 
-    fn preference_buttons(ui: &mut Ui, pref: &mut Preference) {
+    fn preference_buttons(ui: &mut Ui, pref: Arc<AtomicCell<Preference>>) {
+        let mut current_value = pref.load();
         ui.horizontal(|ui| {
             for preference in all::<Preference>() {
-                ui.radio_value(pref, preference, preference.to_string());
+                ui.radio_value(&mut current_value, preference, preference.to_string());
             }
         });
+        pref.store(current_value);
     }
 
     fn radio_choice<T: Clone>(ui: &mut Ui, header: &str, table: Arc<Mutex<ChooserTable<T>>>,
@@ -293,7 +293,7 @@ impl ReplayerApp {
         let mut value = sv.current();
         let range = sv.make_range();
         ui.add(egui::Slider::new(&mut value, range).text(text));
-        slider.store(sv.slid(value));
+        slider.store(sv.slid_to(value));
     }
 
     fn startup_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -414,10 +414,8 @@ impl ReplayerApp {
         thread::spawn(move || {
             loop {
                 if let Some((player_info, variation_info)) = dbase2gui.pop() {
-                    let mut melody_pref = melody_pref.lock().unwrap();
-                    *melody_pref = player_info.get_rating();
-                    let mut variation_pref = variation_pref.lock().unwrap();
-                    *variation_pref = variation_info.get_rating();
+                    melody_pref.store(player_info.get_rating());
+                    variation_pref.store(variation_info.get_rating());
                     let mut melody_var_info = melody_var_info.lock().unwrap();
                     melody_var_info.items.push((player_info, variation_info));
                     melody_var_info.go_to_end();

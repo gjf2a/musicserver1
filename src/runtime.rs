@@ -87,7 +87,7 @@ impl<T: Copy + Clone + std::str::FromStr + PartialOrd + 'static> SliderValue<T> 
         self.lo..=self.hi
     }
 
-    pub fn slid(&self, new_current: T) -> Self {
+    pub fn slid_to(&self, new_current: T) -> Self {
         SliderValue {current: new_current, lo: self.lo, hi: self.hi}
     }
 
