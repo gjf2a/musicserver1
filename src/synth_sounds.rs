@@ -5,7 +5,7 @@ use fundsp::envelope::Envelope;
 use fundsp::hacker::{envelope, lerp11, pulse, sin_hz, triangle, FrameMulScalar, Pipe, Unop, WaveSynth, moog_q, xerp11};
 use fundsp::prelude::{AudioUnit64, PulseWave};
 use std::sync::Arc;
-use typenum::{UInt, UTerm, B1};
+use typenum::{UInt, UTerm};
 
 // Moog envelope adapted from fundsp/examples/beep.rs
 // I'm using a macro because I could not figure out how to write down the type for $an, which is
@@ -63,7 +63,7 @@ fn env_triangle(
     Pipe<
         f64,
         Envelope<f64, f64, impl Fn(f64) -> f64 + Sized, f64>,
-        WaveSynth<'static, f64, UInt<UTerm, B1>>,
+        WaveSynth<'static, f64, UInt<UTerm, typenum::B1>>,
     >,
 > {
     envelope(move |_t| pitch) >> triangle()
@@ -103,7 +103,7 @@ fn adsr2(
     Unop<
         f64,
         Envelope<f64, f64, impl Fn(f64) -> f64 + Sized, f64>,
-        FrameMulScalar<UInt<UTerm, B1>, f64>,
+        FrameMulScalar<UInt<UTerm, typenum::B1>, f64>,
     >,
 > {
     2.0 * adsr_live(0.05, 0.8, 0.2, 0.0, note_m)
