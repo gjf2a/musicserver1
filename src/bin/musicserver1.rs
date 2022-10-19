@@ -51,20 +51,10 @@ fn handle_client(stream: &mut TcpStream, maker: &mut MelodyMaker) -> std::io::Re
     if cmd_params.len() == 1 && cmd_params[0] == "show_melody" {
         println!("Echoing...");
         write!(stream, "{}", melody.sonic_pi_list())
-    } else if cmd_params.len() == 2 && cmd_params[0] == "create_variation_1" {
-        invoke_variation_func(stream, maker, &melody, &cmd_params, |mk, m, p| {
-            mk.create_greedy_variation(m, p)
-        })
     } else if cmd_params.len() == 2 && cmd_params[0] == "create_variation_2" {
         invoke_variation_func(stream, maker, &melody, &cmd_params, |mk, m, p| {
             mk.create_emphasis_variation(m, p)
         })
-    } else if cmd_params.len() == 2 && cmd_params[0] == "create_variation_3" {
-        invoke_variation_func(stream, maker, &melody, &cmd_params, |mk, m, p| {
-            mk.create_figure_mapped_emphasis_variation(m, p)
-        })?;
-        maker.print_figure_mappings();
-        Ok(())
     } else if cmd_params.len() == 2 && cmd_params[0] == "create_variation_4" {
         invoke_variation_func(stream, maker, &melody, &cmd_params, |mk, m, p| {
             mk.create_figure_mapped_variation(m, p)

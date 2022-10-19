@@ -220,6 +220,14 @@ impl Melody {
         self.notes.iter()
     }
 
+    pub fn fragment(&self, start: usize, length: usize) -> Melody {
+        let mut notes = vec![];
+        for i in start..(start + length) {
+            notes.push(self[i]);
+        }
+        Melody {notes}
+    }
+
     pub fn pitch_subsequence_at(&self, start: usize, length: usize) -> Option<Vec<MidiByte>> {
         let mut result = vec![self.notes[start].pitch];
         for i in start + 1..self.notes.len() {
@@ -411,6 +419,23 @@ impl Melody {
         let bv = self[b].velocity;
         self.notes[a].velocity = bv;
         self.notes[b].velocity = av;
+    }
+
+    pub fn distinct_seq_len(&self, start: usize, num_distinct_pitches: usize) -> Option<usize> {
+        let mut seq_len = 1;
+        let mut num_changes = 0;
+        let mut i = start + 1;
+        while i < self.len() {
+            seq_len += 1;
+            if self[i].pitch != self[i - 1].pitch {
+                num_changes += 1;
+                if num_changes > num_distinct_pitches {
+                    break;
+                }
+            }
+            i += 1;
+        }
+        if num_changes < num_distinct_pitches {None} else {Some(seq_len)}
     }
 }
 
@@ -698,40 +723,43 @@ impl MelodyMaker {
         P: FnMut(&mut Self, MelodicFigure) -> MelodicFigure,
     {
         assert_prob(p_rewrite);
-        let scale = original.best_scale_for();
         let mut figure_chain = chain_maker(self, &original);
         assert!(Self::is_chain(&figure_chain));
-        let mut notes = vec![];
+        let mut notes = Melody {notes: vec![]};
         let mut next_already_added = false;
+        let scale = original.best_scale_for();
         while let Some((i, figure)) = figure_chain.pop_front() {
             if !next_already_added {
-                notes.push(original[i]);
+                notes.add(original[i]);
             }
             next_already_added = match figure {
                 None => false,
                 Some((figure, match_len)) => {
-                    self.push_notes_for(&mut notes, figure, match_len, p_rewrite, &mut figure_picker, i, original, &scale);
+                    let generator = self.pick_generator_for(&mut figure_picker, figure, p_rewrite);
+                    let pitches = generator.make_pitches(notes.last_note().pitch, &scale);
+                    Self::append_pitches_to(&mut notes, &pitches, i, match_len, original);
                     true
                 }
             };
         }
-        Melody { notes }
+        notes
     }
 
-    fn push_notes_for<P: FnMut(&mut Self, MelodicFigure) -> MelodicFigure>(&mut self, notes: &mut Vec<Note>, figure: MelodicFigure, match_len: usize, p_rewrite: f64,
-                      figure_picker: &mut P, i: usize, original: &Melody, scale: &MusicMode) {
-        let generator = if rand::random::<f64>() < p_rewrite {
+    fn pick_generator_for<P: FnMut(&mut Self, MelodicFigure) -> MelodicFigure>(&mut self, figure_picker: &mut P, figure: MelodicFigure, p_rewrite: f64) -> MelodicFigure {
+        if rand::random::<f64>() < p_rewrite {
             figure_picker(self, figure)
         } else {
             figure
-        };
-        let pitches = generator.make_pitches(notes.last().unwrap().pitch, &scale);
+        }
+    }
+
+    fn append_pitches_to(notes: &mut Melody, pitches: &VecDeque<MidiByte>, i: usize, match_len: usize, original: &Melody) {
         let mut pitch = 0;
         for m in 1..match_len {
             if original[i + m].pitch != original[i + m - 1].pitch {
                 pitch += 1;
             }
-            notes.push(original[i + m].repitched(pitches[pitch]));
+            notes.add(original[i + m].repitched(pitches[pitch]));
         }
     }
 
@@ -771,6 +799,27 @@ impl MelodyMaker {
             |s, m| s.locked_in_figures(m),
             |s, f| s.pick_remembered_figure(f, p_remap),
         )
+    }
+
+    pub fn create_nonresolving_variation(&mut self, original: &Melody, p_remap: f64) -> Melody {
+        let prefix_size = original.len() / 2;
+        let result = self.create_figure_mapped_variation(original, p_remap);
+        let mut result = result.fragment(0, prefix_size);
+        self.add_nonresolving_suffix(original, &mut result);
+        result
+    }
+
+    fn add_nonresolving_suffix(&self, original: &Melody, prefix: &mut Melody) {
+        let start = prefix.len();
+        let scale = original.best_scale_for();
+        let mut current_pitch = original[start].pitch;
+        let favorites = self.figure_mappings.values().collect::<Vec<_>>();
+        let mut i = start;
+        while i < original.len() {
+            let generator = Self::random_element_from(&favorites).unwrap();
+            let pitches = generator.make_pitches(current_pitch, &scale);
+            //Self::append_pitches_to(prefix, &pitches, i, , original);
+        }
     }
 
     fn pick_remembered_figure(&mut self, figure: MelodicFigure, p_remap: f64) -> MelodicFigure {
@@ -1092,6 +1141,7 @@ mod tests {
     const EXAMPLE_MELODY: &str = "55,0.39,0.91,55,0.04,0.0,59,0.33,0.73,60,0.06,0.44,62,0.02,0.87,59,0.05,0.0,60,0.16,0.0,62,0.2,0.0,55,0.39,0.61,55,0.01,0.0,57,0.34,0.98,57,0.05,0.0,55,0.39,0.78,54,0.02,0.98,55,0.19,0.0,54,0.12,0.0,52,0.11,0.74,52,0.0,0.0,54,0.12,0.46,54,0.03,0.0,50,0.1,0.84,50,0.27,0.0,55,0.27,0.74,55,0.1,0.0,59,0.27,0.44,60,0.07,0.54,62,0.04,0.91,59,0.09,0.0,60,0.11,0.0,62,0.19,0.0,55,0.29,0.67,55,0.07,0.0,57,0.32,0.76,57,0.06,0.0,55,0.23,0.7,55,0.05,0.0,54,0.12,0.93,54,0.07,0.0,50,0.37,0.8,50,0.5,0.0,55,0.36,0.76,55,0.05,0.0,59,0.28,0.76,60,0.05,0.7,62,0.01,0.91,59,0.07,0.0,60,0.15,0.0,62,0.2,0.0,55,0.33,0.67,55,0.02,0.0,57,0.29,0.8,57,0.1,0.0,55,0.29,0.9,55,0.08,0.0,54,0.16,1.0,54,0.12,0.0,52,0.12,0.72,54,0.01,0.71,52,0.14,0.0,54,0.07,0.0,50,0.1,0.76,50,0.23,0.0,55,0.22,0.65,55,0.13,0.0,57,0.29,0.64,57,0.08,0.0,55,0.23,0.76,55,0.07,0.0,54,0.12,0.99,54,0.04,0.0,52,0.24,0.95,52,0.19,0.0,54,0.13,1.0,54,0.15,0.0,52,0.12,0.72,52,0.03,0.0,54,0.19,0.83,54,0.13,0.0,50,0.06,0.69,50,0.15,0.0,55,0.01,0.73,57,0.07,0.66,57,0.55,0.0,55,1.5,0.0";
     const COUNTDOWN_MELODY: &str = "66,0.42,1.0,66,0.55,0.0,73,0.17,1.0,73,0.01,0.0,71,0.13,0.77,71,0.0,0.0,73,0.45,0.41,73,0.13,0.0,66,0.85,0.8,66,0.32,0.0,74,0.16,1.0,74,0.0,0.0,74,0.37,0.87,74,0.03,0.0,73,0.2,1.0,73,0.03,0.0,71,0.03,0.06,71,0.04,0.0,71,0.93,1.0,71,0.27,0.0,74,0.16,1.0,74,0.03,0.0,73,0.13,1.0,73,0.03,0.0,74,0.45,1.0,74,0.12,0.0,66,0.58,0.8,66,0.5,0.0,71,0.15,0.75,71,0.02,0.0,71,0.13,0.81,71,0.03,0.0,71,0.21,1.0,71,0.08,0.0,69,0.24,0.94,69,0.08,0.0,68,0.22,0.65,68,0.07,0.0,71,0.24,1.0,71,0.06,0.0,69,0.68,1.0,69,0.15,0.0,73,0.16,1.0,73,0.03,0.0,71,0.14,0.91,71,0.03,0.0,73,0.29,1.0,73,0.22,0.0,66,0.61,0.64,66,0.45,0.0,74,0.15,0.87,74,0.04,0.0,74,0.14,0.83,74,0.02,0.0,74,0.2,1.0,74,0.13,0.0,73,0.29,0.96,73,0.0,0.0,72,0.04,0.49,72,0.03,0.0,71,1.01,1.0,71,0.41,0.0,74,0.14,0.94,74,0.04,0.0,73,0.13,0.8,73,0.03,0.0,74,0.49,1.0,74,0.12,0.0,66,0.93,0.54,66,0.19,0.0,71,0.16,0.81,71,0.02,0.0,71,0.13,0.79,71,0.03,0.0,71,0.21,0.87,71,0.11,0.0,69,0.24,0.86,69,0.08,0.0,68,0.24,0.67,68,0.07,0.0,71,0.24,1.0,71,0.11,0.0,69,0.75,0.86,69,0.05,0.0,68,0.18,0.71,68,0.02,0.0,69,0.16,0.89,69,0.04,0.0,71,0.02,0.99,71,0.0,0.0,83,0.01,1.0,83,0.0,0.0,71,0.56,0.98,71,0.16,0.0,69,0.19,1.0,69,0.04,0.0,71,0.2,1.0,71,0.05,0.0,73,0.24,1.0,73,0.0,0.0,72,0.03,0.62,72,0.07,0.0,71,0.2,0.91,71,0.03,0.0,69,0.01,0.06,69,0.06,0.0,69,0.18,0.73,69,0.11,0.0,68,0.19,0.46,68,0.18,0.0,66,0.51,0.76,66,0.17,0.0,74,0.56,1.0,74,0.01,0.0,73,1.09,0.79,73,0.07,0.0,75,0.16,0.9,75,0.03,0.0,73,0.16,0.84,73,0.03,0.0,71,0.18,0.57,71,0.03,0.0,73,0.78,0.64,73,0.06,0.0,73,0.14,0.91,73,0.04,0.0,73,0.14,0.87,73,0.04,0.0,73,0.26,0.81,73,0.1,0.0,71,0.23,0.91,71,0.07,0.0,69,0.19,0.98,69,0.1,0.0,68,0.23,0.59,68,0.15,0.0,66,1.22,0.68,66,2.0,0.0";
     const COUNTDOWN_ECHO: &str = "[[66, 0.42, 1.0], [66, 0.55, 0.0], [73, 0.17, 1.0], [73, 0.01, 0.0], [71, 0.13, 0.76], [71, 0.0, 0.0], [73, 0.45, 0.40], [73, 0.13, 0.0], [66, 0.85, 0.79], [66, 0.32, 0.0], [74, 0.16, 1.0], [74, 0.0, 0.0], [74, 0.37, 0.86], [74, 0.03, 0.0], [73, 0.2, 1.0], [73, 0.03, 0.0], [71, 0.03, 0.05], [71, 0.04, 0.0], [71, 0.93, 1.0], [71, 0.27, 0.0], [74, 0.16, 1.0], [74, 0.03, 0.0], [73, 0.13, 1.0], [73, 0.03, 0.0], [74, 0.45, 1.0], [74, 0.12, 0.0], [66, 0.58, 0.79], [66, 0.5, 0.0], [71, 0.15, 0.74], [71, 0.02, 0.0], [71, 0.13, 0.80], [71, 0.03, 0.0], [71, 0.21, 1.0], [71, 0.08, 0.0], [69, 0.24, 0.93], [69, 0.08, 0.0], [68, 0.22, 0.64], [68, 0.07, 0.0], [71, 0.24, 1.0], [71, 0.06, 0.0], [69, 0.68, 1.0], [69, 0.15, 0.0], [73, 0.16, 1.0], [73, 0.03, 0.0], [71, 0.14, 0.90], [71, 0.03, 0.0], [73, 0.29, 1.0], [73, 0.22, 0.0], [66, 0.61, 0.63], [66, 0.45, 0.0], [74, 0.15, 0.86], [74, 0.04, 0.0], [74, 0.14, 0.82], [74, 0.02, 0.0], [74, 0.2, 1.0], [74, 0.13, 0.0], [73, 0.29, 0.95], [73, 0.0, 0.0], [72, 0.04, 0.48], [72, 0.03, 0.0], [71, 1.01, 1.0], [71, 0.41, 0.0], [74, 0.14, 0.93], [74, 0.04, 0.0], [73, 0.13, 0.79], [73, 0.03, 0.0], [74, 0.49, 1.0], [74, 0.12, 0.0], [66, 0.93, 0.53], [66, 0.19, 0.0], [71, 0.16, 0.80], [71, 0.02, 0.0], [71, 0.13, 0.78], [71, 0.03, 0.0], [71, 0.21, 0.86], [71, 0.11, 0.0], [69, 0.24, 0.85], [69, 0.08, 0.0], [68, 0.24, 0.66], [68, 0.07, 0.0], [71, 0.24, 1.0], [71, 0.11, 0.0], [69, 0.75, 0.85], [69, 0.05, 0.0], [68, 0.18, 0.70], [68, 0.02, 0.0], [69, 0.16, 0.88], [69, 0.04, 0.0], [71, 0.02, 0.98], [71, 0.0, 0.0], [83, 0.01, 1.0], [83, 0.0, 0.0], [71, 0.56, 0.97], [71, 0.16, 0.0], [69, 0.19, 1.0], [69, 0.04, 0.0], [71, 0.2, 1.0], [71, 0.05, 0.0], [73, 0.24, 1.0], [73, 0.0, 0.0], [72, 0.03, 0.61], [72, 0.07, 0.0], [71, 0.2, 0.90], [71, 0.03, 0.0], [69, 0.01, 0.05], [69, 0.06, 0.0], [69, 0.18, 0.72], [69, 0.11, 0.0], [68, 0.19, 0.45], [68, 0.18, 0.0], [66, 0.51, 0.75], [66, 0.17, 0.0], [74, 0.56, 1.0], [74, 0.01, 0.0], [73, 1.09, 0.78], [73, 0.07, 0.0], [75, 0.16, 0.89], [75, 0.03, 0.0], [73, 0.16, 0.83], [73, 0.03, 0.0], [71, 0.18, 0.56], [71, 0.03, 0.0], [73, 0.78, 0.63], [73, 0.06, 0.0], [73, 0.14, 0.90], [73, 0.04, 0.0], [73, 0.14, 0.86], [73, 0.04, 0.0], [73, 0.26, 0.80], [73, 0.1, 0.0], [71, 0.23, 0.90], [71, 0.07, 0.0], [69, 0.19, 0.97], [69, 0.1, 0.0], [68, 0.23, 0.58], [68, 0.15, 0.0], [66, 1.22, 0.67], [66, 2.0, 0.0]]";
+    const NUM_RANDOM_TESTS: usize = 20;
 
     #[test]
     fn test_parse_melody() {
@@ -1180,7 +1230,7 @@ mod tests {
         let tune = Melody::from(EXAMPLE_MELODY);
         let scale = tune.best_scale_for();
         let mut maker = MelodyMaker::new();
-        for _ in 0..20 {
+        for _ in 0..NUM_RANDOM_TESTS {
             let var = maker.create_figure_mapped_variation(&tune, 0.9);
             assert_eq!(var.len(), tune.len());
             let mut different_count = 0;
@@ -1387,7 +1437,7 @@ mod tests {
         let mut maker = MelodyMaker::new();
         let mut lo = OrderedFloat(1.0);
         let mut hi = OrderedFloat(0.0);
-        for _ in 0..20 {
+        for _ in 0..NUM_RANDOM_TESTS {
             let var = v_func(&mut maker, &melody, 1.0);
             assert_eq!(var.len(), melody.len());
 
@@ -1515,5 +1565,12 @@ mod tests {
             assert_eq!(sharps_for(2, *d_mode), *sharp);
             assert_eq!(flats_for(2, *d_mode), *flat);
         }
+    }
+
+    #[test]
+    fn test_distinct_seq_len() {
+        let countdown = Melody::from(COUNTDOWN_MELODY);
+        assert_eq!(countdown.distinct_seq_len(0, 3).unwrap(), 6);
+        assert_eq!(countdown.distinct_seq_len(8, 3).unwrap(), 8)
     }
 }
