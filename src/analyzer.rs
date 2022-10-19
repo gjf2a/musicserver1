@@ -586,25 +586,15 @@ impl MelodyMaker {
 
     pub fn locked_in_figures(&self, melody: &Melody) -> VecDeque<(usize, Option<(MelodicFigure, usize)>)> {
         let all_matched = self.all_figure_matches(melody);
-        let figure2count = collect_from_into!(
-            all_matched.iter().copied().map(|(_, f, _)| f),
-            HashMap::<MelodicFigure, usize>::new()
-        );
-        let mut ranked = ranking!(figure2count);
+        let mut ranked = Self::all_figure_matches_ranked(&all_matched);
         let mut rng = rand::thread_rng();
         let mut keepers = BTreeMap::new();
         while ranked.len() > 0 {
-            let max_count = ranked[0].1;
-            let mut candidates = HashSet::new();
-            while ranked.len() > 0 && ranked[0].1 == max_count {
-                candidates.insert(ranked.pop_front().unwrap().0);
-            }
-            let mut candidates = candidates.iter().copied().collect::<Vec<_>>();
+            let mut candidates = Self::take_most_common_figures(&mut ranked);
             candidates.shuffle(&mut rng);
             while candidates.len() > 0 {
                 let figure = candidates.pop().unwrap();
-                for (start, len) in all_matched
-                    .iter()
+                for (start, len) in all_matched.iter()
                     .filter(|(_, f, _)| *f == figure)
                     .map(|(i, _, l)| (*i, *l))
                 {
@@ -613,6 +603,23 @@ impl MelodyMaker {
             }
         }
         Self::keepers2chain(&keepers, melody)
+    }
+
+    fn all_figure_matches_ranked(all_matched: &Vec<(usize, MelodicFigure, usize)>) -> VecDeque<(MelodicFigure, usize)> {
+        let figure2count = collect_from_into!(
+            all_matched.iter().copied().map(|(_, f, _)| f),
+            HashMap::<MelodicFigure, usize>::new()
+        );
+        ranking!(figure2count)
+    }
+
+    fn take_most_common_figures(ranked: &mut VecDeque<(MelodicFigure, usize)>) -> Vec<MelodicFigure> {
+        let max_count = ranked[0].1;
+        let mut candidates = HashSet::new();
+        while ranked.len() > 0 && ranked[0].1 == max_count {
+            candidates.insert(ranked.pop_front().unwrap().0);
+        }
+        candidates.iter().copied().collect()
     }
 
     fn keepers2chain(keepers: &BTreeMap<usize, (MelodicFigure, usize)>, melody: &Melody) -> VecDeque<(usize, Option<(MelodicFigure, usize)>)> {
@@ -1178,7 +1185,7 @@ mod tests {
         let scale = tune.best_scale_for();
         let mut maker = MelodyMaker::new();
         for _ in 0..20 {
-            let var = maker.create_greedy_variation(&tune, 0.9);
+            let var = maker.create_figure_mapped_variation(&tune, 0.9);
             assert_eq!(var.len(), tune.len());
             let mut different_count = 0;
             for i in 0..var.len() {
@@ -1290,7 +1297,7 @@ mod tests {
     fn test_diatonic_degree() {
         let melody = Melody::from(EXAMPLE_MELODY);
         let scale = melody.best_scale_for();
-        assert_eq!(scale.name(), "G ionian");
+        assert_eq!(scale.name(), "G Ionian");
         for (i, pitch) in [67, 69, 71, 72, 74, 76, 78, 79, 81, 83, 84, 86, 88, 90, 91]
             .iter()
             .enumerate()
@@ -1404,12 +1411,6 @@ mod tests {
         println!("lo: {:.2} hi: {:.2}", lo.into_inner(), hi.into_inner());
         assert!(lo > OrderedFloat(expected_lo));
         assert!(hi < OrderedFloat(expected_hi));
-    }
-
-    #[test]
-    fn test_variation_1() {
-        test_variation_unchanged(MelodyMaker::create_greedy_variation);
-        test_variation_changed(MelodyMaker::create_greedy_variation, 0.50, 0.80);
     }
 
     #[test]
