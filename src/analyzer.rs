@@ -830,9 +830,12 @@ impl MelodyMaker {
         while i < original.len() {
             let generator = Self::random_element_from(&favorites).unwrap();
             let pitches = generator.make_pitches(prefix.last_note().pitch, &scale);
-            let num_adds = original.distinct_seq_len(i, generator.len()).unwrap();
-            Self::append_pitches_to(prefix, &pitches, i, num_adds, original);
-            i += num_adds - 1; // TODO: Double-check!
+            if let Some(num_adds) = original.distinct_seq_len(i, generator.len()) {
+                Self::append_pitches_to(prefix, &pitches, i, num_adds, original);
+                i += num_adds - 1;
+            } else {
+                break;
+            }
         }
     }
 
