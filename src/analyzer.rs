@@ -423,19 +423,19 @@ impl Melody {
 
     pub fn distinct_seq_len(&self, start: usize, num_distinct_pitches: usize) -> Option<usize> {
         let mut seq_len = 1;
-        let mut num_changes = 0;
+        let mut num_distinct_found = 1;
         let mut i = start + 1;
         while i < self.len() {
-            seq_len += 1;
             if self[i].pitch != self[i - 1].pitch {
-                num_changes += 1;
-                if num_changes > num_distinct_pitches {
+                num_distinct_found += 1;
+                if num_distinct_found > num_distinct_pitches {
                     break;
                 }
             }
+            seq_len += 1;
             i += 1;
         }
-        if num_changes < num_distinct_pitches {None} else {Some(seq_len)}
+        if num_distinct_found < num_distinct_pitches {None} else {Some(seq_len)}
     }
 }
 
@@ -818,7 +818,7 @@ impl MelodyMaker {
         while i < original.len() {
             let generator = Self::random_element_from(&favorites).unwrap();
             let pitches = generator.make_pitches(current_pitch, &scale);
-            //Self::append_pitches_to(prefix, &pitches, i, , original);
+            Self::append_pitches_to(prefix, &pitches, i, original.distinct_seq_len(i, generator.len()).unwrap(), original);
         }
     }
 
