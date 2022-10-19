@@ -593,16 +593,22 @@ impl MelodyMaker {
             let mut candidates = Self::take_most_common_figures(&mut ranked);
             candidates.shuffle(&mut rng);
             while candidates.len() > 0 {
-                let figure = candidates.pop().unwrap();
-                for (start, len) in all_matched.iter()
-                    .filter(|(_, f, _)| *f == figure)
-                    .map(|(i, _, l)| (*i, *l))
-                {
-                    self.add_no_interference(&mut keepers, figure, start, len);
-                }
+                Self::keep_all_noninterfering_instances(&mut keepers, candidates.pop().unwrap(), &all_matched);
             }
         }
         Self::keepers2chain(&keepers, melody)
+    }
+
+    fn keep_all_noninterfering_instances(
+        keepers: &mut BTreeMap<usize, (MelodicFigure, usize)>,
+        figure: MelodicFigure,
+        all_matched: &Vec<(usize, MelodicFigure, usize)>) {
+        for (start, len) in all_matched.iter()
+            .filter(|(_, f, _)| *f == figure)
+            .map(|(i, _, l)| (*i, *l))
+        {
+            Self::add_no_interference(keepers, figure, start, len);
+        }
     }
 
     fn all_figure_matches_ranked(all_matched: &Vec<(usize, MelodicFigure, usize)>) -> VecDeque<(MelodicFigure, usize)> {
@@ -655,7 +661,7 @@ impl MelodyMaker {
     ) {
         for (start, figure, len) in all_matched.iter() {
             if filter(*start, *len) {
-                self.add_no_interference(keepers, *figure, *start, *len);
+                Self::add_no_interference(keepers, *figure, *start, *len);
             }
         }
     }
@@ -665,7 +671,6 @@ impl MelodyMaker {
     }
 
     fn add_no_interference(
-        &self,
         keepers: &mut BTreeMap<usize, (MelodicFigure, usize)>,
         figure: MelodicFigure,
         start: usize,
