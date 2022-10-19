@@ -195,7 +195,7 @@ impl ReplayerApp {
             Self::update_table_choice(self.ai_synth_table.clone(), self.ai_synth_name.as_str());
 
             Self::insert_slider(ui,self.p_random_slider.clone(),"Probability of Randomization");
-            Self::insert_slider(ui,self.p_random_slider.clone(),"Probability of Inserting Ornament");
+            Self::insert_slider(ui,self.p_ornament_slider.clone(),"Probability of Inserting Ornament");
             Self::insert_slider(ui, self.ornament_gap_slider.clone(), "Notes Between Ornaments");
             Self::insert_slider(ui, self.replay_delay_slider.clone(), "Replay Delay");
             let empty = {

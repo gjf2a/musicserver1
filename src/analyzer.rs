@@ -18,6 +18,8 @@ const USIZE_NOTES_PER_OCTAVE: usize = NOTES_PER_OCTAVE as usize;
 const DIATONIC_SCALE_SIZE: usize = 7;
 const DIATONIC_SCALE_HOPS: [MidiByte; DIATONIC_SCALE_SIZE] = [2, 2, 1, 2, 2, 2, 1];
 
+const MIN_FIGURE_CHOICES: usize = 12;
+
 const NOTE_NAMES: [&str; NOTES_PER_OCTAVE as usize] = [
     "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab", "A", "A#/Bb", "B",
 ];
@@ -450,6 +452,7 @@ impl std::ops::Index<usize> for Melody {
 pub struct MelodyMaker {
     figure_tables: BTreeMap<usize, BTreeMap<MidiByte, Vec<MelodicFigure>>>,
     figure_mappings: HashMap<MelodicFigure, MelodicFigure>,
+    all_figures: HashSet<MelodicFigure>,
 }
 
 #[derive(Copy,Clone)]
@@ -487,12 +490,22 @@ impl Neighbor {
 
 impl MelodyMaker {
     pub fn new() -> Self {
+        let figure_tables: BTreeMap<usize, BTreeMap<MidiByte, Vec<MelodicFigure>>> = FIGURE_LENGTHS
+            .iter()
+            .map(|len| (*len, MelodicFigure::interval2figures(*len)))
+            .collect();
+
+        let mut all_figures = HashSet::new();
+        for table in figure_tables.values() {
+            for fig_list in table.values() {
+                for fig in fig_list.iter() {
+                    all_figures.insert(*fig);
+                }
+            }
+        }
+
         MelodyMaker {
-            figure_tables: FIGURE_LENGTHS
-                .iter()
-                .map(|len| (*len, MelodicFigure::interval2figures(*len)))
-                .collect(),
-            figure_mappings: HashMap::new(),
+            figure_tables, figure_mappings: HashMap::new(), all_figures
         }
     }
 
@@ -801,25 +814,41 @@ impl MelodyMaker {
         )
     }
 
-    pub fn create_nonresolving_variation(&mut self, original: &Melody, p_remap: f64) -> Melody {
+    pub fn create_whimsical_variation(&mut self, original: &Melody, p_remap: f64) -> Melody {
         let prefix_size = original.len() / 2;
         let result = self.create_figure_mapped_variation(original, p_remap);
         let mut result = result.fragment(0, prefix_size);
-        self.add_nonresolving_suffix(original, &mut result);
+        self.add_whimsical_suffix(original, &mut result);
         result
     }
 
-    fn add_nonresolving_suffix(&self, original: &Melody, prefix: &mut Melody) {
-        let start = prefix.len();
+    fn add_whimsical_suffix(&self, original: &Melody, prefix: &mut Melody) {
+        let start = prefix.len() - 1;
         let scale = original.best_scale_for();
-        let mut current_pitch = original[start].pitch;
-        let favorites = self.figure_mappings.values().collect::<Vec<_>>();
+        let favorites = self.favorite_figures_padded(MIN_FIGURE_CHOICES);
         let mut i = start;
         while i < original.len() {
             let generator = Self::random_element_from(&favorites).unwrap();
-            let pitches = generator.make_pitches(current_pitch, &scale);
-            Self::append_pitches_to(prefix, &pitches, i, original.distinct_seq_len(i, generator.len()).unwrap(), original);
+            let pitches = generator.make_pitches(prefix.last_note().pitch, &scale);
+            let num_adds = original.distinct_seq_len(i, generator.len()).unwrap();
+            Self::append_pitches_to(prefix, &pitches, i, num_adds, original);
+            i += num_adds - 1; // TODO: Double-check!
         }
+    }
+
+    fn favorite_figures_padded(&self, num_figures_needed: usize) -> Vec<MelodicFigure> {
+        let mut rng = rand::thread_rng();
+        let mut all_other_figures = self.all_figures.clone();
+        let mut result: Vec<MelodicFigure> = self.figure_mappings.values().copied().collect();
+        for figure in result.iter() {
+            all_other_figures.remove(&figure);
+        }
+        let mut all_other_figures = all_other_figures.drain().collect::<Vec<_>>();
+        all_other_figures.shuffle(&mut rng);
+        while result.len() < num_figures_needed && all_other_figures.len() > 0 {
+            result.push(all_other_figures.pop().unwrap());
+        }
+        result
     }
 
     fn pick_remembered_figure(&mut self, figure: MelodicFigure, p_remap: f64) -> MelodicFigure {

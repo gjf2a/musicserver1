@@ -13,7 +13,8 @@ pub fn make_ai_table() -> AITable {
     let ai_funcs: Vec<(&str, Arc<AIFuncType>)> = arc_vec![
         ("Bypass", |_, _, _| Melody::new()),
         ("Emphasis-Anchored Choice", MelodyMaker::create_emphasis_variation),
-        ("Consistent Figure Replacement", MelodyMaker::create_figure_mapped_variation)
+        ("Consistent Figure Replacement", MelodyMaker::create_figure_mapped_variation)/*,
+        ("Whimsical Variation", MelodyMaker::create_whimsical_variation)*/
     ];
     ChooserTable::from(&ai_funcs)
 }
