@@ -560,24 +560,6 @@ impl MelodyMaker {
         true
     }
 
-    pub fn greedy_figure_chain(
-        &self,
-        melody: &Melody,
-    ) -> VecDeque<(usize, Option<(MelodicFigure, usize)>)> {
-        let mut start = 0;
-        let mut figures = VecDeque::new();
-        while start < melody.len() {
-            if let Some((matched, matched_len)) = self.matching_figure(melody, start) {
-                figures.push_back((start, Some((matched, matched_len))));
-                start += matched_len - 1;
-            } else {
-                figures.push_back((start, None));
-                start += 1;
-            }
-        }
-        figures
-    }
-
     pub fn all_figure_matches(&self, melody: &Melody) -> Vec<(usize, MelodicFigure, usize)> {
         (0..melody.len())
             .filter_map(|i| self.matching_figure(melody, i).map(|f| (i, f.0, f.1)))
@@ -690,15 +672,6 @@ impl MelodyMaker {
         }) {
             keepers.insert(start, (figure, len));
         }
-    }
-
-    pub fn create_greedy_variation(&mut self, original: &Melody, p_rewrite: f64) -> Melody {
-        self.chain_variation_creator(
-            original,
-            p_rewrite,
-            |s, m| s.greedy_figure_chain(m),
-            Self::pick_figure,
-        )
     }
 
     fn chain_variation_creator<C, P>(
