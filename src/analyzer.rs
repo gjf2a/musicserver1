@@ -762,15 +762,6 @@ impl MelodyMaker {
         )
     }
 
-    pub fn create_figure_mapped_emphasis_variation(&mut self, original: &Melody, p_rewrite: f64) -> Melody {
-        self.chain_variation_creator(
-            original,
-            1.0,
-            |s, m| s.emphasis_figure_chain(m, &m.find_pause_indices()),
-            |s, f| s.pick_remembered_figure(f, p_rewrite),
-        )
-    }
-
     pub fn create_figure_mapped_variation(&mut self, original: &Melody, p_remap: f64) -> Melody {
         assert_prob(p_remap);
         self.reset_figure_mappings();
