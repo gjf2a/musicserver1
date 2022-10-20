@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use crate::{arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue, SynthChoice, FromAiMsg, send_recorded_melody};
+use crate::{arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue, SynthChoice, FromAiMsg, send_recorded_melody, analyzer};
 use crossbeam_queue::SegQueue;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use std::sync::{Arc, Mutex};
@@ -33,14 +33,16 @@ pub fn start_ai_thread(
         let mut recorder = PlayerRecorder::new(
             input2ai,
             ai2output.clone(),
-            replay_delay_slider,
+            replay_delay_slider.clone(),
         );
         let mut performer =
             Performer::new(p_random_slider, p_ornament_slider,ornament_gap_slider, ai_table);
+        let min_melody_pitches = *analyzer::FIGURE_LENGTHS.iter().min().unwrap();
+
         loop {
             let melody = recorder.record();
             let variation = performer.create_variation(&melody);
-            if variation.len() > 0 {
+            if variation.num_pitch_changes() >= min_melody_pitches && variation.duration() > replay_delay_slider.load().current() {
                 ai2dbase.push(FromAiMsg {melody, variation: variation.clone()});
                 send_recorded_melody(&variation, SynthChoice::Ai, ai2output.clone());
             }

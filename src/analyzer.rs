@@ -34,6 +34,8 @@ const MODE_NAMES: [&str; DIATONIC_SCALE_SIZE] = [
     "Locrian",
 ];
 
+pub const FIGURE_LENGTHS: [usize; 2] = [4, 3];
+
 fn major_sharps_for(note_index: usize) -> usize {
     if note_index % 2 == 0 {
         note_index
@@ -61,8 +63,6 @@ fn sharps_for(note_index: usize, mode_index: usize) -> usize {
 fn flats_for(note_index: usize, mode_index: usize) -> usize {
     major_flats_for(adjusted_note_index(note_index, mode_index))
 }
-
-const FIGURE_LENGTHS: [usize; 2] = [4, 3];
 
 fn assert_prob(p: f64) {
     assert!(0.0 <= p && p <= 1.0);
@@ -216,6 +216,20 @@ pub struct Melody {
 impl Melody {
     pub fn new() -> Self {
         Melody { notes: vec![] }
+    }
+
+    pub fn duration(&self) -> f64 {
+        self.notes.iter().map(|n| n.duration.into_inner()).sum()
+    }
+
+    pub fn num_pitch_changes(&self) -> usize {
+        let mut pitch_changes = 0;
+        for i in 0..self.notes.len() - 1 {
+            if self.notes[i].pitch != self.notes[i + 1].pitch {
+                pitch_changes += 1;
+            }
+        }
+        pitch_changes
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Note> {
