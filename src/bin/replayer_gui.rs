@@ -178,7 +178,7 @@ impl ReplayerApp {
             gui2dbase: Arc::new(SegQueue::new()),
             ai2output: Arc::new(SegQueue::new())
         };
-        app.startup_thread();
+        app.startup();
         Ok(app)
     }
 
@@ -298,38 +298,34 @@ impl ReplayerApp {
 
     fn startup_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Replayer: Looking for MIDI devices...");
+            ui.heading("Replayer: Looking for MIDI devices...\nMove mouse to continue");
         });
     }
 
-    fn startup_thread(&self) {
-        let midi_in_record = self.midi_in.clone();
-        let midi_scenario = self.midi_scenario.clone();
-        std::thread::spawn(move || {
-            let mut midi_in = MidiInput::new("midir reading input");
-            let scenario = match midi_in {
-                Ok(ref mut midi_in) => {
-                    midi_in.ignore(Ignore::None);
-                    let in_ports = midi_in.ports();
-                    match in_ports.len() {
-                        0 => MidiScenario::NoInputPorts("No MIDI devices found".to_string()),
-                        1 => MidiScenario::InputPortSelected {
-                            in_port: in_ports[0].clone(),
-                        },
-                        _ => MidiScenario::MultipleInputPorts {
-                            in_ports: in_ports.clone(),
-                        },
-                    }
+    fn startup(&self) {
+        let mut midi_in = MidiInput::new("midir reading input");
+        let scenario = match midi_in {
+            Ok(ref mut midi_in) => {
+                midi_in.ignore(Ignore::None);
+                let in_ports = midi_in.ports();
+                match in_ports.len() {
+                    0 => MidiScenario::NoInputPorts("No MIDI devices found".to_string()),
+                    1 => MidiScenario::InputPortSelected {
+                        in_port: in_ports[0].clone(),
+                    },
+                    _ => MidiScenario::MultipleInputPorts {
+                        in_ports: in_ports.clone(),
+                    },
                 }
-                Err(e) => MidiScenario::NoInputPorts(e.to_string()),
-            };
-            {
-                let mut midi_scenario = midi_scenario.lock().unwrap();
-                *midi_scenario = scenario;
             }
-            let mut midi_in_record = midi_in_record.lock().unwrap();
-            *midi_in_record = midi_in.ok();
-        });
+            Err(e) => MidiScenario::NoInputPorts(e.to_string()),
+        };
+        {
+            let mut midi_scenario = self.midi_scenario.lock().unwrap();
+            *midi_scenario = scenario;
+        }
+        let mut midi_in_record = self.midi_in.lock().unwrap();
+        *midi_in_record = midi_in.ok();
     }
 
     fn no_midi_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame, message: &str) {
