@@ -223,6 +223,9 @@ impl Melody {
     }
 
     pub fn num_pitch_changes(&self) -> usize {
+        if self.notes.len() == 0 {
+            return 0;
+        }
         let mut pitch_changes = 0;
         for i in 0..self.notes.len() - 1 {
             if self.notes[i].pitch != self.notes[i + 1].pitch {
