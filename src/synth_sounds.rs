@@ -17,44 +17,22 @@ macro_rules! moogify {
 
 pub fn make_synth_table() -> SynthTable {
     let synth_funcs: Vec<(&str, Arc<SynthFuncType>)> = arc_vec![
-        ("Pulse 1", pulse_1),
-        ("Triangle 1", triangle_1),
-        ("Pulse 2", pulse_2),
-        ("Triangle 2", triangle_2),
+        ("Pulse", pulse_synth),
+        ("Triangle", triangle_synth),
         ("Pulse Moog", pulse_moog),
-        ("Pulse Moog 2", pulse_moog2),
         ("Triangle Moog", triangle_moog)
     ];
     ChooserTable::from(&synth_funcs)
 }
 
-pub fn triangle_1(
-    pitch: u8,
-    volume: u8,
-    note_m: Arc<AtomicCell<SoundMsg>>,
-) -> Box<dyn AudioUnit64> {
-    let (pitch, volume) = convert_midi(pitch, volume);
-    Box::new(env_triangle(pitch) * adsr1(note_m) * volume)
-}
-
-pub fn pulse_1(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
-    let (pitch, volume) = convert_midi(pitch, volume);
-    Box::new(env_pulse_sin(pitch) * adsr1(note_m) * volume)
-}
-
 pub fn pulse_moog(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
     let (pitch, volume) = convert_midi(pitch, volume);
-    Box::new(moogify!(env_pulse_sin(pitch)) * adsr1(note_m) * volume)
-}
-
-pub fn pulse_moog2(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
-    let (pitch, volume) = convert_midi(pitch, volume);
-    Box::new(moogify!(env_pulse_sin(pitch)) * adsr2(note_m) * volume)
+    Box::new(moogify!(env_pulse_sin(pitch)) * adsr_1(note_m) * volume)
 }
 
 pub fn triangle_moog(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
     let (pitch, volume) = convert_midi(pitch, volume);
-    Box::new(moogify!(env_triangle(pitch)) * adsr1(note_m) * volume)
+    Box::new(moogify!(env_triangle(pitch)) * adsr_1(note_m) * volume)
 }
 
 fn env_triangle(
@@ -77,27 +55,21 @@ fn env_pulse_sin(
     envelope(move |t| (pitch, lerp11(0.01, 0.99, sin_hz(0.05, t)))) >> pulse()
 }
 
-fn adsr1(
-    note_m: Arc<AtomicCell<SoundMsg>>,
-) -> An<Envelope<f64, f64, impl Fn(f64) -> f64 + Sized, f64>> {
-    adsr_live(0.2, 0.2, 0.4, 0.2, note_m)
-}
-
-pub fn triangle_2(
+pub fn triangle_synth(
     pitch: u8,
     volume: u8,
     note_m: Arc<AtomicCell<SoundMsg>>,
 ) -> Box<dyn AudioUnit64> {
     let (pitch, volume) = convert_midi(pitch, volume);
-    Box::new(env_triangle(pitch) * adsr2(note_m) * volume)
+    Box::new(env_triangle(pitch) * adsr_1(note_m) * volume)
 }
 
-pub fn pulse_2(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
+pub fn pulse_synth(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
     let (pitch, volume) = convert_midi(pitch, volume);
-    Box::new(env_pulse_sin(pitch) * adsr2(note_m) * volume)
+    Box::new(env_pulse_sin(pitch) * adsr_1(note_m) * volume)
 }
 
-fn adsr2(
+fn adsr_1(
     note_m: Arc<AtomicCell<SoundMsg>>,
 ) -> An<
     Unop<
