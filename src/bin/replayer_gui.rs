@@ -14,6 +14,7 @@ use bare_metal_modulo::*;
 use std::str::FromStr;
 use crossbeam_utils::atomic::AtomicCell;
 use midi_msg::MidiMsg;
+use crate::egui::Visuals;
 
 fn main() -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions::default();
@@ -429,6 +430,7 @@ impl ReplayerApp {
 
 impl eframe::App for ReplayerApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
+        ctx.set_visuals(Visuals::light());
         let scenario = {
             let midi_scenario = self.midi_scenario.lock().unwrap();
             midi_scenario.clone()
