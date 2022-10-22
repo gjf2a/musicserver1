@@ -18,8 +18,8 @@ macro_rules! moogify {
 pub fn make_synth_table() -> SynthTable {
     let synth_funcs: Vec<(&str, Arc<SynthFuncType>)> = arc_vec![
         ("Pulse", pulse_synth),
-        ("Triangle", triangle_synth),
         ("Pulse Moog", pulse_moog),
+        ("Triangle", triangle_synth),
         ("Triangle Moog", triangle_moog)
     ];
     ChooserTable::from(&synth_funcs)

@@ -1,7 +1,8 @@
-use eframe::egui::Ui;
-use crossbeam_queue::SegQueue;
 use eframe::egui;
 use eframe::emath::Numeric;
+use eframe::egui::{Color32, Sense, Vec2, Visuals, Ui};
+use crossbeam_queue::SegQueue;
+use crossbeam_utils::atomic::AtomicCell;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
 use musicserver1::{make_ai_table, make_synth_table, prob_slider, ornament_gap_slider, replay_slider,
                    start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable,
@@ -12,9 +13,7 @@ use std::sync::{Arc, Mutex};
 use enum_iterator::all;
 use bare_metal_modulo::*;
 use std::str::FromStr;
-use crossbeam_utils::atomic::AtomicCell;
 use midi_msg::MidiMsg;
-use crate::egui::Visuals;
 
 fn main() -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions::default();
@@ -244,6 +243,11 @@ impl ReplayerApp {
                 self.gui2dbase.push(melody_var_info.get().cloned().unwrap().1.get_update());
             }
         });
+
+        let size = Vec2::new(ui.available_width(), ui.min_size().y - ui.available_height());
+        let (response, painter) = ui.allocate_painter(size, Sense::hover());
+        let first_dot = response.rect.min + Vec2 {x:10.0, y:10.0};
+        painter.circle_filled(first_dot, 10.0, Color32::BLACK);
     }
 
     fn melody_buttons(ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>, ui: &mut Ui, info: &MelodyInfo, pref: Arc<AtomicCell<Preference>>, synth: SynthChoice) {
