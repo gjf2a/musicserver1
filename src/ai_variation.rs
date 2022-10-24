@@ -41,13 +41,19 @@ pub fn start_ai_thread(
 
         loop {
             let melody = recorder.record();
-            if melody.num_pitch_changes() >= min_melody_pitches && melody.duration() > replay_delay_slider.load().current() {
+            if long_enough(&melody, min_melody_pitches, replay_delay_slider.load().current()) {
                 let variation = performer.create_variation(&melody);
-                ai2dbase.push(FromAiMsg {melody, variation: variation.clone()});
-                send_recorded_melody(&variation, SynthChoice::Ai, ai2output.clone());
+                if long_enough(&variation, min_melody_pitches, replay_delay_slider.load().current()) {
+                    ai2dbase.push(FromAiMsg { melody, variation: variation.clone() });
+                    send_recorded_melody(&variation, SynthChoice::Ai, ai2output.clone());
+                }
             }
         }
     });
+}
+
+fn long_enough(melody: &Melody, min_melody_pitches: usize, min_duration:  f64) -> bool {
+    melody.num_pitch_changes() >= min_melody_pitches && melody.duration() > min_duration
 }
 
 struct PlayerRecorder {
