@@ -37,7 +37,7 @@ pub fn start_ai_thread(
         );
         let mut performer =
             Performer::new(p_random_slider, p_ornament_slider,ornament_gap_slider, ai_table);
-        let min_melody_pitches = *analyzer::FIGURE_LENGTHS.iter().min().unwrap();
+        let min_melody_pitches = *analyzer::FIGURE_LENGTHS.iter().max().unwrap();
 
         loop {
             let melody = recorder.record();

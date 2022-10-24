@@ -342,6 +342,7 @@ impl Melody {
     }
 
     pub fn find_root_pitch(&self) -> MidiByte {
+        assert!(self.len() >= 1);
         let note_iter = self
             .notes
             .iter()
@@ -472,12 +473,12 @@ pub struct MelodyMaker {
     all_figures: HashSet<MelodicFigure>,
 }
 
-#[derive(Copy,Clone)]
+#[derive(Clone)]
 struct Neighbor {
     gap: MidiByte,
     prev_pitch: MidiByte,
     velocity: MidiByte,
-    duration: f64
+    duration_options: Vec<OrderedFloat<f64>>
 }
 
 impl Neighbor {
@@ -485,16 +486,19 @@ impl Neighbor {
         if i == 0 || i >= melody.len() {
             None
         } else {
+            let consolidated = melody.get_consolidated_notes();
+            let duration_options = consolidated.iter().map(|(_, n)| n.duration).collect();
             scale.diatonic_steps_between(melody[i - 1].pitch, melody[i].pitch)
-                .map(|s| Neighbor {gap: s, prev_pitch: melody[i - 1].pitch, velocity: melody[i].velocity, duration: melody.duration_with_rest(i).into_inner()})
+                .map(|s| Neighbor {gap: s, prev_pitch: melody[i - 1].pitch, velocity: melody[i].velocity, duration_options})
         }
     }
 
     fn add_ornament_pitches(&self, result: &mut Melody, scale: &MusicMode, figure: MelodicFigure) {
         let ornament_pitches = self.make_ornament_pitches(figure, scale);
-        let duration = OrderedFloat(self.duration / ornament_pitches.len() as f64);
-        for pitch in ornament_pitches {
-            result.add(Note {pitch, duration, velocity: self.velocity});
+        assert!(ornament_pitches.len() <= self.duration_options.len());
+        let offset = rand::random::<usize>() % (self.duration_options.len() - ornament_pitches.len() + 1);
+        for i in 0..ornament_pitches.len() {
+            result.add(Note {pitch: ornament_pitches[i], duration: self.duration_options[offset + i], velocity: self.velocity});
         }
     }
 
@@ -550,7 +554,6 @@ impl MelodyMaker {
         if melody.len() == 0 {
             return melody.clone();
         }
-        let min_duration = melody.median_duration_note_on();
         let scale = melody.best_scale_for();
         let mut result = Melody::new();
         let mut countup = 1;
@@ -561,17 +564,15 @@ impl MelodyMaker {
                 let neighbor = Neighbor::new(&melody, &scale, i);
                 if let Some(neighbor) = neighbor {
                     if let Some(figure) = self.choose_ornament_figure(neighbor.gap) {
-                        if melody.duration_with_rest(i) >= min_duration {
-                            let p_choose = p_ornament * countup as f64 / ornament_gap as f64;
-                            if rand::random::<f64>() < p_choose {
-                                neighbor.add_ornament_pitches(&mut result, &scale, figure);
-                                ornamented = true;
-                                countup = 1;
-                                i += 1;
-                                while i < melody.len() && melody[i].is_rest() {i += 1;}
-                            } else {
-                                countup += 1;
-                            }
+                        let p_choose = p_ornament * countup as f64 / ornament_gap as f64;
+                        if rand::random::<f64>() < p_choose {
+                            neighbor.add_ornament_pitches(&mut result, &scale, figure);
+                            ornamented = true;
+                            countup = 1;
+                            i += 1;
+                            while i < melody.len() && melody[i].is_rest() {i += 1;}
+                        } else {
+                            countup += 1;
                         }
                     }
                 }
