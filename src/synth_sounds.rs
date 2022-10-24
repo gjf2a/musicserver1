@@ -78,5 +78,5 @@ fn adsr_1(
         FrameMulScalar<UInt<UTerm, typenum::B1>, f64>,
     >,
 > {
-    2.0 * adsr_live(0.05, 0.8, 0.2, 0.0, note_m)
+    2.0 * adsr_live(0.1, 0.8, 0.2, 0.0, note_m)
 }

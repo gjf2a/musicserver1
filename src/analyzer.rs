@@ -833,6 +833,7 @@ impl MelodyMaker {
 
     pub fn create_whimsical_variation(&mut self, original: &Melody, p_remap: f64) -> Melody {
         let prefix_size = original.len() / 2;
+        assert!(prefix_size >= 1);
         let result = self.create_figure_mapped_variation(original, p_remap);
         let mut result = result.fragment(0, prefix_size);
         self.add_whimsical_suffix(original, &mut result);

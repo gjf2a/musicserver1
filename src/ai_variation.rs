@@ -41,8 +41,8 @@ pub fn start_ai_thread(
 
         loop {
             let melody = recorder.record();
-            let variation = performer.create_variation(&melody);
-            if variation.num_pitch_changes() >= min_melody_pitches && variation.duration() > replay_delay_slider.load().current() {
+            if melody.num_pitch_changes() >= min_melody_pitches && melody.duration() > replay_delay_slider.load().current() {
+                let variation = performer.create_variation(&melody);
                 ai2dbase.push(FromAiMsg {melody, variation: variation.clone()});
                 send_recorded_melody(&variation, SynthChoice::Ai, ai2output.clone());
             }
