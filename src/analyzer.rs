@@ -956,28 +956,36 @@ impl MusicMode {
         }
     }
 
-    /// Returns the diatonic pitch `scale_steps_away` from `reference_pitch`.
-    /// Panics if `reference_pitch` is not part of `self`'s scale.
+    /// Returns the diatonic pitch `scale_steps_away` from `reference_pitch`, if it exists.
+    /// If not, makes a best guess.
     pub fn next_pitch(&self, reference_pitch: MidiByte, scale_steps_away: MidiByte) -> MidiByte {
         assert!(reference_pitch < MidiByte::MAX);
         let mut octaves_up = reference_pitch / NOTES_PER_OCTAVE;
-        self.octave_notes
-            .iter()
-            .position(|p| *p == reference_pitch)
-            .map(|i| {
-                let ref_octave_basis = self.octave_notes[i].a();
-                let j: ModNumC<MidiByte, DIATONIC_SCALE_SIZE> =
-                    ModNumC::new(i as MidiByte + scale_steps_away);
-                let next_octave_basis = self.octave_notes[j.a() as usize].a();
-                if scale_steps_away > 0 && ref_octave_basis > next_octave_basis {
-                    octaves_up += 1
-                } else if scale_steps_away < 0 && ref_octave_basis < next_octave_basis {
-                    octaves_up -= 1;
-                }
-                octaves_up += scale_steps_away / 7;
-                next_octave_basis + octaves_up * NOTES_PER_OCTAVE
-            })
-            .unwrap()
+        let i = self.closest_position_for(reference_pitch);
+        let ref_octave_basis = self.octave_notes[i].a();
+        let j: ModNumC<MidiByte, DIATONIC_SCALE_SIZE> =
+            ModNumC::new(i as MidiByte + scale_steps_away);
+        let next_octave_basis = self.octave_notes[j.a() as usize].a();
+        if scale_steps_away > 0 && ref_octave_basis > next_octave_basis {
+            octaves_up += 1
+        } else if scale_steps_away < 0 && ref_octave_basis < next_octave_basis {
+            octaves_up -= 1;
+        }
+        octaves_up += scale_steps_away / 7;
+        next_octave_basis + octaves_up * NOTES_PER_OCTAVE
+    }
+
+    pub fn closest_position_for(&self, reference_pitch: MidiByte) -> usize {
+        let mut reference_pitch = reference_pitch;
+        loop {
+            if let Some(position) = self.octave_notes
+                .iter()
+                .position(|p| *p == reference_pitch) {
+                return position;
+            } else {
+                reference_pitch += 1;
+            }
+        }
     }
 
     fn root(&self) -> MidiByte {
