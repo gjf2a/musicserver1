@@ -457,6 +457,16 @@ impl Melody {
         }
         if num_distinct_found < num_distinct_pitches {None} else {Some(seq_len)}
     }
+
+    pub fn min_max_pitches(&self) -> (MidiByte, MidiByte) {
+        let mut lo = self.notes[0].pitch;
+        let mut hi = lo;
+        for note in self.notes.iter().skip(1) {
+            lo = min(lo, note.pitch);
+            hi = max(hi, note.pitch);
+        }
+        (lo, hi)
+    }
 }
 
 impl std::ops::Index<usize> for Melody {
@@ -994,6 +1004,22 @@ impl MusicMode {
         }
     }
 
+    pub fn closest_pitch_below(&self, pitch: MidiByte) -> MidiByte {
+        self.closest_pitch(pitch, -1)
+    }
+
+    pub fn closest_pitch_above(&self, pitch: MidiByte) -> MidiByte {
+        self.closest_pitch(pitch, 1)
+    }
+
+    fn closest_pitch(&self, pitch: MidiByte, step: MidiByte) -> MidiByte {
+        let mut pitch = pitch;
+        while !self.contains(pitch) {
+            pitch += step;
+        }
+        pitch
+    }
+
     fn root(&self) -> MidiByte {
         self.octave_notes[self.root_pos.a()].a()
     }
@@ -1013,14 +1039,14 @@ impl MusicMode {
         assert!(pertinent_root <= pitch);
         let mut below = 0;
         for (offset, i) in self.root_pos.iter().enumerate() {
-            let degree = offset as MidiByte + 1;
+            let diatonic = offset as MidiByte + 1;
             if pertinent_root + below == pitch {
-                return ChromaticIndex::Diatonic(degree);
+                return ChromaticIndex::Diatonic(diatonic);
             } else {
                 let above = below + DIATONIC_SCALE_HOPS[i.a()];
                 let half_steps_above = pertinent_root + above - pitch;
                 if half_steps_above > 0 {
-                    return ChromaticIndex::Chromatic { diatonic: degree, half_steps_above };
+                    return ChromaticIndex::Chromatic { diatonic, half_steps_above };
                 } else {
                     below = above;
                 }
