@@ -899,6 +899,12 @@ impl MelodyMaker {
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum ChromaticIndex {
+    Diatonic(MidiByte),
+    Chromatic { diatonic: MidiByte, half_steps_above: MidiByte}
+}
+
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct MusicMode {
     root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>,
@@ -957,7 +963,7 @@ impl MusicMode {
     }
 
     /// Returns the diatonic pitch `scale_steps_away` from `reference_pitch`, if it exists.
-    /// If not, makes a best guess.
+    /// If not, rounds `reference_pitch` up to the next pitch that is within the scale.
     pub fn next_pitch(&self, reference_pitch: MidiByte, scale_steps_away: MidiByte) -> MidiByte {
         assert!(reference_pitch < MidiByte::MAX);
         let mut octaves_up = reference_pitch / NOTES_PER_OCTAVE;
@@ -997,12 +1003,38 @@ impl MusicMode {
     }
 
     pub fn diatonic_degree(&self, pitch: MidiByte) -> Option<MidiByte> {
+        let pertinent_root = self.find_closest_root_beneath(pitch);
+        self.diatonic_steps_between(pertinent_root, pitch)
+            .map(|d| d + 1)
+    }
+
+    pub fn chromatic_degree(&self, pitch: MidiByte) -> ChromaticIndex {
+        let pertinent_root = self.find_closest_root_beneath(pitch);
+        assert!(pertinent_root <= pitch);
+        let mut below = 0;
+        for (offset, i) in self.root_pos.iter().enumerate() {
+            let degree = offset as MidiByte + 1;
+            if pertinent_root + below == pitch {
+                return ChromaticIndex::Diatonic(degree);
+            } else {
+                let above = below + DIATONIC_SCALE_HOPS[i.a()];
+                let half_steps_above = pertinent_root + above - pitch;
+                if half_steps_above > 0 {
+                    return ChromaticIndex::Chromatic { diatonic: degree, half_steps_above };
+                } else {
+                    below = above;
+                }
+            }
+        }
+        panic!("chromatic_degree() fails");
+    }
+
+    fn find_closest_root_beneath(&self, pitch: MidiByte) -> MidiByte {
         let mut pertinent_root = self.root();
         while pertinent_root + NOTES_PER_OCTAVE <= pitch {
             pertinent_root += NOTES_PER_OCTAVE;
         }
-        self.diatonic_steps_between(pertinent_root, pitch)
-            .map(|d| d + 1)
+        pertinent_root
     }
 }
 
@@ -1191,7 +1223,7 @@ impl MelodicFigureShape {
 #[cfg(test)]
 mod tests {
     use crate::analyzer::{FigureDirection, FigurePolarity, MelodicFigure, MelodicFigureShape, Melody, MelodyMaker, MusicMode, DIATONIC_SCALE_SIZE, major_sharps_for, major_flats_for, sharps_for, flats_for};
-    use crate::{MidiByte, Note};
+    use crate::{ChromaticIndex, MidiByte, Note};
     use bare_metal_modulo::ModNumC;
     use ordered_float::OrderedFloat;
     use std::cmp::{max, min};
@@ -1631,5 +1663,29 @@ mod tests {
         let countdown = Melody::from(COUNTDOWN_MELODY);
         assert_eq!(countdown.distinct_seq_len(0, 3).unwrap(), 6);
         assert_eq!(countdown.distinct_seq_len(8, 3).unwrap(), 8)
+    }
+
+    #[test]
+    fn test_chromatic_degree() {
+        let test_mode_d_phrygian = MusicMode::new(ModNumC::new(2), 74);
+        assert_eq!("D Phrygian", test_mode_d_phrygian.name());
+        println!("{test_mode_d_phrygian:?}");
+        for (pitch, degree) in [
+            (74, ChromaticIndex::Diatonic(1)),
+            (75, ChromaticIndex::Diatonic(2)),
+            (76, ChromaticIndex::Chromatic { diatonic: 2, half_steps_above: 1}),
+            (77, ChromaticIndex::Diatonic(3)),
+            (78, ChromaticIndex::Chromatic { diatonic: 3, half_steps_above: 1}),
+            (79, ChromaticIndex::Diatonic(4)),
+            (80, ChromaticIndex::Chromatic { diatonic: 4, half_steps_above: 1}),
+            (81, ChromaticIndex::Diatonic(5)),
+            (82, ChromaticIndex::Diatonic(6)),
+            (83, ChromaticIndex::Chromatic { diatonic: 6, half_steps_above: 1}),
+            (84, ChromaticIndex::Diatonic(7)),
+            (85, ChromaticIndex::Chromatic { diatonic: 7, half_steps_above: 1}),
+            (86, ChromaticIndex::Diatonic(1))
+        ] {
+            assert_eq!(test_mode_d_phrygian.chromatic_degree(pitch), degree);
+        }
     }
 }
