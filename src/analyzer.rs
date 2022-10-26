@@ -953,6 +953,10 @@ impl MusicMode {
         }
     }
 
+    pub fn diatonic_steps_between_round_up(&self, pitch1: MidiByte, pitch2: MidiByte) -> MidiByte {
+        self.diatonic_steps_between(self.closest_pitch_below(pitch1), self.closest_pitch_above(pitch2)).unwrap()
+    }
+
     pub fn diatonic_steps_between(&self, pitch1: MidiByte, pitch2: MidiByte) -> Option<MidiByte> {
         assert!(pitch1 < i8::MAX as MidiByte + NOTES_PER_OCTAVE);
         if pitch1 > pitch2 {

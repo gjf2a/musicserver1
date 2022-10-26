@@ -245,29 +245,27 @@ impl ReplayerApp {
         });
 
         let size = Vec2::new(ui.available_width(), (ui.min_size().y - ui.available_height()) / 2.0);
-        Self::draw_melody(ui, melody_info.melody(), size);
-        Self::draw_melody(ui, variation_info.melody(), size);
+        Self::draw_melody(ui, melody_info.melody(), size, Color32::BLACK);
+        Self::draw_melody(ui, variation_info.melody(), size, Color32::BLUE);
     }
 
-    fn draw_melody(ui: &mut Ui, melody: &Melody, size: Vec2) {
-        println!("draw_melody");
+    fn draw_melody(ui: &mut Ui, melody: &Melody, size: Vec2, fill_color: Color32) {
         let (response, painter) = ui.allocate_painter(size, Sense::hover());
         let scale = melody.best_scale_for();
         let (mut lo, mut hi) = melody.min_max_pitches();
         lo = scale.closest_pitch_below(lo);
         hi = scale.closest_pitch_above(hi);
         let num_diatonic_pitches = scale.diatonic_steps_between(lo, hi).unwrap();
-        let y_per_pitch = (response.rect.max.y - response.rect.min.y) / num_diatonic_pitches as f32;
-        let x_per_pitch = (response.rect.max.x - response.rect.min.x) / melody.len() as f32;
+        let radius = 4.0;
+        let y_per_pitch = ((response.rect.max.y - response.rect.min.y) as f32 - 2.0 * radius) / num_diatonic_pitches as f32;
+        let x_per_pitch = ((response.rect.max.x - response.rect.min.x) as f32 - 2.0 * radius) / melody.len() as f32;
         for (i, note) in melody.iter().enumerate() {
-            let radius = 4.0;
             let x = radius + i as f32 * x_per_pitch;
-            let pitch_offset = hi - scale.closest_pitch_below(note.pitch());
+            let pitch_offset = scale.diatonic_steps_between_round_up(note.pitch(), hi);
             // TODO: Add sharp symbol
             let y = radius + pitch_offset as f32 * y_per_pitch;
-            println!("note plot: {x} {y} {} {} {lo} {hi}", note.pitch(), scale.closest_pitch_below(note.pitch()));
             let center = response.rect.min + Vec2 { x, y };
-            painter.circle_filled(center, radius, Color32::BLACK );
+            painter.circle_filled(center, radius, fill_color);
         }
     }
 
