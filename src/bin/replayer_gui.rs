@@ -1,6 +1,6 @@
 use eframe::egui;
 use eframe::emath::Numeric;
-use eframe::egui::{Color32, Sense, Vec2, Visuals, Ui};
+use eframe::egui::{Color32, Sense, Vec2, Visuals, Ui, Stroke, Pos2};
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
@@ -9,11 +9,13 @@ use musicserver1::{make_ai_table, make_synth_table, prob_slider, ornament_gap_sl
                    SliderValue, SynthTable, Preference, MelodyInfo, Database, start_database_thread,
                    SynthChoice, send_recorded_melody, GuiDatabaseUpdate, Melody};
 use std::{mem, thread};
+use std::ops::RangeInclusive;
 use std::sync::{Arc, Mutex};
 use enum_iterator::all;
 use bare_metal_modulo::*;
 use std::str::FromStr;
 use midi_msg::MidiMsg;
+use crate::egui::Painter;
 
 fn main() -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions::default();
@@ -257,15 +259,27 @@ impl ReplayerApp {
         hi = scale.closest_pitch_above(hi);
         let num_diatonic_pitches = scale.diatonic_steps_between(lo, hi).unwrap();
         let radius = 4.0;
-        let y_per_pitch = ((response.rect.max.y - response.rect.min.y) as f32 - 2.0 * radius) / num_diatonic_pitches as f32;
+        let x_range = response.rect.min.x + radius..=response.rect.max.x - radius;
+        let y_offset = radius*4.0;
+        let y_middle_c = y_offset + response.rect.min.y + radius * 10.0;
+        Self::draw_staff_lines(&painter, x_range.clone(), response.rect.min.y + y_offset, radius*2.0);
+        Self::draw_staff_lines(&painter, x_range, y_middle_c + radius*2.0, radius * 2.0);
+
         let x_per_pitch = ((response.rect.max.x - response.rect.min.x) as f32 - 2.0 * radius) / melody.len() as f32;
         for (i, note) in melody.iter().enumerate() {
             let x = radius + i as f32 * x_per_pitch;
-            let pitch_offset = scale.diatonic_steps_between_round_up(note.pitch(), hi);
-            // TODO: Add sharp symbol
-            let y = radius + pitch_offset as f32 * y_per_pitch;
-            let center = response.rect.min + Vec2 { x, y };
+            let (staff_offset, auxiliary_symbol) = scale.staff_position(note.pitch());
+            let y = y_middle_c - staff_offset as f32 * radius;
+            let center = Pos2 { x, y };
             painter.circle_filled(center, radius, fill_color);
+        }
+    }
+
+    fn draw_staff_lines(painter: &Painter, x: RangeInclusive<f32>, start_y: f32, spacing: f32) {
+        let mut y = start_y;
+        for _ in 0..5 {
+            painter.hline(x.clone(), y, Stroke { width: 1.0, color: Color32::BLACK });
+            y += spacing;
         }
     }
 
