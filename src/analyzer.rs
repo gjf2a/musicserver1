@@ -1089,7 +1089,6 @@ impl MusicMode {
                     diatonic_pitch = self.closest_pitch_above(pitch);
                     match self.modifier_for(diatonic_pitch).unwrap() {
                         NoteModifier::Sharp => NoteModifier::Natural,
-                        NoteModifier::Natural => NoteModifier::Flat,
                         _ => panic!("We are in a sharp key! This can't happen")
                     }
                 }
