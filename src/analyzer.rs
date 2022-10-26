@@ -1778,8 +1778,6 @@ mod tests {
         }
     }
 
-
-
     #[test]
     fn test_staff_position_2() {
         let scale = MusicMode::new(ModNumC::new(1), 61);
