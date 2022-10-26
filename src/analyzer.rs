@@ -909,12 +909,6 @@ impl MelodyMaker {
     }
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub enum ChromaticIndex {
-    Diatonic(MidiByte),
-    Chromatic { diatonic: MidiByte, half_steps_above: MidiByte}
-}
-
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct MusicMode {
     root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>,
@@ -931,7 +925,7 @@ impl MusicMode {
     pub fn name(&self) -> String {
         let mut note_name = NOTE_NAMES[self.root() as usize];
         if note_name.len() > 1 {
-            note_name = if sharps_for(self.root() as usize, self.root_pos.a()) > flats_for(self.root() as usize, self.root_pos.a()) {
+            note_name = if self.is_sharp_key() {
                 &note_name[..2]
             } else {
                 &note_name[3..]
@@ -950,6 +944,12 @@ impl MusicMode {
         MusicMode {
             root_pos,
             octave_notes,
+        }
+    }
+
+    pub fn c_value(&self) -> MidiByte {
+        match sharps_for(self.root() as usize, self.root_pos.a()) {
+            6 => 59, 2..=5 => 61, _ => 60
         }
     }
 
@@ -1045,6 +1045,63 @@ impl MusicMode {
         }
         pertinent_root
     }
+
+    pub fn is_sharp_key(&self) -> bool {
+        sharps_for(self.root() as usize, self.root_pos.a()) < flats_for(self.root() as usize, self.root_pos.a())
+    }
+
+    pub fn is_flat_key(&self) -> bool {
+        sharps_for(self.root() as usize, self.root_pos.a()) > flats_for(self.root() as usize, self.root_pos.a())
+    }
+
+    /// If `pitch` belongs to this `MusicMode`, returns whether it is a
+    /// flat, sharp, or natural note in the scale. If it does not belong,
+    /// returns `None`.
+    pub fn modifier_for(&self, pitch: MidiByte) -> Option<NoteModifier> {
+        if self.contains(pitch) {
+            let name = NOTE_NAMES[(pitch % NOTES_PER_OCTAVE) as usize];
+            if name.len() > 1 {
+                if self.is_sharp_key() {
+                    Some(NoteModifier::Sharp)
+                } else {
+                    Some(NoteModifier::Flat)
+                }
+            } else {
+                Some(NoteModifier::Natural)
+            }
+        } else {
+            None
+        }
+    }
+
+    /// Returns 0 for the Middle C/C#/Cb position.
+    /// Returns positive numbers for the treble clef.
+    /// Returns negative numbers for the bass clef.
+    pub fn staff_position(&self, pitch: MidiByte) -> (MidiByte, Option<NoteModifier>) {
+        if self.contains(pitch) {
+            (self.diatonic_steps_between(self.c_value(), pitch).unwrap(), None)
+        } else {
+            let mut diatonic_pitch = self.closest_pitch_below(pitch);
+            let output_modifier = match self.modifier_for(diatonic_pitch).unwrap() {
+                NoteModifier::Natural => NoteModifier::Sharp,
+                NoteModifier::Flat => NoteModifier::Natural,
+                NoteModifier::Sharp => {
+                    diatonic_pitch = self.closest_pitch_above(pitch);
+                    match self.modifier_for(diatonic_pitch).unwrap() {
+                        NoteModifier::Sharp => NoteModifier::Natural,
+                        NoteModifier::Natural => NoteModifier::Flat,
+                        _ => panic!("We are in a sharp key! This can't happen")
+                    }
+                }
+            };
+            (self.diatonic_steps_between(self.c_value(), diatonic_pitch).unwrap(), Some(output_modifier))
+        }
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum NoteModifier {
+    Flat, Natural, Sharp
 }
 
 // Inspired by: https://figuringoutmelody.com/the-24-universal-melodic-figures/
@@ -1232,7 +1289,7 @@ impl MelodicFigureShape {
 #[cfg(test)]
 mod tests {
     use crate::analyzer::{FigureDirection, FigurePolarity, MelodicFigure, MelodicFigureShape, Melody, MelodyMaker, MusicMode, DIATONIC_SCALE_SIZE, major_sharps_for, major_flats_for, sharps_for, flats_for};
-    use crate::{MidiByte, Note};
+    use crate::{MidiByte, Note, NoteModifier};
     use bare_metal_modulo::ModNumC;
     use ordered_float::OrderedFloat;
     use std::cmp::{max, min};
@@ -1672,5 +1729,91 @@ mod tests {
         let countdown = Melody::from(COUNTDOWN_MELODY);
         assert_eq!(countdown.distinct_seq_len(0, 3).unwrap(), 6);
         assert_eq!(countdown.distinct_seq_len(8, 3).unwrap(), 8)
+    }
+
+    #[test]
+    fn test_c_index() {
+        for (root, c_value) in [
+            (36, 60), (37, 60), (38, 61), (39, 60),
+            (40, 61), (41, 60), (42, 59), (43, 60),
+            (44, 60), (45, 61), (46, 60), (47, 61)
+        ] {
+            let scale = MusicMode::new(ModNumC::new(0), root);
+            assert_eq!(scale.c_value(), c_value);
+        }
+    }
+
+    #[test]
+    fn test_staff_position() {
+        let scale = MusicMode::new(ModNumC::new(2), 65);
+        assert_eq!(scale.name(), "F Phrygian");
+        assert_eq!(scale.c_value(), 60);
+        for (pitch, position, modifier) in [
+            (53, -4, None),
+            (54, -3, None),
+            (55, -3, Some(NoteModifier::Natural)),
+            (56, -2, None),
+            (57, -2, Some(NoteModifier::Natural)),
+            (58, -1, None),
+            (59, -1, Some(NoteModifier::Natural)),
+            (60, 0, None),
+            (61, 1, None),
+            (62, 1, Some(NoteModifier::Natural)),
+            (63, 2, None),
+            (64, 2, Some(NoteModifier::Natural)),
+            (65, 3, None),
+            (66, 4, None),
+            (67, 4, Some(NoteModifier::Natural)),
+            (68, 5, None),
+            (69, 5, Some(NoteModifier::Natural)),
+            (70, 6, None),
+            (71, 6, Some(NoteModifier::Natural)),
+            (72, 7, None),
+            (73, 8, None),
+            (74, 8, Some(NoteModifier::Natural)),
+            (75, 9, None),
+            (76, 9, Some(NoteModifier::Natural)),
+            (77, 10, None)
+        ] {
+            assert_eq!(scale.staff_position(pitch), (position, modifier));
+        }
+    }
+
+
+
+    #[test]
+    fn test_staff_position_2() {
+        let scale = MusicMode::new(ModNumC::new(1), 61);
+        assert_eq!(scale.name(), "C# Dorian");
+        assert_eq!(scale.c_value(), 61);
+        for (pitch, position, modifier) in [
+            (53, -5, Some(NoteModifier::Sharp)),
+            (54, -4, None),
+            (55, -3, Some(NoteModifier::Natural)),
+            (56, -3, None),
+            (57, -2, Some(NoteModifier::Natural)),
+            (58, -2, None),
+            (59, -1, None),
+            (60, -1, Some(NoteModifier::Sharp)),
+            (61, 0, None),
+            (62, 1, Some(NoteModifier::Natural)),
+            (63, 1, None),
+            (64, 2, None),
+            (65, 2, Some(NoteModifier::Sharp)),
+            (66, 3, None),
+            (67, 4, Some(NoteModifier::Natural)),
+            (68, 4, None),
+            (69, 5, Some(NoteModifier::Natural)),
+            (70, 5, None),
+            (71, 6, None),
+            (72, 6, Some(NoteModifier::Sharp)),
+            (73, 7, None),
+            (74, 8, Some(NoteModifier::Natural)),
+            (75, 8, None),
+            (76, 9, None),
+            (77, 9, Some(NoteModifier::Sharp))
+        ] {
+            assert_eq!(scale.staff_position(pitch), (position, modifier));
+        }
     }
 }
