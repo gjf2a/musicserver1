@@ -1103,6 +1103,24 @@ pub enum NoteModifier {
     Flat, Natural, Sharp
 }
 
+impl NoteModifier {
+    pub fn symbol(&self) -> char {
+        match self {
+            NoteModifier::Flat => 'b',
+            NoteModifier::Natural => ']',
+            NoteModifier::Sharp => '#'
+        }
+        /*
+        // These are better, but the `egui` fonts don't include them.
+        match self {
+            NoteModifier::Flat => '\u{266d}',
+            NoteModifier::Natural => '\u{266e}',
+            NoteModifier::Sharp => '\u{266f}'
+        }
+         */
+    }
+}
+
 // Inspired by: https://figuringoutmelody.com/the-24-universal-melodic-figures/
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Sequence, Hash, Ord, PartialOrd)]
 pub struct MelodicFigure {

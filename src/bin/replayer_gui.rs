@@ -1,6 +1,6 @@
 use eframe::egui;
 use eframe::emath::Numeric;
-use eframe::egui::{Color32, Sense, Vec2, Visuals, Ui, Stroke, Pos2};
+use eframe::egui::{Color32, Sense, Vec2, Visuals, Ui, Stroke, Pos2, Align2, FontId, FontFamily, Painter};
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
@@ -16,7 +16,6 @@ use enum_iterator::all;
 use bare_metal_modulo::*;
 use std::str::FromStr;
 use midi_msg::MidiMsg;
-use crate::egui::Painter;
 
 fn main() -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions::default();
@@ -275,6 +274,10 @@ impl ReplayerApp {
             let y = y_middle_c - staff_offset as f32 * y_per_pitch;
             let center = Pos2 { x, y };
             painter.circle_filled(center, y_per_pitch, fill_color);
+            if let Some(auxiliary_symbol) = auxiliary_symbol {
+                let text = auxiliary_symbol.symbol();
+                painter.text(Pos2 {x: x + y_per_pitch*2.0, y}, Align2::CENTER_CENTER, text, FontId {size: 18.0, family: FontFamily::Proportional}, Color32::BLACK);
+            }
         }
     }
 
