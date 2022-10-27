@@ -4,10 +4,7 @@ use eframe::egui::{Color32, Sense, Vec2, Visuals, Ui, Stroke, Pos2, Align2, Font
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
-use musicserver1::{make_ai_table, make_synth_table, prob_slider, ornament_gap_slider, replay_slider,
-                   start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable,
-                   SliderValue, SynthTable, Preference, MelodyInfo, Database, start_database_thread,
-                   SynthChoice, send_recorded_melody, GuiDatabaseUpdate, Melody};
+use musicserver1::{make_ai_table, make_synth_table, prob_slider, ornament_gap_slider, replay_slider, start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue, SynthTable, Preference, MelodyInfo, Database, start_database_thread, SynthChoice, send_recorded_melody, GuiDatabaseUpdate, Melody, MidiByte};
 use std::{mem, thread};
 use std::cmp::max;
 use std::ops::RangeInclusive;
@@ -267,10 +264,11 @@ impl ReplayerApp {
         Self::draw_staff_lines(&painter, x_range.clone(), response.rect.min.y + y_offset, y_per_pitch*2.0);
         Self::draw_staff_lines(&painter, x_range, y_middle_c + y_per_pitch * 2.0, y_per_pitch * 2.0);
 
-        let x_per_pitch = ((response.rect.max.x - response.rect.min.x) as f32 - border) / melody.len() as f32;
-        for (i, note) in melody.iter().enumerate() {
+        let pitches_of_interest: Vec<MidiByte> = melody.iter().filter(|n| n.velocity() > 0).map(|n| n.pitch()).collect();
+        let x_per_pitch = ((response.rect.max.x - response.rect.min.x) as f32 - border) / pitches_of_interest.len() as f32;
+        for (i, pitch) in pitches_of_interest.iter().enumerate() {
             let x = response.rect.min.x + border * 1.5 + i as f32 * x_per_pitch;
-            let (staff_offset, auxiliary_symbol) = scale.staff_position(note.pitch());
+            let (staff_offset, auxiliary_symbol) = scale.staff_position(*pitch);
             let y = y_middle_c - staff_offset as f32 * y_per_pitch;
             let center = Pos2 { x, y };
             painter.circle_filled(center, y_per_pitch, fill_color);
