@@ -256,7 +256,7 @@ impl ReplayerApp {
         hi = scale.closest_pitch_above(hi);
         let num_diatonic_pitches = max(24, scale.diatonic_steps_between(lo, hi).unwrap());
         let border = 8.0;
-        let y_per_pitch = ((response.rect.max.y - response.rect.min.y) as f32 - border) / num_diatonic_pitches as f32;
+        let y_per_pitch = Self::pixels_per_pitch(response.rect.min.y, response.rect.max.y, border, num_diatonic_pitches as f32);
 
         let x_range = response.rect.min.x + border..=response.rect.max.x - border;
         let y_offset = border * 2.0;
@@ -265,7 +265,7 @@ impl ReplayerApp {
         Self::draw_staff_lines(&painter, x_range, y_middle_c + y_per_pitch * 2.0, y_per_pitch * 2.0);
 
         let pitches_of_interest: Vec<MidiByte> = melody.iter().filter(|n| n.velocity() > 0).map(|n| n.pitch()).collect();
-        let x_per_pitch = ((response.rect.max.x - response.rect.min.x) as f32 - border) / pitches_of_interest.len() as f32;
+        let x_per_pitch = Self::pixels_per_pitch(response.rect.min.x, response.rect.max.x, border, pitches_of_interest.len() as f32);
         for (i, pitch) in pitches_of_interest.iter().enumerate() {
             let x = response.rect.min.x + border * 1.5 + i as f32 * x_per_pitch;
             let (staff_offset, auxiliary_symbol) = scale.staff_position(*pitch);
@@ -277,6 +277,10 @@ impl ReplayerApp {
                 painter.text(Pos2 {x: x + y_per_pitch*2.0, y}, Align2::CENTER_CENTER, text, FontId {size: 3.7 * y_per_pitch, family: FontFamily::Proportional}, Color32::BLACK);
             }
         }
+    }
+
+    fn pixels_per_pitch(min_range: f32, max_range: f32, border: f32, item_count: f32) -> f32 {
+        ((max_range - min_range) - border) / item_count
     }
 
     fn draw_staff_lines(painter: &Painter, x: RangeInclusive<f32>, start_y: f32, spacing: f32) {
