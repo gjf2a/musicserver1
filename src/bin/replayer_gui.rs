@@ -276,7 +276,7 @@ impl ReplayerApp {
             painter.circle_filled(center, y_per_pitch, fill_color);
             if let Some(auxiliary_symbol) = auxiliary_symbol {
                 let text = auxiliary_symbol.symbol();
-                painter.text(Pos2 {x: x + y_per_pitch*2.0, y}, Align2::CENTER_CENTER, text, FontId {size: 18.0, family: FontFamily::Proportional}, Color32::BLACK);
+                painter.text(Pos2 {x: x + y_per_pitch*2.0, y}, Align2::CENTER_CENTER, text, FontId {size: 3.7 * y_per_pitch, family: FontFamily::Proportional}, Color32::BLACK);
             }
         }
     }

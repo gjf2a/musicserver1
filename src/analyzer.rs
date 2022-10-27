@@ -1110,14 +1110,6 @@ impl NoteModifier {
             NoteModifier::Natural => ']',
             NoteModifier::Sharp => '#'
         }
-        /*
-        // These are better, but the `egui` fonts don't include them.
-        match self {
-            NoteModifier::Flat => '\u{266d}',
-            NoteModifier::Natural => '\u{266e}',
-            NoteModifier::Sharp => '\u{266f}'
-        }
-         */
     }
 }
 
