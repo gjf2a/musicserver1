@@ -267,7 +267,7 @@ impl ReplayerApp {
 
         let x_per_pitch = ((response.rect.max.x - response.rect.min.x) as f32 - 2.0 * radius) / melody.len() as f32;
         for (i, note) in melody.iter().enumerate() {
-            let x = radius + i as f32 * x_per_pitch;
+            let x = response.rect.min.x + radius * 3.0 + i as f32 * x_per_pitch;
             let (staff_offset, auxiliary_symbol) = scale.staff_position(note.pitch());
             let y = y_middle_c - staff_offset as f32 * radius;
             let center = Pos2 { x, y };
