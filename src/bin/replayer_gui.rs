@@ -9,6 +9,7 @@ use musicserver1::{make_ai_table, make_synth_table, prob_slider, ornament_gap_sl
                    SliderValue, SynthTable, Preference, MelodyInfo, Database, start_database_thread,
                    SynthChoice, send_recorded_melody, GuiDatabaseUpdate, Melody};
 use std::{mem, thread};
+use std::cmp::max;
 use std::ops::RangeInclusive;
 use std::sync::{Arc, Mutex};
 use enum_iterator::all;
@@ -257,21 +258,23 @@ impl ReplayerApp {
         let (mut lo, mut hi) = melody.min_max_pitches();
         lo = scale.closest_pitch_below(lo);
         hi = scale.closest_pitch_above(hi);
-        let num_diatonic_pitches = scale.diatonic_steps_between(lo, hi).unwrap();
-        let radius = 4.0;
-        let x_range = response.rect.min.x + radius..=response.rect.max.x - radius;
-        let y_offset = radius*4.0;
-        let y_middle_c = y_offset + response.rect.min.y + radius * 10.0;
-        Self::draw_staff_lines(&painter, x_range.clone(), response.rect.min.y + y_offset, radius*2.0);
-        Self::draw_staff_lines(&painter, x_range, y_middle_c + radius*2.0, radius * 2.0);
+        let num_diatonic_pitches = max(24, scale.diatonic_steps_between(lo, hi).unwrap());
+        let border = 8.0;
+        let y_per_pitch = ((response.rect.max.y - response.rect.min.y) as f32 - border) / num_diatonic_pitches as f32;
 
-        let x_per_pitch = ((response.rect.max.x - response.rect.min.x) as f32 - 2.0 * radius) / melody.len() as f32;
+        let x_range = response.rect.min.x + border..=response.rect.max.x - border;
+        let y_offset = border * 2.0;
+        let y_middle_c = y_offset + response.rect.min.y + y_per_pitch * 10.0;
+        Self::draw_staff_lines(&painter, x_range.clone(), response.rect.min.y + y_offset, y_per_pitch*2.0);
+        Self::draw_staff_lines(&painter, x_range, y_middle_c + y_per_pitch * 2.0, y_per_pitch * 2.0);
+
+        let x_per_pitch = ((response.rect.max.x - response.rect.min.x) as f32 - border) / melody.len() as f32;
         for (i, note) in melody.iter().enumerate() {
-            let x = response.rect.min.x + radius * 3.0 + i as f32 * x_per_pitch;
+            let x = response.rect.min.x + border * 1.5 + i as f32 * x_per_pitch;
             let (staff_offset, auxiliary_symbol) = scale.staff_position(note.pitch());
-            let y = y_middle_c - staff_offset as f32 * radius;
+            let y = y_middle_c - staff_offset as f32 * y_per_pitch;
             let center = Pos2 { x, y };
-            painter.circle_filled(center, radius, fill_color);
+            painter.circle_filled(center, y_per_pitch, fill_color);
         }
     }
 
