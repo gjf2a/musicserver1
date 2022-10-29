@@ -1057,17 +1057,17 @@ impl MusicMode {
     /// If `pitch` belongs to this `MusicMode`, returns whether it is a
     /// flat, sharp, or natural note in the scale. If it does not belong,
     /// returns `None`.
-    pub fn modifier_for(&self, pitch: MidiByte) -> Option<NoteModifier> {
+    pub fn accidental_for(&self, pitch: MidiByte) -> Option<Accidental> {
         if self.contains(pitch) {
             let name = NOTE_NAMES[(pitch % NOTES_PER_OCTAVE) as usize];
             if name.len() > 1 {
                 if self.is_sharp_key() {
-                    Some(NoteModifier::Sharp)
+                    Some(Accidental::Sharp)
                 } else {
-                    Some(NoteModifier::Flat)
+                    Some(Accidental::Flat)
                 }
             } else {
-                Some(NoteModifier::Natural)
+                Some(Accidental::Natural)
             }
         } else {
             None
@@ -1077,18 +1077,18 @@ impl MusicMode {
     /// Returns 0 for the Middle C/C#/Cb position.
     /// Returns positive numbers for the treble clef.
     /// Returns negative numbers for the bass clef.
-    pub fn staff_position(&self, pitch: MidiByte) -> (MidiByte, Option<NoteModifier>) {
+    pub fn staff_position(&self, pitch: MidiByte) -> (MidiByte, Option<Accidental>) {
         if self.contains(pitch) {
             (self.diatonic_steps_between(self.c_value(), pitch).unwrap(), None)
         } else {
             let mut diatonic_pitch = self.closest_pitch_below(pitch);
-            let output_modifier = match self.modifier_for(diatonic_pitch).unwrap() {
-                NoteModifier::Natural => NoteModifier::Sharp,
-                NoteModifier::Flat => NoteModifier::Natural,
-                NoteModifier::Sharp => {
+            let output_modifier = match self.accidental_for(diatonic_pitch).unwrap() {
+                Accidental::Natural => Accidental::Sharp,
+                Accidental::Flat => Accidental::Natural,
+                Accidental::Sharp => {
                     diatonic_pitch = self.closest_pitch_above(pitch);
-                    match self.modifier_for(diatonic_pitch).unwrap() {
-                        NoteModifier::Sharp => NoteModifier::Natural,
+                    match self.accidental_for(diatonic_pitch).unwrap() {
+                        Accidental::Sharp => Accidental::Natural,
                         _ => panic!("We are in a sharp key! This can't happen")
                     }
                 }
@@ -1099,16 +1099,16 @@ impl MusicMode {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub enum NoteModifier {
+pub enum Accidental {
     Flat, Natural, Sharp
 }
 
-impl NoteModifier {
+impl Accidental {
     pub fn symbol(&self) -> char {
         match self {
-            NoteModifier::Flat => '\u{266d}',
-            NoteModifier::Natural => '\u{266e}',
-            NoteModifier::Sharp => '\u{266f}'
+            Accidental::Flat => '\u{266d}',
+            Accidental::Natural => '\u{266e}',
+            Accidental::Sharp => '\u{266f}'
         }
     }
 }
@@ -1298,7 +1298,7 @@ impl MelodicFigureShape {
 #[cfg(test)]
 mod tests {
     use crate::analyzer::{FigureDirection, FigurePolarity, MelodicFigure, MelodicFigureShape, Melody, MelodyMaker, MusicMode, DIATONIC_SCALE_SIZE, major_sharps_for, major_flats_for, sharps_for, flats_for};
-    use crate::{MidiByte, Note, NoteModifier};
+    use crate::{MidiByte, Note, Accidental};
     use bare_metal_modulo::ModNumC;
     use ordered_float::OrderedFloat;
     use std::cmp::{max, min};
@@ -1760,28 +1760,28 @@ mod tests {
         for (pitch, position, modifier) in [
             (53, -4, None),
             (54, -3, None),
-            (55, -3, Some(NoteModifier::Natural)),
+            (55, -3, Some(Accidental::Natural)),
             (56, -2, None),
-            (57, -2, Some(NoteModifier::Natural)),
+            (57, -2, Some(Accidental::Natural)),
             (58, -1, None),
-            (59, -1, Some(NoteModifier::Natural)),
+            (59, -1, Some(Accidental::Natural)),
             (60, 0, None),
             (61, 1, None),
-            (62, 1, Some(NoteModifier::Natural)),
+            (62, 1, Some(Accidental::Natural)),
             (63, 2, None),
-            (64, 2, Some(NoteModifier::Natural)),
+            (64, 2, Some(Accidental::Natural)),
             (65, 3, None),
             (66, 4, None),
-            (67, 4, Some(NoteModifier::Natural)),
+            (67, 4, Some(Accidental::Natural)),
             (68, 5, None),
-            (69, 5, Some(NoteModifier::Natural)),
+            (69, 5, Some(Accidental::Natural)),
             (70, 6, None),
-            (71, 6, Some(NoteModifier::Natural)),
+            (71, 6, Some(Accidental::Natural)),
             (72, 7, None),
             (73, 8, None),
-            (74, 8, Some(NoteModifier::Natural)),
+            (74, 8, Some(Accidental::Natural)),
             (75, 9, None),
-            (76, 9, Some(NoteModifier::Natural)),
+            (76, 9, Some(Accidental::Natural)),
             (77, 10, None)
         ] {
             assert_eq!(scale.staff_position(pitch), (position, modifier));
@@ -1794,31 +1794,31 @@ mod tests {
         assert_eq!(scale.name(), "C# Dorian");
         assert_eq!(scale.c_value(), 61);
         for (pitch, position, modifier) in [
-            (53, -5, Some(NoteModifier::Sharp)),
+            (53, -5, Some(Accidental::Sharp)),
             (54, -4, None),
-            (55, -3, Some(NoteModifier::Natural)),
+            (55, -3, Some(Accidental::Natural)),
             (56, -3, None),
-            (57, -2, Some(NoteModifier::Natural)),
+            (57, -2, Some(Accidental::Natural)),
             (58, -2, None),
             (59, -1, None),
-            (60, -1, Some(NoteModifier::Sharp)),
+            (60, -1, Some(Accidental::Sharp)),
             (61, 0, None),
-            (62, 1, Some(NoteModifier::Natural)),
+            (62, 1, Some(Accidental::Natural)),
             (63, 1, None),
             (64, 2, None),
-            (65, 2, Some(NoteModifier::Sharp)),
+            (65, 2, Some(Accidental::Sharp)),
             (66, 3, None),
-            (67, 4, Some(NoteModifier::Natural)),
+            (67, 4, Some(Accidental::Natural)),
             (68, 4, None),
-            (69, 5, Some(NoteModifier::Natural)),
+            (69, 5, Some(Accidental::Natural)),
             (70, 5, None),
             (71, 6, None),
-            (72, 6, Some(NoteModifier::Sharp)),
+            (72, 6, Some(Accidental::Sharp)),
             (73, 7, None),
-            (74, 8, Some(NoteModifier::Natural)),
+            (74, 8, Some(Accidental::Natural)),
             (75, 8, None),
             (76, 9, None),
-            (77, 9, Some(NoteModifier::Sharp))
+            (77, 9, Some(Accidental::Sharp))
         ] {
             assert_eq!(scale.staff_position(pitch), (position, modifier));
         }
@@ -1831,28 +1831,28 @@ mod tests {
         assert_eq!(scale.c_value(), 60);
         for (pitch, position, modifier) in [
             (49, -6, None),
-            (50, -6, Some(NoteModifier::Natural)),
+            (50, -6, Some(Accidental::Natural)),
             (51, -5, None),
-            (52, -5, Some(NoteModifier::Natural)),
+            (52, -5, Some(Accidental::Natural)),
             (53, -4, None),
             (54, -3, None),
-            (55, -3, Some(NoteModifier::Natural)),
+            (55, -3, Some(Accidental::Natural)),
             (56, -2, None),
-            (57, -2, Some(NoteModifier::Natural)),
+            (57, -2, Some(Accidental::Natural)),
             (58, -1, None),
-            (59, -1, Some(NoteModifier::Natural)),
+            (59, -1, Some(Accidental::Natural)),
             (60, 0, None),
             (61, 1, None),
-            (62, 1, Some(NoteModifier::Natural)),
+            (62, 1, Some(Accidental::Natural)),
             (63, 2, None),
-            (64, 2, Some(NoteModifier::Natural)),
+            (64, 2, Some(Accidental::Natural)),
             (65, 3, None),
             (66, 4, None),
-            (67, 4, Some(NoteModifier::Natural)),
+            (67, 4, Some(Accidental::Natural)),
             (68, 5, None),
-            (69, 5, Some(NoteModifier::Natural)),
+            (69, 5, Some(Accidental::Natural)),
             (70, 6, None),
-            (71, 6, Some(NoteModifier::Natural)),
+            (71, 6, Some(Accidental::Natural)),
             (72, 7, None),
             (73, 8, None)
         ] {

@@ -4,10 +4,7 @@ use eframe::egui::{Color32, Sense, Vec2, Visuals, Ui, Stroke, Pos2, Align2, Font
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
-use musicserver1::{make_ai_table, make_synth_table, prob_slider, ornament_gap_slider, replay_slider,
-                   start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable,
-                   SliderValue, SynthTable, Preference, MelodyInfo, Database, start_database_thread,
-                   SynthChoice, send_recorded_melody, GuiDatabaseUpdate, Melody, Note};
+use musicserver1::{make_ai_table, make_synth_table, prob_slider, ornament_gap_slider, replay_slider, start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue, SynthTable, Preference, MelodyInfo, Database, start_database_thread, SynthChoice, send_recorded_melody, GuiDatabaseUpdate, Melody, Note, MidiByte};
 use std::{mem, thread};
 use std::cmp::max;
 use std::ops::RangeInclusive;
@@ -166,6 +163,14 @@ impl Clef {
     }
 }
 
+const NUM_DIATONIC_STAFF_NOTES: MidiByte = 24;
+const BORDER_SIZE: f32 = 8.0;
+const Y_OFFSET: f32 = BORDER_SIZE * 2.0;
+const MIDDLE_C_Y_MULTIPLIER: f32 = 10.0;
+const X_OFFSET: f32 = BORDER_SIZE * 6.0;
+const ACCIDENTAL_Y_OFFSET: f32 = -30.0;
+const ACCIDENTAL_SIZE_MULTIPLIER: f32 = 20.0;
+
 impl ReplayerApp {
     fn new(cc: &eframe::CreationContext<'_>) -> anyhow::Result<Self> {
         // Customize egui here with cc.egui_ctx.set_fonts and cc.egui_ctx.set_visuals.
@@ -302,27 +307,26 @@ impl ReplayerApp {
         let (mut lo, mut hi) = melody.min_max_pitches();
         lo = scale.closest_pitch_below(lo);
         hi = scale.closest_pitch_above(hi);
-        let num_diatonic_pitches = max(24, scale.diatonic_steps_between(lo, hi).unwrap());
-        let border = 8.0;
-        let y_per_pitch = Self::pixels_per_pitch(response.rect, |p| p.y, border, num_diatonic_pitches as f32);
+        let num_diatonic_pitches = max(NUM_DIATONIC_STAFF_NOTES, scale.diatonic_steps_between(lo, hi).unwrap());
+        let y_per_pitch = Self::pixels_per_pitch(response.rect, |p| p.y, BORDER_SIZE, num_diatonic_pitches as f32);
+        let staff_line_space = y_per_pitch * 2.0;
 
-        let x_range = response.rect.min.x + border..=response.rect.max.x - border;
-        let y_offset = border * 2.0;
-        let y_middle_c = y_offset + response.rect.min.y + y_per_pitch * 10.0;
-        Self::draw_staff_lines(&painter, Clef::Treble, x_range.clone(), response.rect.min.y + y_offset, y_per_pitch);
-        Self::draw_staff_lines(&painter, Clef::Bass, x_range, y_middle_c + y_per_pitch * 2.0, y_per_pitch);
+        let x_range = response.rect.min.x + BORDER_SIZE..=response.rect.max.x - BORDER_SIZE;
+        let y_middle_c = Y_OFFSET + response.rect.min.y + y_per_pitch * MIDDLE_C_Y_MULTIPLIER;
+        Self::draw_staff_lines(&painter, Clef::Treble, x_range.clone(), response.rect.min.y + Y_OFFSET, y_per_pitch);
+        Self::draw_staff_lines(&painter, Clef::Bass, x_range, y_middle_c + staff_line_space, y_per_pitch);
 
         let notes_of_interest: Vec<&Note> = melody.iter().filter(|n| n.velocity() > 0).collect();
-        let x_per_pitch = Self::pixels_per_pitch(response.rect, |p| p.x, border, notes_of_interest.len() as f32);
+        let x_per_pitch = Self::pixels_per_pitch(response.rect, |p| p.x, BORDER_SIZE, notes_of_interest.len() as f32);
         for (i, note) in notes_of_interest.iter().enumerate() {
-            let x = response.rect.min.x + border * 6.0 + i as f32 * x_per_pitch;
+            let x = response.rect.min.x + X_OFFSET + i as f32 * x_per_pitch;
             let (staff_offset, auxiliary_symbol) = scale.staff_position(note.pitch());
             let y = y_middle_c - staff_offset as f32 * y_per_pitch;
             let center = Pos2 { x, y };
             painter.circle_filled(center, y_per_pitch, fill_color);
             if let Some(auxiliary_symbol) = auxiliary_symbol {
                 let text = auxiliary_symbol.symbol();
-                painter.text(Pos2 {x: x + y_per_pitch*2.0, y: y - 30.0}, Align2::CENTER_CENTER, text, Self::font_id(20.0 * y_per_pitch), Color32::BLACK);
+                painter.text(Pos2 {x: x + staff_line_space, y: y + ACCIDENTAL_Y_OFFSET}, Align2::CENTER_CENTER, text, Self::font_id(ACCIDENTAL_SIZE_MULTIPLIER * y_per_pitch), Color32::BLACK);
             }
         }
     }
