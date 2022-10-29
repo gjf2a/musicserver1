@@ -10,7 +10,7 @@ pub enum SoundMsg {
     Finished,
 }
 
-/// Credit: https://stackoverflow.com/a/73205224/906268 for showing how to write the return type
+/// Credit: <https://stackoverflow.com/a/73205224/906268> for showing how to write the return type
 pub fn adsr_live(
     attack: f64,
     decay: f64,
