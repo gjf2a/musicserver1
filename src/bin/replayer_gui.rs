@@ -167,7 +167,7 @@ const NUM_DIATONIC_STAFF_NOTES: MidiByte = 24;
 const BORDER_SIZE: f32 = 8.0;
 const Y_OFFSET: f32 = BORDER_SIZE * 2.0;
 const MIDDLE_C_Y_MULTIPLIER: f32 = 10.0;
-const X_OFFSET: f32 = BORDER_SIZE * 6.0;
+const X_OFFSET: f32 = BORDER_SIZE * 5.0;
 const ACCIDENTAL_Y_OFFSET: f32 = -30.0;
 const ACCIDENTAL_SIZE_MULTIPLIER: f32 = 20.0;
 
@@ -317,7 +317,7 @@ impl ReplayerApp {
         Self::draw_staff_lines(&painter, Clef::Bass, x_range, y_middle_c + staff_line_space, y_per_pitch);
 
         let notes_of_interest: Vec<&Note> = melody.iter().filter(|n| n.velocity() > 0).collect();
-        let x_per_pitch = Self::pixels_per_pitch(response.rect, |p| p.x, BORDER_SIZE, notes_of_interest.len() as f32);
+        let x_per_pitch = Self::pixels_per_pitch(response.rect, |p| p.x, X_OFFSET, notes_of_interest.len() as f32);
         for (i, note) in notes_of_interest.iter().enumerate() {
             let x = response.rect.min.x + X_OFFSET + i as f32 * x_per_pitch;
             let (staff_offset, auxiliary_symbol) = scale.staff_position(note.pitch());
