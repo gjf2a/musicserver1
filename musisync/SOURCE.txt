@@ -1,0 +1,14 @@
+MusiQwik and MusiSync fonts were created using a proprietary font editing program, TypeTool 3 by FontLab. Thus, there is no source code. The native-format file would be of no use to anyone who does not have the same program. Besides, the native-format file does not contain any useful information not found in the font itself.
+
+For version 5 fonts, the output from the font editor was decompiled and recompiled using the Font Tools "TTX" program. It is freely available for Windows or Mac, and (as source) for Linux. It can be downloaded at
+
+http://sourceforge.net/project/showfiles.php?group_id=29196
+
+With TTX, you can take the True Type font and decompile it to a human-readable XML document, which may be text-edited and recompiled using TTX again.
+
+As you can see from the OFL (license), user modifications are permitted under some circumstances. Read the license!
+
+MusiQwik does not have any "spare" code locations, unless you are willing to go outside the ANSI code range (decimal 255 or less).
+
+However, MusiSync has a number of code locations that are "spare." Look in the font for asterisks (*) in locations other than the normal place for an asterisk.
+

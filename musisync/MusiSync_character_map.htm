@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html lang="en" xml:lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html;charset=UTF-8" />
+<meta http-equiv="Content-Style-Type" content="text/css" />
+<meta http-equiv="Content-Script-Type" content="text/javascript" />
+<meta http-equiv="imagetoolbar" content="no" />
+<meta name="MSSmartTagsPreventParsing" content="true" />
+<meta name="robots" content="noindex,nofollow,noimageindex" />
+<meta name="author" content="Robert Allgeyer" />
+
+
+<title>Character Table for MusiSync Font</title>
+
+<style type="text/css">
+  table {background:#000000 none; margin:20px}
+  p {margin:0px}
+  p.mar {margin:12px 0px}
+  p.music {font-family:MusiSync,Arial,sans-serif; font-size:36px; color:#000000}
+  p.label {font-family:Arial,sans-serif; font-size:12px; text-align:center; color:#000099}
+  *.letter {color:#990000}
+  div {width:56px; height:84px; padding-top:6px; padding-bottom:6px}
+  div.font {background:#ffff99 none}
+  div.new5 {background:#ff9999 none}
+  div.nochar {background:#666666 none}
+</style>
+
+<script type="text/javascript">
+  function writeEntries() {
+    var bkg, let, charnum;
+    document.write('\u003Ctable cellspacing="1" cellpadding="0">\n');
+    for(var r=2; 16>r; r++) {
+      document.write('  \u003Ctr>\n');
+      for(var c=0; 16>c; c++) {
+        document.write('    \u003Ctd>\n');
+        let = "?";
+        bkg = "font";
+        var n = c + 16*r;
+        if(n==128) n = 8364;
+        if(n==130) n = 8218;
+        if(n==131) n = 402;
+        if(n==132) n = 8222;
+        if(n==133) n = 8230;
+        if(n==134) n = 8224;
+        if(n==135) n = 8225;
+        if(n==136) n = 710;
+        if(n==137) n = 8240;
+        if(n==138) n = 352;
+        if(n==139) n = 8249;
+        if(n==140) n = 338;
+        if(n==142) n = 381;
+        if(n==145) n = 8216;
+        if(n==146) n = 8217;
+        if(n==147) n = 8220;
+        if(n==148) n = 8221;
+        if(n==149) n = 8226;
+        if(n==150) n = 8211;
+        if(n==151) n = 8212;
+        if(n==152) n = 732;
+        if(n==153) n = 8482;
+        if(n==154) n = 353;
+        if(n==155) n = 8250;
+        if(n==156) n = 339;
+        if(n==158) n = 382;
+        if(n==159) n = 376;
+        charnum = '\u0026#' + n + ';';
+        if((32>n)||(n==127)||(n==129)||(n==141)||(n==143)||(n==144)||(n==157)||(n==173)) {
+          bkg = "nochar";
+          let = '\u0026nbsp;';
+          charnum = '\u0026nbsp;';
+        }
+        if(n>255) {
+          bkg = "new5";
+        }
+        if(charnum != '\u0026nbsp;') let = String.fromCharCode(n);
+        document.write('      \u003Cdiv class="' + bkg + '">\n');
+        document.write('        \u003Cp class="music">\u0026nbsp;' + charnum + '\u0026nbsp;\u003C\/p>\n');
+        document.write('        \u003Cp class="label">\u003Cspan class="letter">' + let + '\u003C\/span>'
+          + '\u0026nbsp; \u0026nbsp;' + n + '\u003C\/p>\n');
+        document.write('      \u003C\/div>\n');
+      }
+      document.write('  \u003C\/tr>\n');
+    }
+    document.write('\u003C\/table>\n');
+  }
+</script>
+
+</head>
+<body>
+
+<h2>Character Table for MusiSync Font (version 5.001)</h2>
+
+<p class="mar">You must have MusiSync installed to see the musical symbols. Without MusiSync, the cells will show only plain text.</p>
+
+<p class="mar">Each cell contains a MusiSync symbol at size 36px. The symbols are padded by spaces in this table, so if you copy and paste, you will have unexpected extra space. Underneath, in red, is the alphanumeric character (from the Arial font). In blue is the decimal character code. Note that in the middle of the table, some of the decimal codes are not in numerical order: this is a Unicode thing.</p>
+
+<p class="mar">Darkened cells have no symbol. These code locations cannot be used, for technical reasons.</p>
+
+<p class="mar">Cells with pink background have symbols added in font version 5, but not present in earlier versions.</p>
+
+<p>Some pink cells have a large asterisk (*). These are "uncommitted" locations. If you have a font editor and are of a mind to add your own symbols, use the uncommitted locations; but remember that the name of a revised font cannot contain "MusiSync" or anything confusingly similar.</p>
+
+<p class="mar">Code 32 (character code number) is the ordinary space. Code 160 is the non-breaking space.</p>
+
+<p class="mar">When you use MusiSync, you may find that consecutive lines overlap a bit. If so, you can either increase the line spacing, or insert dummy lines in an ordinary font.</p>
+
+
+
+<div><script type="text/javascript">writeEntries();</script></div>
+
+
+</body>
+</html>

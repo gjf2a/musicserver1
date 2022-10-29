@@ -1,0 +1,54 @@
+FONTLOG for MusiQwik, MusiQwikB, Musisync fonts.
+
+This file provides detailed information on the MusiQwik, MusiQwikB, and MusiSync font software. This information should be distributed along with the fonts and any derivative works.
+
+
+BASIC FONT INFORMATION
+
+MusiQwik, MusiQwikB, and Musisync are True Type fonts, compatible with any modern Windows system, as well as Mac OS-X, and some installations of Linux. Although results are not guaranteed, the fonts (in version 5) have been checked against an Open Type validator, and they are expected to work in most modern programs.
+
+To use these fonts, you need a character map. The programs built into Windows XP or Vista are adequate, although the displayed size is often too small to discern. You may find it useful to obtain a third-party character map utility.
+
+MusiQwik is intended for writing a simply musical melody, of the sort that someone might be able to sing. A variety of pitches and durations are available. Very high, very low, and very short-duration notes are not included. MusiQwikB will be regarded as a "bold" version, but it is not bold. The difference is that where MusiQwik has eighth notes (quavers), MusiQwikB has sixteenth notes (semiquavers).
+
+MusiSync displays a variety of note timings. The characters are useful for general decoration, or for learning a rhythm.
+
+On your computer screen, it will be difficult to see these fonts at less than 24pt size. The screen will place the characters on its own grid, which will often cause symbols to misalign. When printed to paper, the appearance will be more accurate.
+
+
+
+LEGACY VERSIONS
+
+Versions prior to 5 were optimized for operating systems commonly in use during 2001. In 2008, systems now use different rasterization methods, screens have more pixels, and software is more particular about technical compliance.
+
+You should use the version 5 fonts unless you have an old version of MS Windows, or you have existing documents that rely on the older fonts for layout. Note that the version 5 fonts will occupy slightly different space than the earlier verions, even at the same point size.
+
+If you must use the pre-5 version (and ONLY if you must), then version 4 and insructions are in a separate folder. Persons who re-distribute these font should not include the legacy versions, unless requested by the recipient.
+
+
+
+ABOUT UNICODE
+
+The Unicode standard calls for the glyphs (character drawings) to carry meaning according to where they are placed in the coding. That is, any glyph placed at the code location for letter "A" is expected to carry the meaning of letter "A" even though it may be highly stylistic or whimsical. There are no Unicode locations reserved for most of the glyphs included in these fonts. Instead, the musical symbols have been placed in locations that ought to carry alphanumeric or other pre-defined meaning. Thus, these fonts cannot be regarded as Unicode-compliant.
+
+
+
+CHANGELOG
+
+08 March 2008 (Robert Allgeyer) MusiSync (not change to MusiQwik or MusiQwikB)
+- Version 5.002 released. Changed an internal flag to avoid conflict with some applications.
+This change is backwards-compatible. Very few users will be affected.
+
+12 Jan 2008 (Robert Allgeyer) MusiQwik, MusiQwikB (no change to version 5.001 MusiSync)
+- Version 5.002 released. Moved one glyph from u00AD to u8364, to avoid conflict with some applications
+that assign special meaning to character in location u00AD. This change is not backwards compatible,
+however anyone previously using this character would have had difficulty in prior editions.
+
+12 Jan 2008 (Robert Allgeyer) MusiQwik, MusiQwikB, MusiSync
+- Version 5.001 released. Improved compatibility with contemporary systems and applications.
+
+2001 - 2007 : (Robert Allgeyer) MusiQwik, MusiQwikB, MusiSync
+Prior versions released. Now considered legacy.
+
+
+
