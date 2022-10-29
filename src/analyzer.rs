@@ -1823,4 +1823,40 @@ mod tests {
             assert_eq!(scale.staff_position(pitch), (position, modifier));
         }
     }
+
+    #[test]
+    fn test_staff_position_3() {
+        let scale = MusicMode::new(ModNumC::new(0), 61);
+        assert_eq!(scale.name(), "Db Ionian");
+        assert_eq!(scale.c_value(), 60);
+        for (pitch, position, modifier) in [
+            (49, -6, None),
+            (50, -6, Some(NoteModifier::Natural)),
+            (51, -5, None),
+            (52, -5, Some(NoteModifier::Natural)),
+            (53, -4, None),
+            (54, -3, None),
+            (55, -3, Some(NoteModifier::Natural)),
+            (56, -2, None),
+            (57, -2, Some(NoteModifier::Natural)),
+            (58, -1, None),
+            (59, -1, Some(NoteModifier::Natural)),
+            (60, 0, None),
+            (61, 1, None),
+            (62, 1, Some(NoteModifier::Natural)),
+            (63, 2, None),
+            (64, 2, Some(NoteModifier::Natural)),
+            (65, 3, None),
+            (66, 4, None),
+            (67, 4, Some(NoteModifier::Natural)),
+            (68, 5, None),
+            (69, 5, Some(NoteModifier::Natural)),
+            (70, 6, None),
+            (71, 6, Some(NoteModifier::Natural)),
+            (72, 7, None),
+            (73, 8, None)
+        ] {
+            assert_eq!(scale.staff_position(pitch), (position, modifier));
+        }
+    }
 }
