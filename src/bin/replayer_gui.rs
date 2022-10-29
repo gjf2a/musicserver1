@@ -130,6 +130,42 @@ struct ReplayerApp {
     ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+enum Clef {
+    Treble, Bass
+}
+
+impl Clef {
+    fn symbol(&self) -> char {
+        match self {
+            Clef::Treble => '\u{1d11e}',
+            Clef::Bass => '\u{1d122}'
+        }
+    }
+
+    fn size(&self, y_per_pitch: f32) -> f32 {
+        y_per_pitch.powf(2.0) * match self {
+            Clef::Treble => 3.7,
+            Clef::Bass => 6.15
+        }
+    }
+
+    fn x_offset(&self) -> f32 {
+        10.0
+    }
+
+    fn y_offset(&self) -> f32 {
+        match self {
+            Clef::Treble => 20.0,
+            Clef::Bass => -33.0
+        }
+    }
+
+    fn render(&self, painter: &Painter, x: f32, y: f32, y_per_pitch: f32) {
+        painter.text(Pos2 {x: x + self.x_offset(), y: y + self.y_offset()}, Align2::CENTER_CENTER, self.symbol(), ReplayerApp::font_id(self.size(y_per_pitch)), Color32::BLACK);
+    }
+}
+
 impl ReplayerApp {
     fn new(cc: &eframe::CreationContext<'_>) -> anyhow::Result<Self> {
         // Customize egui here with cc.egui_ctx.set_fonts and cc.egui_ctx.set_visuals.
@@ -256,6 +292,10 @@ impl ReplayerApp {
         Self::draw_melody(ui, variation_info.melody(), size, Color32::BLUE);
     }
 
+    /// Musical symbols are a very tricky issue. Here are resources I've used:
+    /// * Font: [Bravura](https://github.com/steinbergmedia/bravura)
+    /// * [Unicode for a few symbols](https://www.compart.com/en/unicode/block/U+2600)
+    /// * [Unicode for the remaining symbols](https://unicode.org/charts/PDF/U1D100.pdf)
     fn draw_melody(ui: &mut Ui, melody: &Melody, size: Vec2, fill_color: Color32) {
         let (response, painter) = ui.allocate_painter(size, Sense::hover());
         let scale = melody.best_scale_for();
@@ -269,30 +309,36 @@ impl ReplayerApp {
         let x_range = response.rect.min.x + border..=response.rect.max.x - border;
         let y_offset = border * 2.0;
         let y_middle_c = y_offset + response.rect.min.y + y_per_pitch * 10.0;
-        Self::draw_staff_lines(&painter, x_range.clone(), response.rect.min.y + y_offset, y_per_pitch*2.0);
-        Self::draw_staff_lines(&painter, x_range, y_middle_c + y_per_pitch * 2.0, y_per_pitch * 2.0);
+        Self::draw_staff_lines(&painter, Clef::Treble, x_range.clone(), response.rect.min.y + y_offset, y_per_pitch);
+        Self::draw_staff_lines(&painter, Clef::Bass, x_range, y_middle_c + y_per_pitch * 2.0, y_per_pitch);
 
         let notes_of_interest: Vec<&Note> = melody.iter().filter(|n| n.velocity() > 0).collect();
         let x_per_pitch = Self::pixels_per_pitch(response.rect, |p| p.x, border, notes_of_interest.len() as f32);
         for (i, note) in notes_of_interest.iter().enumerate() {
-            let x = response.rect.min.x + border * 1.5 + i as f32 * x_per_pitch;
+            let x = response.rect.min.x + border * 6.0 + i as f32 * x_per_pitch;
             let (staff_offset, auxiliary_symbol) = scale.staff_position(note.pitch());
             let y = y_middle_c - staff_offset as f32 * y_per_pitch;
             let center = Pos2 { x, y };
             painter.circle_filled(center, y_per_pitch, fill_color);
             if let Some(auxiliary_symbol) = auxiliary_symbol {
                 let text = auxiliary_symbol.symbol();
-                painter.text(Pos2 {x: x + y_per_pitch*2.0, y: y - 30.0}, Align2::CENTER_CENTER, text, FontId {size: 20.0 * y_per_pitch, family: FontFamily::Proportional}, Color32::BLACK);
+                painter.text(Pos2 {x: x + y_per_pitch*2.0, y: y - 30.0}, Align2::CENTER_CENTER, text, Self::font_id(20.0 * y_per_pitch), Color32::BLACK);
             }
         }
+    }
+
+    fn font_id(size: f32) -> FontId {
+        FontId {size, family: FontFamily::Proportional}
     }
 
     fn pixels_per_pitch<F:Fn(Pos2)->f32>(r: Rect, picker: F, border: f32, item_count: f32) -> f32 {
         ((picker(r.max) - picker(r.min)) - border) / item_count
     }
 
-    fn draw_staff_lines(painter: &Painter, x: RangeInclusive<f32>, start_y: f32, spacing: f32) {
+    fn draw_staff_lines(painter: &Painter, clef: Clef, x: RangeInclusive<f32>, start_y: f32, y_per_pitch: f32) {
+        let spacing = y_per_pitch * 2.0;
         let mut y = start_y;
+        clef.render(painter, *x.start(), y, y_per_pitch);
         for _ in 0..5 {
             painter.hline(x.clone(), y, Stroke { width: 1.0, color: Color32::BLACK });
             y += spacing;
