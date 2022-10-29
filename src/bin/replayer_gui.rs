@@ -1,6 +1,6 @@
 use eframe::egui;
 use eframe::emath::Numeric;
-use eframe::egui::{Color32, Sense, Vec2, Visuals, Ui, Stroke, Pos2, Align2, FontId, FontFamily, Painter, Rect};
+use eframe::egui::{Color32, Sense, Vec2, Visuals, Ui, Stroke, Pos2, Align2, FontId, FontFamily, Painter, Rect, FontDefinitions, FontData};
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
@@ -131,11 +131,16 @@ struct ReplayerApp {
 }
 
 impl ReplayerApp {
-    fn new(_cc: &eframe::CreationContext<'_>) -> anyhow::Result<Self> {
+    fn new(cc: &eframe::CreationContext<'_>) -> anyhow::Result<Self> {
         // Customize egui here with cc.egui_ctx.set_fonts and cc.egui_ctx.set_visuals.
         // Restore app state using cc.storage (requires the "persistence" feature).
         // Use the cc.gl (a glow::Context) to create graphics shaders and buffers that you can use
         // for e.g. egui::PaintCallback.
+        let mut fonts = FontDefinitions::default();
+        fonts.font_data.insert("Bravura".to_owned(),
+                               FontData::from_static(include_bytes!("../../bravura/Bravura.otf")));
+        fonts.families.get_mut(&FontFamily::Proportional).unwrap().push("Bravura".to_owned());
+        cc.egui_ctx.set_fonts(fonts);
 
         let ai_table = make_ai_table();
         let human_synth_table = make_synth_table();
@@ -277,7 +282,7 @@ impl ReplayerApp {
             painter.circle_filled(center, y_per_pitch, fill_color);
             if let Some(auxiliary_symbol) = auxiliary_symbol {
                 let text = auxiliary_symbol.symbol();
-                painter.text(Pos2 {x: x + y_per_pitch*2.0, y}, Align2::CENTER_CENTER, text, FontId {size: 3.7 * y_per_pitch, family: FontFamily::Proportional}, Color32::BLACK);
+                painter.text(Pos2 {x: x + y_per_pitch*2.0, y: y - 30.0}, Align2::CENTER_CENTER, text, FontId {size: 20.0 * y_per_pitch, family: FontFamily::Proportional}, Color32::BLACK);
             }
         }
     }

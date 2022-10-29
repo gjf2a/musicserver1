@@ -1106,9 +1106,9 @@ pub enum NoteModifier {
 impl NoteModifier {
     pub fn symbol(&self) -> char {
         match self {
-            NoteModifier::Flat => 'b',
-            NoteModifier::Natural => ']',
-            NoteModifier::Sharp => '#'
+            NoteModifier::Flat => '\u{266d}',
+            NoteModifier::Natural => '\u{266e}',
+            NoteModifier::Sharp => '\u{266f}'
         }
     }
 }
