@@ -1,4 +1,4 @@
-use bare_metal_modulo::{MNum, ModNumC};
+use bare_metal_modulo::{MNum, ModNumC, OffsetNumC};
 use enum_iterator::{all, Sequence};
 use float_cmp::{ApproxEq, F64Margin};
 use histogram_macros::*;
@@ -17,7 +17,7 @@ const NOTES_PER_OCTAVE: MidiByte = 12;
 const USIZE_NOTES_PER_OCTAVE: usize = NOTES_PER_OCTAVE as usize;
 const DIATONIC_SCALE_SIZE: usize = 7;
 const DIATONIC_SCALE_HOPS: [MidiByte; DIATONIC_SCALE_SIZE] = [2, 2, 1, 2, 2, 2, 1];
-const CIRCLE_OF_FIFTHS: [NoteLetter; DIATONIC_SCALE_SIZE] = [NoteLetter::C, NoteLetter::D, NoteLetter::E, NoteLetter::F, NoteLetter::G, NoteLetter::A, NoteLetter::B];
+const DIATONIC_NOTE_LETTERS: [NoteLetter; DIATONIC_SCALE_SIZE] = [NoteLetter::C, NoteLetter::D, NoteLetter::E, NoteLetter::F, NoteLetter::G, NoteLetter::A, NoteLetter::B];
 const SHARP_START: usize = 3;
 const FLAT_START: usize = 6;
 const MIN_FIGURE_CHOICES: usize = 12;
@@ -1205,7 +1205,7 @@ impl MusicMode {
         let mut notes = vec![];
         let mut note: ModNumC<usize, DIATONIC_SCALE_SIZE> = ModNumC::new(start);
         for _ in 0..goal {
-            notes.push(CIRCLE_OF_FIFTHS[note.a()]);
+            notes.push(DIATONIC_NOTE_LETTERS[note.a()]);
             update(&mut note);
         }
         notes
@@ -1216,6 +1216,54 @@ impl MusicMode {
 pub struct KeySignature {
     notes: Vec<NoteLetter>,
     accidental: Accidental
+}
+
+const NUM_NOTES_ON_STAFF: usize = 11;
+const TREBLE_INITIAL_OFFSET: MidiByte = 3;
+const TREBLE_TO_BASS_OFFSET: MidiByte = -14;
+
+impl KeySignature {
+    pub fn c_major() -> MusicMode {
+        MusicMode::new(ModNumC::new(0), 0)
+    }
+
+    fn constrain_up(staff_position: MidiByte) -> MidiByte {
+        OffsetNumC::<MidiByte, 7, 5>::new(staff_position).a()
+    }
+
+    fn constrain_staff(staff_position: MidiByte) -> MidiByte {
+        OffsetNumC::<MidiByte, NUM_NOTES_ON_STAFF, 1>::new(staff_position).a()
+    }
+
+    fn constrain(staff_position: MidiByte, direction: MidiByte) -> MidiByte {
+        if direction > 0 {
+            Self::constrain_up(staff_position)
+        } else {
+            Self::constrain_staff(staff_position)
+        }
+    }
+
+    pub fn treble_clef(&self) -> Vec<MidiByte> {
+        let (offset, direction) = match self.accidental {
+            Accidental::Sharp => (-TREBLE_INITIAL_OFFSET, 1),
+            Accidental::Flat => (TREBLE_INITIAL_OFFSET, -1),
+            Accidental::Natural => return vec![]
+        };
+        let c_major = Self::c_major();
+        let middle_c = c_major.c_value();
+        let start1 = Self::constrain_up(c_major.diatonic_steps_between(middle_c, middle_c + self.notes[0].natural_pitch()).unwrap());
+        let mut frontier = [start1, Self::constrain_up(start1 + offset)];
+        let mut result = vec![];
+        for (i, _) in self.notes.iter().enumerate() {
+            result.push(frontier[i % 2]);
+            frontier[i % 2] = Self::constrain(frontier[i % 2] + direction, direction);
+        }
+        result
+    }
+
+    pub fn bass_clef(&self) -> Vec<MidiByte> {
+        self.treble_clef().iter().map(|p| p + TREBLE_TO_BASS_OFFSET).collect()
+    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -2064,6 +2112,21 @@ mod tests {
     }
 
     #[test]
+    fn test_treble_clef() {
+        let scale = MusicMode::new(ModNumC::new(1), 61);
+        assert_eq!(scale.name(), "C♯ Dorian");
+        assert_eq!(scale.key_signature().treble_clef(), vec![10, 7, 11, 8, 5]);
+    }
+
+    #[test]
+    fn test_bass_clef() {
+        let scale = MusicMode::new(ModNumC::new(1), 61);
+        assert_eq!(scale.name(), "C♯ Dorian");
+        assert_eq!(scale.key_signature().bass_clef(), vec![-4, -7, -3, -6, -9]);
+
+    }
+
+    #[test]
     fn test_key_signature_2() {
         let scale = MusicMode::new(ModNumC::new(0), 66);
         assert_eq!(scale.name(), "G♭ Ionian");
@@ -2071,9 +2134,37 @@ mod tests {
     }
 
     #[test]
+    fn test_treble_clef_2() {
+        let scale = MusicMode::new(ModNumC::new(0), 66);
+        assert_eq!(scale.name(), "G♭ Ionian");
+        assert_eq!(scale.key_signature().treble_clef(), vec![6, 9, 5, 8, 4, 7]);
+    }
+
+    #[test]
+    fn test_bass_clef_2() {
+        let scale = MusicMode::new(ModNumC::new(0), 66);
+        assert_eq!(scale.name(), "G♭ Ionian");
+        assert_eq!(scale.key_signature().bass_clef(), vec![-8, -5, -9, -6, -10, -7]);
+    }
+
+    #[test]
     fn test_key_signature_3() {
         let scale = MusicMode::new(ModNumC::new(0), 60);
         assert_eq!(scale.name(), "C Ionian");
         assert_eq!(format!("{:?}", scale.key_signature()), "KeySignature { notes: [], accidental: Natural }");
+    }
+
+    #[test]
+    fn test_key_signature_4() {
+        let scale = MusicMode::new(ModNumC::new(5), 64);
+        assert_eq!(scale.name(), "E Aeolian");
+        assert_eq!(format!("{:?}", scale.key_signature()), "KeySignature { notes: [F], accidental: Sharp }");
+    }
+
+    #[test]
+    fn test_key_signature_5() {
+        let scale = MusicMode::new(ModNumC::new(5), 62);
+        assert_eq!(scale.name(), "D Aeolian");
+        assert_eq!(format!("{:?}", scale.key_signature()), "KeySignature { notes: [B], accidental: Flat }");
     }
 }

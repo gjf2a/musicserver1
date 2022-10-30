@@ -6,7 +6,8 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bare_metal_modulo = "1"
+#bare_metal_modulo = "1"
+bare_metal_modulo = {git = "https://github.com/gjf2a/bare_metal_modulo"}
 ordered-float = "3"
 histogram_macros = {git = "https://github.com/gjf2a/histogram_macros"}
 rand = "0.8"
