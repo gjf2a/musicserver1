@@ -1262,7 +1262,7 @@ impl KeySignature {
     }
 
     pub fn bass_clef(&self) -> Vec<MidiByte> {
-        self.treble_clef().iter().map(|p| p + TREBLE_TO_BASS_OFFSET).collect()
+        self.treble_clef().drain(..).map(|p| p + TREBLE_TO_BASS_OFFSET).collect()
     }
 }
 
