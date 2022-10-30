@@ -177,6 +177,7 @@ const MIDDLE_C_Y_MULTIPLIER: f32 = 10.0;
 const X_OFFSET: f32 = BORDER_SIZE * 5.0;
 const ACCIDENTAL_Y_OFFSET: f32 = -30.0;
 const ACCIDENTAL_SIZE_MULTIPLIER: f32 = 20.0;
+const KEY_SIGNATURE_OFFSET: f32 = 28.0;
 
 impl ReplayerApp {
     fn new(cc: &eframe::CreationContext<'_>) -> anyhow::Result<Self> {
@@ -355,7 +356,7 @@ impl ReplayerApp {
         }
         let sig = scale.key_signature();
         for (i, position) in clef.key_signature_positions(&sig).iter().enumerate() {
-            Self::draw_accidental(painter, sig.symbol(), *x.start() + 4.0 + y_per_pitch * i as f32, *position as f32 * y_per_pitch + y_middle_c, y_per_pitch);
+            Self::draw_accidental(painter, sig.symbol(), *x.start() + KEY_SIGNATURE_OFFSET + y_per_pitch * i as f32, y_middle_c - *position as f32 * y_per_pitch, y_per_pitch);
         }
     }
 
