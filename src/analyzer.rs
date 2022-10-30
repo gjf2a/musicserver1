@@ -17,7 +17,9 @@ const NOTES_PER_OCTAVE: MidiByte = 12;
 const USIZE_NOTES_PER_OCTAVE: usize = NOTES_PER_OCTAVE as usize;
 const DIATONIC_SCALE_SIZE: usize = 7;
 const DIATONIC_SCALE_HOPS: [MidiByte; DIATONIC_SCALE_SIZE] = [2, 2, 1, 2, 2, 2, 1];
-
+const CIRCLE_OF_FIFTHS: [NoteLetter; DIATONIC_SCALE_SIZE] = [NoteLetter::C, NoteLetter::D, NoteLetter::E, NoteLetter::F, NoteLetter::G, NoteLetter::A, NoteLetter::B];
+const SHARP_START: usize = 3;
+const FLAT_START: usize = 6;
 const MIN_FIGURE_CHOICES: usize = 12;
 
 const NOTE_IDS: [(NoteLetter, Accidental); USIZE_NOTES_PER_OCTAVE] = [
@@ -1118,13 +1120,21 @@ impl MusicMode {
         pertinent_root
     }
 
+    fn num_sharps(&self) -> usize {
+        sharps_for(self.root() as usize, self.root_pos.a())
+    }
+
+    fn num_flats(&self) -> usize {
+        flats_for(self.root() as usize, self.root_pos.a())
+    }
+
     pub fn is_sharp_key(&self) -> bool {
-        sharps_for(self.root() as usize, self.root_pos.a()) < flats_for(self.root() as usize, self.root_pos.a())
+        self.num_sharps() < self.num_flats()
     }
 
     pub fn is_flat_key(&self) -> bool {
-        let flats = flats_for(self.root() as usize, self.root_pos.a());
-        sharps_for(self.root() as usize, self.root_pos.a()) >= flats && flats > 0
+        let flats = self.num_flats();
+        self.num_sharps() >= flats && flats > 0
     }
 
     /// If `pitch` belongs to this `MusicMode`, returns whether it is a
@@ -1180,6 +1190,32 @@ impl MusicMode {
             (self.diatonic_steps_between(self.c_value(), pitch).unwrap(), Some(acc))
         }
     }
+
+    pub fn key_signature(&self) -> KeySignature {
+        if self.is_sharp_key() {
+            KeySignature { notes: Self::traverse_fifths(SHARP_START, |note: &mut ModNumC<usize, DIATONIC_SCALE_SIZE>| *note += 4, self.num_sharps()), accidental: Accidental::Sharp}
+        } else if self.is_flat_key() {
+            KeySignature { notes: Self::traverse_fifths(FLAT_START, |note: &mut ModNumC<usize, DIATONIC_SCALE_SIZE>| *note -= 4, self.num_flats()), accidental: Accidental::Flat}
+        } else {
+            KeySignature { notes: vec![], accidental: Accidental::Natural}
+        }
+    }
+
+    fn traverse_fifths<U: FnMut(&mut ModNumC<usize, DIATONIC_SCALE_SIZE>)>(start: usize, mut update: U, goal: usize) -> Vec<NoteLetter> {
+        let mut notes = vec![];
+        let mut note: ModNumC<usize, DIATONIC_SCALE_SIZE> = ModNumC::new(start);
+        for _ in 0..goal {
+            notes.push(CIRCLE_OF_FIFTHS[note.a()]);
+            update(&mut note);
+        }
+        notes
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct KeySignature {
+    notes: Vec<NoteLetter>,
+    accidental: Accidental
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -2018,5 +2054,26 @@ mod tests {
             (NoteLetter::B, Accidental::Natural),
         ];
         assert_eq!(scale.note_names(), goal);
+    }
+
+    #[test]
+    fn test_key_signature() {
+        let scale = MusicMode::new(ModNumC::new(1), 61);
+        assert_eq!(scale.name(), "C♯ Dorian");
+        assert_eq!(format!("{:?}", scale.key_signature()), "KeySignature { notes: [F, C, G, D, A], accidental: Sharp }");
+    }
+
+    #[test]
+    fn test_key_signature_2() {
+        let scale = MusicMode::new(ModNumC::new(0), 66);
+        assert_eq!(scale.name(), "G♭ Ionian");
+        assert_eq!(format!("{:?}", scale.key_signature()), "KeySignature { notes: [B, E, A, D, G, C], accidental: Flat }");
+    }
+
+    #[test]
+    fn test_key_signature_3() {
+        let scale = MusicMode::new(ModNumC::new(0), 60);
+        assert_eq!(scale.name(), "C Ionian");
+        assert_eq!(format!("{:?}", scale.key_signature()), "KeySignature { notes: [], accidental: Natural }");
     }
 }
