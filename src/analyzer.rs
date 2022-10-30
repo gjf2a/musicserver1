@@ -20,8 +20,23 @@ const DIATONIC_SCALE_HOPS: [MidiByte; DIATONIC_SCALE_SIZE] = [2, 2, 1, 2, 2, 2, 
 
 const MIN_FIGURE_CHOICES: usize = 12;
 
-const NOTE_NAMES: [&str; NOTES_PER_OCTAVE as usize] = [
+const NOTE_NAMES: [&str; USIZE_NOTES_PER_OCTAVE] = [
     "C", "C#/Db", "D", "D#/Eb", "E", "F", "F#/Gb", "G", "G#/Ab", "A", "A#/Bb", "B",
+];
+
+const NOTE_IDS: [(NoteLetter, Accidental); USIZE_NOTES_PER_OCTAVE] = [
+    (NoteLetter::C, Accidental::Natural),
+    (NoteLetter::C, Accidental::Sharp),
+    (NoteLetter::D, Accidental::Natural),
+    (NoteLetter::D, Accidental::Sharp),
+    (NoteLetter::E, Accidental::Natural),
+    (NoteLetter::F, Accidental::Natural),
+    (NoteLetter::F, Accidental::Sharp),
+    (NoteLetter::G, Accidental::Natural),
+    (NoteLetter::G, Accidental::Sharp),
+    (NoteLetter::A, Accidental::Natural),
+    (NoteLetter::A, Accidental::Sharp),
+    (NoteLetter::B, Accidental::Natural)
 ];
 
 const MODE_NAMES: [&str; DIATONIC_SCALE_SIZE] = [
@@ -909,10 +924,38 @@ impl MelodyMaker {
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Sequence)]
+pub enum NoteLetter {
+    A, B, C, D, E, F, G
+}
+
+impl NoteLetter {
+    pub fn next(&self) -> Self {
+        enum_iterator::next_cycle(self).unwrap()
+    }
+
+    pub fn prev(&self) -> Self {
+        enum_iterator::previous_cycle(self).unwrap()
+    }
+
+    pub fn natural_pitch(&self) -> MidiByte {
+        match self {
+            NoteLetter::A => 9,
+            NoteLetter::B => 11,
+            NoteLetter::C => 0,
+            NoteLetter::D => 2,
+            NoteLetter::E => 4,
+            NoteLetter::F => 5,
+            NoteLetter::G => 7,
+        }
+    }
+}
+
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub struct MusicMode {
     root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>,
     octave_notes: [ModNumC<MidiByte, USIZE_NOTES_PER_OCTAVE>; DIATONIC_SCALE_SIZE],
+    intervals: [MidiByte; DIATONIC_SCALE_SIZE]
 }
 
 impl MusicMode {
@@ -920,6 +963,35 @@ impl MusicMode {
         (0..DIATONIC_SCALE_SIZE)
             .map(|i| Self::new(ModNumC::new(i), root_note))
             .collect()
+    }
+
+    pub fn root_name(&self) -> (NoteLetter, Accidental) {
+        let (mut note, mut acc) = NOTE_IDS[self.root() as usize % USIZE_NOTES_PER_OCTAVE];
+        if acc == Accidental::Sharp && self.is_flat_key() {
+            note = note.next();
+            acc = Accidental::Flat;
+        }
+        (note, acc)
+    }
+
+    pub fn note_names(&self) -> [(NoteLetter, Accidental); DIATONIC_SCALE_SIZE] {
+        let root = self.root_name();
+        let mut result = [root; DIATONIC_SCALE_SIZE];
+        for i in 1..result.len() {
+            let note = result[i - 1].0.next();
+            let last_pitch = result[i - 1].0.natural_pitch() + result[i - 1].1.pitch_shift();
+            let mut pitch = note.natural_pitch();
+            if pitch < last_pitch {
+                pitch += NOTES_PER_OCTAVE;
+            }
+            result[i] = (note, match last_pitch + self.intervals[i - 1] - pitch {
+                -1 => Accidental::Flat,
+                0 => Accidental::Natural,
+                1 => Accidental::Sharp,
+                _value => panic!("Pitch distance: {_value} from {:?} to {:?} via {}; shouldn't happen with a diatonic scale!", result[i - 1], note, self.intervals[i - 1])
+            });
+        }
+        result
     }
 
     pub fn name(&self) -> String {
@@ -941,9 +1013,14 @@ impl MusicMode {
             octave_notes[i.a()] += offset;
             offset += DIATONIC_SCALE_HOPS[i.a()];
         }
+        let mut intervals = [0; DIATONIC_SCALE_SIZE];
+        for (i, p) in root_pos.iter().enumerate() {
+            intervals[i] = DIATONIC_SCALE_HOPS[p.a()];
+        }
         MusicMode {
             root_pos,
             octave_notes,
+            intervals
         }
     }
 
@@ -1051,7 +1128,8 @@ impl MusicMode {
     }
 
     pub fn is_flat_key(&self) -> bool {
-        sharps_for(self.root() as usize, self.root_pos.a()) > flats_for(self.root() as usize, self.root_pos.a())
+        let flats = flats_for(self.root() as usize, self.root_pos.a());
+        sharps_for(self.root() as usize, self.root_pos.a()) >= flats && flats > 0
     }
 
     /// If `pitch` belongs to this `MusicMode`, returns whether it is a
@@ -1060,6 +1138,7 @@ impl MusicMode {
     pub fn accidental_for(&self, pitch: MidiByte) -> Option<Accidental> {
         if self.contains(pitch) {
             let name = NOTE_NAMES[(pitch % NOTES_PER_OCTAVE) as usize];
+            //println!("{} {} accidental_for: name: {name} {}", self.name(), self.is_sharp_key(), name.len());
             if name.len() > 1 {
                 if self.is_sharp_key() {
                     Some(Accidental::Sharp)
@@ -1067,11 +1146,19 @@ impl MusicMode {
                     Some(Accidental::Flat)
                 }
             } else {
+                //println!("natural");
                 Some(Accidental::Natural)
             }
         } else {
             None
         }
+    }
+
+    pub fn note_accidental(&self, pitch: MidiByte) -> Option<Accidental> {
+        self.diatonic_degree(pitch).map(|degree| {
+            println!("pitch: {pitch} note_name: {:?} degree: {degree}", self.note_names()[(degree - 1) as usize]);
+            self.note_names()[(degree - 1) as usize].1
+        })
     }
 
     /// Returns 0 for the Middle C/C#/Cb position.
@@ -1082,18 +1169,19 @@ impl MusicMode {
             (self.diatonic_steps_between(self.c_value(), pitch).unwrap(), None)
         } else {
             let mut diatonic_pitch = self.closest_pitch_below(pitch);
-            let output_modifier = match self.accidental_for(diatonic_pitch).unwrap() {
+            println!("diatonic pitch: {diatonic_pitch} {:?}", self.note_accidental(diatonic_pitch));
+            let pitch_accidental = match self.note_accidental(diatonic_pitch).unwrap() {
                 Accidental::Natural => Accidental::Sharp,
                 Accidental::Flat => Accidental::Natural,
                 Accidental::Sharp => {
                     diatonic_pitch = self.closest_pitch_above(pitch);
-                    match self.accidental_for(diatonic_pitch).unwrap() {
+                    match self.note_accidental(diatonic_pitch).unwrap() {
                         Accidental::Sharp => Accidental::Natural,
                         _ => panic!("We are in a sharp key! This can't happen")
                     }
                 }
             };
-            (self.diatonic_steps_between(self.c_value(), diatonic_pitch).unwrap(), Some(output_modifier))
+            (self.diatonic_steps_between(self.c_value(), diatonic_pitch).unwrap(), Some(pitch_accidental))
         }
     }
 }
@@ -1109,6 +1197,14 @@ impl Accidental {
             Accidental::Flat => '\u{266d}',
             Accidental::Natural => '\u{266e}',
             Accidental::Sharp => '\u{266f}'
+        }
+    }
+
+    pub fn pitch_shift(&self) -> MidiByte {
+        match self {
+            Accidental::Flat => -1,
+            Accidental::Natural => 0,
+            Accidental::Sharp => 1,
         }
     }
 }
@@ -1298,7 +1394,7 @@ impl MelodicFigureShape {
 #[cfg(test)]
 mod tests {
     use crate::analyzer::{FigureDirection, FigurePolarity, MelodicFigure, MelodicFigureShape, Melody, MelodyMaker, MusicMode, DIATONIC_SCALE_SIZE, major_sharps_for, major_flats_for, sharps_for, flats_for};
-    use crate::{MidiByte, Note, Accidental};
+    use crate::{MidiByte, Note, Accidental, NoteLetter};
     use bare_metal_modulo::ModNumC;
     use ordered_float::OrderedFloat;
     use std::cmp::{max, min};
@@ -1433,6 +1529,7 @@ mod tests {
                 ModNumC::new(4),
                 ModNumC::new(6),
             ],
+            intervals: [2, 2, 1, 2, 2, 2, 1]
         };
         let steps = mode.diatonic_steps_between(54, 57);
         assert_eq!(steps.unwrap(), 2);
@@ -1451,6 +1548,7 @@ mod tests {
                 ModNumC::new(4),
                 ModNumC::new(6),
             ],
+            intervals: [2, 2, 1, 2, 2, 2, 1]
         };
         println!("mode: {}", mode.name());
         println!("{:?}", mode);
@@ -1858,5 +1956,72 @@ mod tests {
         ] {
             assert_eq!(scale.staff_position(pitch), (position, modifier));
         }
+    }
+
+    #[test]
+    fn test_staff_position_4() {
+        let scale = MusicMode::new(ModNumC::new(0), 66);
+        assert_eq!(scale.name(), "Gb Ionian");
+        assert_eq!(scale.c_value(), 59);
+        for (pitch, position, modifier) in [
+            (49, -6, None),
+            (50, -6, Some(Accidental::Natural)),
+            (51, -5, None),
+            (52, -5, Some(Accidental::Natural)),
+            (53, -4, None),
+            (54, -3, None),
+            (55, -3, Some(Accidental::Natural)),
+            (56, -2, None),
+            (57, -2, Some(Accidental::Natural)),
+            (58, -1, None),
+            (59, 0, None),
+            (60, 0, Some(Accidental::Natural)),
+            (61, 1, None),
+            (62, 1, Some(Accidental::Natural)),
+            (63, 2, None),
+            (64, 2, Some(Accidental::Natural)),
+            (65, 3, None),
+            (66, 4, None),
+            (67, 4, Some(Accidental::Natural)),
+            (68, 5, None),
+            (69, 5, Some(Accidental::Natural)),
+            (70, 6, None),
+            (71, 7, None)
+        ] {
+            println!("{pitch} {position} {modifier:?}");
+            assert_eq!(scale.staff_position(pitch), (position, modifier));
+        }
+    }
+
+    #[test]
+    fn test_note_names_1() {
+        let scale = MusicMode::new(ModNumC::new(0), 66);
+        assert_eq!(scale.name(), "Gb Ionian");
+        let goal = [
+            (NoteLetter::G, Accidental::Flat),
+            (NoteLetter::A, Accidental::Flat),
+            (NoteLetter::B, Accidental::Flat),
+            (NoteLetter::C, Accidental::Flat),
+            (NoteLetter::D, Accidental::Flat),
+            (NoteLetter::E, Accidental::Flat),
+            (NoteLetter::F, Accidental::Natural),
+        ];
+        assert_eq!(scale.note_names(), goal);
+    }
+
+    #[test]
+    fn test_note_names_2() {
+        let scale = MusicMode::new(ModNumC::new(1), 61);
+        assert_eq!(scale.name(), "C# Dorian");
+        let goal = [
+            (NoteLetter::C, Accidental::Sharp),
+            (NoteLetter::D, Accidental::Sharp),
+            (NoteLetter::E, Accidental::Natural),
+            (NoteLetter::F, Accidental::Sharp),
+            (NoteLetter::G, Accidental::Sharp),
+            (NoteLetter::A, Accidental::Sharp),
+            (NoteLetter::B, Accidental::Natural),
+        ];
+        assert_eq!(scale.note_names(), goal);
     }
 }
