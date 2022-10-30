@@ -316,7 +316,7 @@ impl ReplayerApp {
         lo = scale.closest_pitch_below(lo);
         hi = scale.closest_pitch_above(hi);
         let num_diatonic_pitches = max(NUM_DIATONIC_STAFF_NOTES, scale.diatonic_steps_between(lo, hi).unwrap());
-        let y_per_pitch = Self::pixels_per_pitch(response.rect, |p| p.y, BORDER_SIZE, num_diatonic_pitches as f32);
+        let y_per_pitch = Self::pixels_per_pitch(response.rect, |p| p.y, BORDER_SIZE * 2.0, num_diatonic_pitches as f32);
         let staff_line_space = y_per_pitch * 2.0;
 
         let x_range = response.rect.min.x + BORDER_SIZE..=response.rect.max.x - BORDER_SIZE;
@@ -325,9 +325,11 @@ impl ReplayerApp {
         Self::draw_staff(&painter, Clef::Bass, x_range, y_middle_c + staff_line_space, y_per_pitch, y_middle_c, &scale);
 
         let notes_of_interest: Vec<&Note> = melody.iter().filter(|n| n.velocity() > 0).collect();
-        let x_per_pitch = Self::pixels_per_pitch(response.rect, |p| p.x, X_OFFSET, notes_of_interest.len() as f32);
+        let sig = scale.key_signature();
+        let x_left = X_OFFSET + KEY_SIGNATURE_OFFSET + y_per_pitch * sig.len() as f32;
+        let x_per_pitch = Self::pixels_per_pitch(response.rect, |p| p.x, x_left + BORDER_SIZE, notes_of_interest.len() as f32);
         for (i, note) in notes_of_interest.iter().enumerate() {
-            let x = response.rect.min.x + X_OFFSET + i as f32 * x_per_pitch;
+            let x = response.rect.min.x + x_left + i as f32 * x_per_pitch;
             let (staff_offset, auxiliary_symbol) = scale.staff_position(note.pitch());
             let y = y_middle_c - staff_offset as f32 * y_per_pitch;
             let center = Pos2 { x, y };

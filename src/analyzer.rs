@@ -1227,6 +1227,10 @@ impl KeySignature {
         MusicMode::new(ModNumC::new(0), 0)
     }
 
+    pub fn len(&self) -> usize {
+        self.notes.len()
+    }
+
     pub fn symbol(&self) -> Accidental {
         self.accidental
     }
