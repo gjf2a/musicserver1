@@ -1227,6 +1227,10 @@ impl KeySignature {
         MusicMode::new(ModNumC::new(0), 0)
     }
 
+    pub fn symbol(&self) -> Accidental {
+        self.accidental
+    }
+
     fn constrain_up(staff_position: MidiByte) -> MidiByte {
         OffsetNumC::<MidiByte, 7, 5>::new(staff_position).a()
     }

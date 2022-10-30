@@ -4,7 +4,7 @@ use eframe::egui::{Color32, Sense, Vec2, Visuals, Ui, Stroke, Pos2, Align2, Font
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
-use musicserver1::{make_ai_table, make_synth_table, prob_slider, ornament_gap_slider, replay_slider, start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue, SynthTable, Preference, MelodyInfo, Database, start_database_thread, SynthChoice, send_recorded_melody, GuiDatabaseUpdate, Melody, Note, MidiByte};
+use musicserver1::{make_ai_table, make_synth_table, prob_slider, ornament_gap_slider, replay_slider, start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue, SynthTable, Preference, MelodyInfo, Database, start_database_thread, SynthChoice, send_recorded_melody, GuiDatabaseUpdate, Melody, Note, MidiByte, MusicMode, KeySignature, Accidental};
 use std::{mem, thread};
 use std::cmp::max;
 use std::ops::RangeInclusive;
@@ -128,22 +128,29 @@ struct ReplayerApp {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
-enum Clef {
+pub enum Clef {
     Treble, Bass
 }
 
 impl Clef {
-    fn symbol(&self) -> char {
+    pub fn symbol(&self) -> char {
         match self {
-            Clef::Treble => '\u{1d11e}',
-            Clef::Bass => '\u{1d122}'
+            Self::Treble => '\u{1d11e}',
+            Self::Bass => '\u{1d122}'
+        }
+    }
+
+    pub fn key_signature_positions(&self, sig: &KeySignature) -> Vec<MidiByte> {
+        match self {
+            Self::Treble => sig.treble_clef(),
+            Self::Bass => sig.bass_clef()
         }
     }
 
     fn size(&self, y_per_pitch: f32) -> f32 {
         y_per_pitch.powf(2.0) * match self {
-            Clef::Treble => 3.7,
-            Clef::Bass => 6.15
+            Self::Treble => 3.7,
+            Self::Bass => 6.15
         }
     }
 
@@ -153,8 +160,8 @@ impl Clef {
 
     fn y_offset(&self) -> f32 {
         match self {
-            Clef::Treble => 20.0,
-            Clef::Bass => -33.0
+            Self::Treble => 20.0,
+            Self::Bass => -33.0
         }
     }
 
@@ -313,8 +320,8 @@ impl ReplayerApp {
 
         let x_range = response.rect.min.x + BORDER_SIZE..=response.rect.max.x - BORDER_SIZE;
         let y_middle_c = Y_OFFSET + response.rect.min.y + y_per_pitch * MIDDLE_C_Y_MULTIPLIER;
-        Self::draw_staff_lines(&painter, Clef::Treble, x_range.clone(), response.rect.min.y + Y_OFFSET, y_per_pitch);
-        Self::draw_staff_lines(&painter, Clef::Bass, x_range, y_middle_c + staff_line_space, y_per_pitch);
+        Self::draw_staff(&painter, Clef::Treble, x_range.clone(), response.rect.min.y + Y_OFFSET, y_per_pitch, y_middle_c, &scale);
+        Self::draw_staff(&painter, Clef::Bass, x_range, y_middle_c + staff_line_space, y_per_pitch, y_middle_c, &scale);
 
         let notes_of_interest: Vec<&Note> = melody.iter().filter(|n| n.velocity() > 0).collect();
         let x_per_pitch = Self::pixels_per_pitch(response.rect, |p| p.x, X_OFFSET, notes_of_interest.len() as f32);
@@ -325,8 +332,7 @@ impl ReplayerApp {
             let center = Pos2 { x, y };
             painter.circle_filled(center, y_per_pitch, fill_color);
             if let Some(auxiliary_symbol) = auxiliary_symbol {
-                let text = auxiliary_symbol.symbol();
-                painter.text(Pos2 {x: x + staff_line_space, y: y + ACCIDENTAL_Y_OFFSET}, Align2::CENTER_CENTER, text, Self::font_id(ACCIDENTAL_SIZE_MULTIPLIER * y_per_pitch), Color32::BLACK);
+                Self::draw_accidental(&painter, auxiliary_symbol, x + staff_line_space, y, y_per_pitch);
             }
         }
     }
@@ -339,7 +345,7 @@ impl ReplayerApp {
         ((picker(r.max) - picker(r.min)) - border) / item_count
     }
 
-    fn draw_staff_lines(painter: &Painter, clef: Clef, x: RangeInclusive<f32>, start_y: f32, y_per_pitch: f32) {
+    fn draw_staff(painter: &Painter, clef: Clef, x: RangeInclusive<f32>, start_y: f32, y_per_pitch: f32, y_middle_c: f32, scale: &MusicMode) {
         let spacing = y_per_pitch * 2.0;
         let mut y = start_y;
         clef.render(painter, *x.start(), y, y_per_pitch);
@@ -347,6 +353,14 @@ impl ReplayerApp {
             painter.hline(x.clone(), y, Stroke { width: 1.0, color: Color32::BLACK });
             y += spacing;
         }
+        let sig = scale.key_signature();
+        for (i, position) in clef.key_signature_positions(&sig).iter().enumerate() {
+            Self::draw_accidental(painter, sig.symbol(), *x.start() + 4.0 + y_per_pitch * i as f32, *position as f32 * y_per_pitch + y_middle_c, y_per_pitch);
+        }
+    }
+
+    fn draw_accidental(painter: &Painter, text: Accidental, x: f32, y: f32, y_per_pitch: f32) {
+        painter.text(Pos2 {x, y: y + ACCIDENTAL_Y_OFFSET}, Align2::CENTER_CENTER, text.symbol(), Self::font_id(ACCIDENTAL_SIZE_MULTIPLIER * y_per_pitch), Color32::BLACK);
     }
 
     fn melody_buttons(ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>, ui: &mut Ui, info: &MelodyInfo, pref: Arc<AtomicCell<Preference>>, synth: SynthChoice) {
