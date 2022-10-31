@@ -161,7 +161,7 @@ impl Clef {
     fn y_offset(&self) -> f32 {
         match self {
             Self::Treble => 20.0,
-            Self::Bass => -33.0
+            Self::Bass => -29.0
         }
     }
 
@@ -175,7 +175,7 @@ const BORDER_SIZE: f32 = 8.0;
 const Y_OFFSET: f32 = BORDER_SIZE * 2.0;
 const MIDDLE_C_Y_MULTIPLIER: f32 = 10.0;
 const X_OFFSET: f32 = BORDER_SIZE * 5.0;
-const ACCIDENTAL_Y_OFFSET: f32 = -30.0;
+const ACCIDENTAL_Y_OFFSET: f32 = -28.0;
 const ACCIDENTAL_SIZE_MULTIPLIER: f32 = 20.0;
 const KEY_SIGNATURE_OFFSET: f32 = 28.0;
 
@@ -268,19 +268,6 @@ impl ReplayerApp {
     fn display_melody_info(&mut self, ui: &mut Ui) {
         let mut melody_var_info = self.melody_var_info.lock().unwrap();
         let (melody_info, variation_info) = melody_var_info.get().cloned().unwrap();
-        /*
-        {
-            let melody_scale_1 = melody_info.get_scale_name();
-            let variation_scale_1 = variation_info.get_scale_name();
-            println!("1: melody: {melody_scale_1} variation: {variation_scale_1}");
-            let melody_scale_2 = melody_info.melody().best_scale_for().name();
-            let variation_scale_2 = variation_info.melody().best_scale_for().name();
-            println!("2: melody: {melody_scale_2} variation: {variation_scale_2}");
-            assert_eq!(melody_scale_1, melody_scale_2);
-            assert_eq!(variation_scale_1, variation_scale_2);
-        }
-
-         */
 
         ui.horizontal(|ui| {
             if !melody_var_info.at_start() && ui.button("<").clicked() {
@@ -322,7 +309,7 @@ impl ReplayerApp {
     /// * Font: [Bravura](https://github.com/steinbergmedia/bravura)
     /// * [Unicode for a few symbols](https://www.compart.com/en/unicode/block/U+2600)
     /// * [Unicode for the remaining symbols](https://unicode.org/charts/PDF/U1D100.pdf)
-    fn draw_melody(ui: &mut Ui, melody: &Melody, size: Vec2, fill_color: Color32) {
+    pub fn draw_melody(ui: &mut Ui, melody: &Melody, size: Vec2, fill_color: Color32) {
         let (response, painter) = ui.allocate_painter(size, Sense::hover());
         let scale = melody.best_scale_for();
         let (mut lo, mut hi) = melody.min_max_pitches();
