@@ -260,7 +260,9 @@ impl ReplayerApp {
             };
 
             if !empty {
+                self.validate_melody_var_info();
                 self.display_melody_info(ui);
+                self.validate_melody_var_info();
             }
         });
     }
@@ -268,6 +270,19 @@ impl ReplayerApp {
     fn display_melody_info(&mut self, ui: &mut Ui) {
         let mut melody_var_info = self.melody_var_info.lock().unwrap();
         let (melody_info, variation_info) = melody_var_info.get().cloned().unwrap();
+        /*
+        {
+            let melody_scale_1 = melody_info.get_scale_name();
+            let variation_scale_1 = variation_info.get_scale_name();
+            println!("1: melody: {melody_scale_1} variation: {variation_scale_1}");
+            let melody_scale_2 = melody_info.melody().best_scale_for().name();
+            let variation_scale_2 = variation_info.melody().best_scale_for().name();
+            println!("2: melody: {melody_scale_2} variation: {variation_scale_2}");
+            assert_eq!(melody_scale_1, melody_scale_2);
+            assert_eq!(variation_scale_1, variation_scale_2);
+        }
+
+         */
 
         ui.horizontal(|ui| {
             if !melody_var_info.at_start() && ui.button("<").clicked() {
@@ -531,6 +546,8 @@ impl ReplayerApp {
         thread::spawn(move || {
             loop {
                 if let Some((player_info, variation_info)) = dbase2gui.pop() {
+                    player_info.validate();
+                    variation_info.validate();
                     melody_pref.store(player_info.get_rating());
                     variation_pref.store(variation_info.get_rating());
                     let mut melody_var_info = melody_var_info.lock().unwrap();
@@ -545,6 +562,15 @@ impl ReplayerApp {
     fn set_in_port_name(&mut self, in_port: &MidiInputPort) {
         let midi_in = self.midi_in.lock().unwrap();
         self.in_port_name = midi_in.as_ref().and_then(|m| m.port_name(in_port).ok());
+    }
+
+    fn validate_melody_var_info(&self) {
+        let melody_var_info = self.melody_var_info.lock().unwrap();
+        for i in 0..melody_var_info.items.len() {
+            let (melody_info, var_info) = &melody_var_info.items[i];
+            melody_info.validate();
+            var_info.validate();
+        }
     }
 }
 

@@ -366,7 +366,7 @@ impl Melody {
     }
 
     pub fn best_scale_for(&self) -> MusicMode {
-        let mut mode_weights = HashMap::new();
+        let mut mode_weights = BTreeMap::new();
         for mode in MusicMode::all_modes_for(self.find_root_pitch()).iter() {
             for n in self.notes.iter().filter(|n| mode.contains(n.pitch)) {
                 bump_ref_by!(mode_weights, mode, n.duration);
@@ -950,7 +950,7 @@ impl NoteLetter {
     }
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
 pub struct MusicMode {
     root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>,
     octave_notes: [ModNumC<MidiByte, USIZE_NOTES_PER_OCTAVE>; DIATONIC_SCALE_SIZE],

@@ -35,6 +35,8 @@ pub fn start_database_thread(
 
             if let Some(msg) = ai2dbase.pop() {
                 let info = database.add_melody_and_variation(&msg.melody, &msg.variation).unwrap();
+                info.0.validate();
+                info.1.validate();
                 dbase2gui.push(info);
             }
         }
@@ -124,7 +126,9 @@ impl Database {
 
     pub fn add_melody_and_variation(&mut self, melody: &Melody, variation: &Melody) -> anyhow::Result<(MelodyInfo, MelodyInfo)> {
         let player_info = self.store_melody(melody)?;
+        player_info.validate();
         let variation_info = self.store_melody(variation)?;
+        variation_info.validate();
         let connection = self.get_connection()?;
         connection.prepare("INSERT INTO melody_variation (melody_row, variation_row) VALUES (?,?)")?
             .bind(1, player_info.rowid)?
@@ -159,13 +163,19 @@ impl Database {
                 .next().unwrap();
         }
 
+        assert_eq!(scale, melody.best_scale_for());
         let info = MelodyInfo { rowid, timestamp, tag: tag.to_string(), rating, scale_name: scale.name(), melody: melody.clone() };
+        let info2 = info.clone();
+        info2.validate();
+        info.validate();
         self.melody_cache.insert(info.rowid, melody.clone());
+        assert_eq!(info, info2);
+        info.validate();
         Ok(info)
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MelodyInfo {
     rowid: i64,
     timestamp: i64,
@@ -176,6 +186,10 @@ pub struct MelodyInfo {
 }
 
 impl MelodyInfo {
+    pub fn validate(&self) {
+        assert_eq!(self.melody.best_scale_for().name(), self.get_scale_name());
+    }
+
     pub fn get_row_id(&self) -> i64 {
         self.rowid
     }
