@@ -260,9 +260,7 @@ impl ReplayerApp {
             };
 
             if !empty {
-                self.validate_melody_var_info();
                 self.display_melody_info(ui);
-                self.validate_melody_var_info();
             }
         });
     }
@@ -546,8 +544,6 @@ impl ReplayerApp {
         thread::spawn(move || {
             loop {
                 if let Some((player_info, variation_info)) = dbase2gui.pop() {
-                    player_info.validate();
-                    variation_info.validate();
                     melody_pref.store(player_info.get_rating());
                     variation_pref.store(variation_info.get_rating());
                     let mut melody_var_info = melody_var_info.lock().unwrap();
@@ -562,15 +558,6 @@ impl ReplayerApp {
     fn set_in_port_name(&mut self, in_port: &MidiInputPort) {
         let midi_in = self.midi_in.lock().unwrap();
         self.in_port_name = midi_in.as_ref().and_then(|m| m.port_name(in_port).ok());
-    }
-
-    fn validate_melody_var_info(&self) {
-        let melody_var_info = self.melody_var_info.lock().unwrap();
-        for i in 0..melody_var_info.items.len() {
-            let (melody_info, var_info) = &melody_var_info.items[i];
-            melody_info.validate();
-            var_info.validate();
-        }
     }
 }
 
