@@ -175,7 +175,6 @@ const BORDER_SIZE: f32 = 8.0;
 const Y_OFFSET: f32 = BORDER_SIZE * 2.0;
 const MIDDLE_C_Y_MULTIPLIER: f32 = 10.0;
 const X_OFFSET: f32 = BORDER_SIZE * 5.0;
-const ACCIDENTAL_Y_OFFSET: f32 = 0.0;//-28.0;
 const ACCIDENTAL_SIZE_MULTIPLIER: f32 = 5.0;
 const KEY_SIGNATURE_OFFSET: f32 = 28.0;
 
@@ -373,7 +372,7 @@ impl ReplayerApp {
     }
 
     fn draw_accidental(painter: &Painter, text: Accidental, x: f32, y: f32, y_per_pitch: f32) {
-        painter.text(Pos2 {x, y: y + ACCIDENTAL_Y_OFFSET}, Align2::CENTER_CENTER, text.symbol(), Self::font_id(ACCIDENTAL_SIZE_MULTIPLIER * y_per_pitch), Color32::BLACK);
+        painter.text(Pos2 {x, y}, Align2::CENTER_CENTER, text.symbol(), Self::font_id(ACCIDENTAL_SIZE_MULTIPLIER * y_per_pitch), Color32::BLACK);
     }
 
     fn melody_buttons(ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>, ui: &mut Ui, info: &MelodyInfo, pref: Arc<AtomicCell<Preference>>, synth: SynthChoice) {
