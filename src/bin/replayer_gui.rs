@@ -150,7 +150,7 @@ impl Clef {
     fn size(&self, y_per_pitch: f32) -> f32 {
         y_per_pitch.powf(2.0) * match self {
             Self::Treble => 3.7,
-            Self::Bass => 1.5
+            Self::Bass => 2.0
         }
     }
 
@@ -161,7 +161,7 @@ impl Clef {
     fn y_offset(&self) -> f32 {
         match self {
             Self::Treble => 20.0,
-            Self::Bass => 0.0
+            Self::Bass => -2.75
         }
     }
 
