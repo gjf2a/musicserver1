@@ -150,7 +150,7 @@ impl Clef {
     fn size(&self, y_per_pitch: f32) -> f32 {
         y_per_pitch.powf(2.0) * match self {
             Self::Treble => 3.7,
-            Self::Bass => 6.15
+            Self::Bass => 1.5
         }
     }
 
@@ -161,7 +161,7 @@ impl Clef {
     fn y_offset(&self) -> f32 {
         match self {
             Self::Treble => 20.0,
-            Self::Bass => -29.0
+            Self::Bass => 0.0
         }
     }
 
@@ -175,9 +175,21 @@ const BORDER_SIZE: f32 = 8.0;
 const Y_OFFSET: f32 = BORDER_SIZE * 2.0;
 const MIDDLE_C_Y_MULTIPLIER: f32 = 10.0;
 const X_OFFSET: f32 = BORDER_SIZE * 5.0;
-const ACCIDENTAL_Y_OFFSET: f32 = -28.0;
-const ACCIDENTAL_SIZE_MULTIPLIER: f32 = 20.0;
+const ACCIDENTAL_Y_OFFSET: f32 = 0.0;//-28.0;
+const ACCIDENTAL_SIZE_MULTIPLIER: f32 = 5.0;
 const KEY_SIGNATURE_OFFSET: f32 = 28.0;
+
+macro_rules! load_font {
+    ($fonts:ident, $filename:literal) => {
+        {
+            let name = $filename.split("/").last().unwrap().split(".").next().unwrap().to_owned();
+            println!("Loading font {name} from {}.", $filename);
+            $fonts.font_data.insert(name.clone(),
+                                   FontData::from_static(include_bytes!($filename)));
+            $fonts.families.get_mut(&FontFamily::Proportional).unwrap().push(name);
+        }
+    }
+}
 
 impl ReplayerApp {
     fn new(cc: &eframe::CreationContext<'_>) -> anyhow::Result<Self> {
@@ -186,9 +198,7 @@ impl ReplayerApp {
         // Use the cc.gl (a glow::Context) to create graphics shaders and buffers that you can use
         // for e.g. egui::PaintCallback.
         let mut fonts = FontDefinitions::default();
-        fonts.font_data.insert("Bravura".to_owned(),
-                               FontData::from_static(include_bytes!("../../bravura/Bravura.otf")));
-        fonts.families.get_mut(&FontFamily::Proportional).unwrap().push("Bravura".to_owned());
+        load_font!(fonts, "../../bravura/BravuraText.otf");
         cc.egui_ctx.set_fonts(fonts);
 
         let ai_table = make_ai_table();
