@@ -9,6 +9,7 @@ use rand::prelude::SliceRandom;
 use std::cmp::{max, min};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::time::Instant;
+use crate::{find_maximal_repeated_subs, Subsequences};
 
 pub type MidiByte = i16;
 
@@ -561,7 +562,7 @@ impl MelodyMaker {
         for length in FIGURE_LENGTHS.iter() {
             if let Some(pitches) = melody.pitch_subsequence_at(start, *length) {
                 if let Some(step_gap) = scale.diatonic_steps_between(*pitches.first().unwrap(), *pitches.last().unwrap()) {
-                    if let Some(candidates) = self.figure_tables.get(length).unwrap().get(&step_gap) {
+                    if let Some(candidates) = self.figure_candidates(*length, step_gap) {
                         for candidate in candidates.iter() {
                             if let Some(match_len) = candidate.match_length(melody, &scale, start) {
                                 return Some((*candidate, match_len));
@@ -572,6 +573,10 @@ impl MelodyMaker {
             }
         }
         None
+    }
+
+    pub fn figure_candidates(&self, figure_length: usize, step_gap: MidiByte) -> Option<&Vec<MelodicFigure>> {
+        self.figure_tables.get(&figure_length).unwrap().get(&step_gap)
     }
 
     pub fn ornamented(&self, melody: &Melody, p_ornament: f64, ornament_gap: i64) -> Melody {
@@ -920,6 +925,38 @@ impl MelodyMaker {
         for (original, mapped) in self.figure_mappings.iter() {
             println!("{:?} -> {:?}", original, mapped);
         }
+    }
+
+    const MIN_MOTIVE_LEN: usize = 4;
+
+    pub fn create_motive_variation(&mut self, original: &Melody, p_remap: f64) -> Melody {
+        let consolidated = original.get_consolidated_notes();
+        let consolidated_melody = Melody {notes: consolidated.iter().map(|(_,n)| *n).collect()};
+        let intervals = consolidated_melody.diatonic_intervals();
+        let subs = find_maximal_repeated_subs(&intervals, Self::MIN_MOTIVE_LEN);
+        panic!("implmentation incomplete!");
+    }
+}
+
+pub struct MelodySection {
+    intervals: Vec<Option<MidiByte>>,
+    starts: Vec<usize>
+}
+
+impl MelodySection {
+    pub fn from(subs: &Vec<Subsequences>, intervals: &Vec<Option<MidiByte>>, consolidated: &Vec<(usize, Note)>) -> Vec<Self> {
+        let mut result = vec![];
+        for sub in subs.iter() {
+            let starts = sub.starts().iter().map(|s| consolidated[*s].0).collect();
+            let start = sub.starts().iter().next().copied().unwrap();
+            let intervals = (0..(sub.sub_len())).map(|i| intervals[i + start]).collect();
+            result.push(MelodySection { intervals, starts});
+        }
+        result
+    }
+
+    pub fn vary(&mut self, replace_prob: f64, maker: &MelodyMaker) {
+
     }
 }
 

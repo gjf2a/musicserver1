@@ -35,6 +35,10 @@ impl Subsequences {
     fn len(&self) -> usize {
         self.starts.len()
     }
+
+    pub fn sub_len(&self) -> usize {self.length}
+
+    pub fn starts(&self) -> &Vec<usize> {&self.starts}
 }
 
 fn find_subs_of_length<T: SeqItem>(items: &Vec<T>, length: usize) -> Vec<Subsequences> {
@@ -42,18 +46,8 @@ fn find_subs_of_length<T: SeqItem>(items: &Vec<T>, length: usize) -> Vec<Subsequ
     for i in 0..=items.len() - length {
         let sub: Vec<T> = items[i..i + length].iter().copied().collect();
         match value2seq.get_mut(&sub) {
-            None => {
-                value2seq.insert(
-                    sub,
-                    Subsequences {
-                        length,
-                        starts: vec![i],
-                    },
-                );
-            }
-            Some(subseq) => {
-                subseq.starts.push(i);
-            }
+            None => {value2seq.insert(sub, Subsequences {length, starts: vec![i]});}
+            Some(subseq) => {subseq.starts.push(i);}
         }
     }
     value2seq
