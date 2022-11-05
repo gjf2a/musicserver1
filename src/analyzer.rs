@@ -955,8 +955,39 @@ impl MelodySection {
         result
     }
 
-    pub fn vary(&mut self, replace_prob: f64, maker: &MelodyMaker) {
-
+    pub fn vary(&mut self, replace_prob: f64, maker: &mut MelodyMaker) {
+        let mut rng = rand::thread_rng();
+        let mut i = 0;
+        loop {
+            let figure_length = FIGURE_LENGTHS.choose(&mut rng).unwrap();
+            let figure_end = i + figure_length - 2;
+            if figure_end >= self.intervals.len() {
+                break;
+            }
+            let mut replaced = false;
+            if rand::random::<f64>() < replace_prob {
+                if let Some(end) = self.intervals[figure_end] {
+                    if let Some(start) = self.intervals[i] {
+                        let step_gap = end - start;
+                        if let Some(figure_candidates) = maker.figure_candidates(*figure_length, step_gap) {
+                            if let Some(figure) = figure_candidates.choose(&mut rng).copied() {
+                                let replacement = maker.pick_figure(figure);
+                                if replacement != figure {
+                                    for (j, interval) in replacement.pattern().iter().enumerate() {
+                                        self.intervals[i + j] = Some(*interval);
+                                    }
+                                    i = figure_end;
+                                    replaced = true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if !replaced {
+                i += 1;
+            }
+        }
     }
 }
 
