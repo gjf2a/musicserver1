@@ -1188,10 +1188,16 @@ impl MusicMode {
         }
     }
 
-    /// Returns the diatonic pitch `scale_steps_away` from `reference_pitch`, if it exists.
-    /// If not, rounds `reference_pitch` up to the next pitch that is within the scale.
+    /// Returns the diatonic pitch `scale_steps_away` from `reference_pitch`.
+    /// If `reference_pitch` is not a member of `self`'s scale:
+    /// * First, it adds the `chroma` value from `scale_steps_away`, and sees if
+    ///   the resulting pitch is now a member of the scale. As part of that process,
+    ///   it resets the `chroma` to zero in `scale_steps_away`.
+    /// * Next, if that adjustment fails, it rounds the adjusted `reference_pitch` up to
+    ///   the next pitch that is within the scale.
     pub fn next_pitch(&self, reference_pitch: MidiByte, scale_steps_away: DiatonicInterval) -> MidiByte {
         assert!(reference_pitch < MidiByte::MAX);
+        let (reference_pitch, scale_steps_away) = self.reference_on_scale(reference_pitch, scale_steps_away);
         let mut octaves_up = reference_pitch / NOTES_PER_OCTAVE;
         let i = self.closest_position_for(reference_pitch);
         let ref_octave_basis = self.octave_notes[i].a();
@@ -1204,7 +1210,15 @@ impl MusicMode {
             octaves_up -= 1;
         }
         octaves_up += scale_steps_away.degree / 7;
-        next_octave_basis + octaves_up * NOTES_PER_OCTAVE
+        scale_steps_away.chroma + next_octave_basis + octaves_up * NOTES_PER_OCTAVE
+    }
+
+    fn reference_on_scale(&self, reference_pitch: MidiByte, scale_steps_away: DiatonicInterval) -> (MidiByte, DiatonicInterval) {
+        if self.contains(reference_pitch) {
+            (reference_pitch, scale_steps_away)
+        } else {
+            (reference_pitch + scale_steps_away.chroma, DiatonicInterval::pure(scale_steps_away.degree))
+        }
     }
 
     pub fn closest_position_for(&self, reference_pitch: MidiByte) -> usize {
@@ -2320,5 +2334,35 @@ mod tests {
         let scale = MusicMode::new(ModNumC::new(5), 62);
         assert_eq!(scale.name(), "D Aeolian");
         assert_eq!(format!("{:?}", scale.key_signature()), "KeySignature { notes: [B], accidental: Flat }");
+    }
+
+    #[test]
+    fn test_next_non_diatonic() {
+        let root = 60;
+        let scale = MusicMode::new(ModNumC::new(0), root);
+        assert_eq!(scale.name(), "C Ionian");
+        for (i, (degree, chroma)) in [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (3, 0), (3, 1), (4, 0), (4, 1), (5, 0), (5, 1), (6, 0), (7, 0)].iter().enumerate() {
+            assert_eq!(root + i as MidiByte, scale.next_pitch(root, DiatonicInterval::chromatic(*degree, *chroma)));
+        }
+        for (i, (degree, chroma)) in [(0, 0), (-1, 0), (-1, -1), (-2, 0), (-2, -1), (-3, 0), (-3, -1), (-4, 0), (-5, 0), (-5, -1), (-6, 0), (-6, -1), (-7, 0)].iter().enumerate() {
+            assert_eq!(root - i as MidiByte, scale.next_pitch(root, DiatonicInterval::chromatic(*degree, *chroma)));
+        }
+    }
+
+    #[test]
+    fn test_next_chromatic_reference() {
+        let scale = MusicMode::new(ModNumC::new(0), 60);
+        assert_eq!(scale.name(), "C Ionian");
+        for (start, (degree, chroma), expected) in [
+            (61, (0, 0), 62),
+            (61, (0, 1), 62),
+            (61, (1, 0), 64),
+            (61, (1, 1), 64),
+            (63, (1, -1), 64)
+        ] {
+            let n = scale.next_pitch(start, DiatonicInterval::chromatic(degree, chroma));
+            println!("{n}: {start} ({degree} {chroma}) {expected}");
+            assert_eq!(expected, n);
+        }
     }
 }
