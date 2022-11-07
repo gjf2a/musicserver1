@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::ops::Range;
 use trait_set::trait_set;
 use vecmap::VecMap;
 
@@ -42,31 +43,25 @@ impl Subsequences {
             .collect::<Vec<_>>();
     }
 
-    fn supersedes(&self, start: usize, length: usize) -> bool {
-        self.starts.iter().any(|self_start| {
-            let my_range = *self_start..(self_start + self.length);
-            self.length >= length
-                && my_range.contains(&start)
-                && my_range.contains(&(start + length - 1))
-        })
-    }
-
-    fn remove_superseded(&mut self, other: &Subsequences) {
-        self.starts = self
-            .starts
-            .iter()
-            .filter(|start| !other.supersedes(**start, self.length))
-            .copied()
-            .collect::<Vec<_>>();
-    }
-
     fn num_repeats(&self) -> usize {
         self.starts.len()
+    }
+
+    fn ranges(&self) -> Vec<Range<usize>> {
+        self.starts.iter().map(|s| *s..*s + self.length).collect()
     }
 
     pub fn sub_len(&self) -> usize {self.length}
 
     pub fn starts(&self) -> &Vec<usize> {&self.starts}
+}
+
+fn all_independent(subs: &Vec<Subsequences>) -> bool {
+    let mut ranges = vec![];
+    for sub in subs.iter() {
+        ranges.append(&mut sub.ranges());
+    }
+    (0..ranges.len()).all(|i| (0..i).all(|j| !ranges[i].contains(&ranges[j].start)))
 }
 
 fn find_subs_of_length<T: SeqItem>(items: &Vec<T>, length: usize) -> Vec<Subsequences> {
@@ -89,15 +84,11 @@ pub fn find_maximal_repeated_subs<T: SeqItem>(items: &Vec<T>, min_repeats: usize
     let mut result = vec![];
     for length in (min_length..=items.len()).rev() {
         for mut sub in find_subs_of_length(&items, length) {
-            //println!("considering {sub:?}");
             sub.remove_internal_overlaps();
-            //println!("After internal purge: {sub:?}");
             for result_sub in result.iter() {
                 sub.remove_overlaps(result_sub);
             }
-            //println!("After external purge: {sub:?}");
             if sub.num_repeats() >= min_repeats {
-                //println!("Keeping");
                 result.push(sub);
             }
         }
@@ -107,7 +98,7 @@ pub fn find_maximal_repeated_subs<T: SeqItem>(items: &Vec<T>, min_repeats: usize
 
 #[cfg(test)]
 mod tests {
-    use crate::subsequence_finder::{find_maximal_repeated_subs, Subsequences};
+    use crate::subsequence_finder::{all_independent, find_maximal_repeated_subs, Subsequences};
     use vecmap::VecSet;
 
     #[test]
@@ -138,13 +129,14 @@ mod tests {
         for sub in subs.iter() {
             assert!(expected.contains(&sub));
         }
+        assert!(all_independent(&subs));
     }
 
     #[test]
     fn lean_on_test() {
         let lean_on_intervals = vec![1, 1, 1, -1, -1, 1, -1, -1, 1, 1, -1, 1, -2, 1, 1, 1, -1, 1, -1, -1, 1, -4, 5, -1, -5, 4, -1];
-        let subs = find_maximal_repeated_subs(&lean_on_intervals, 2, 4);
-        println!("{subs:?}");
-        // 0-3, 4-8, 8-11, 13-16, 14-17, 16-20
+        let subs = find_maximal_repeated_subs(&lean_on_intervals, 2, 2);
+        assert_eq!(format!("{subs:?}"), "[Subsequences { length: 5, starts: [4, 16] }, Subsequences { length: 3, starts: [0, 13] }]");
+        assert!(all_independent(&subs));
     }
 }
