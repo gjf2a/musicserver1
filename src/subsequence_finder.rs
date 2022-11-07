@@ -13,6 +13,35 @@ pub struct Subsequences {
 }
 
 impl Subsequences {
+    fn overlaps(&self, start: usize, length: usize) -> bool {
+        let end = start + length - 1;
+        self.starts.iter().any(|self_start| {
+            let self_range = *self_start..(self_start + self.length);
+            self_range.contains(&start) || self_range.contains(&end)
+        })
+    }
+
+    fn remove_internal_overlaps(&mut self) {
+        if self.starts.len() > 0 {
+            let mut purged_starts = vec![self.starts[0]];
+            for start in self.starts.iter().skip(1) {
+                if !purged_starts.iter().any(|ps| ps + self.length > *start) {
+                    purged_starts.push(*start);
+                }
+            }
+            self.starts = purged_starts;
+        }
+    }
+
+    fn remove_overlaps(&mut self, other: &Subsequences) {
+        self.starts = self
+            .starts
+            .iter()
+            .filter(|start| !other.overlaps(**start, self.length))
+            .copied()
+            .collect::<Vec<_>>();
+    }
+
     fn supersedes(&self, start: usize, length: usize) -> bool {
         self.starts.iter().any(|self_start| {
             let my_range = *self_start..(self_start + self.length);
@@ -31,7 +60,7 @@ impl Subsequences {
             .collect::<Vec<_>>();
     }
 
-    fn len(&self) -> usize {
+    fn num_repeats(&self) -> usize {
         self.starts.len()
     }
 
@@ -56,14 +85,19 @@ fn find_subs_of_length<T: SeqItem>(items: &Vec<T>, length: usize) -> Vec<Subsequ
         .collect()
 }
 
-pub fn find_maximal_repeated_subs<T: SeqItem>(items: &Vec<T>, min_sub_length: usize) -> Vec<Subsequences> {
+pub fn find_maximal_repeated_subs<T: SeqItem>(items: &Vec<T>, min_repeats: usize, min_length: usize) -> Vec<Subsequences> {
     let mut result = vec![];
-    for length in (1..=items.len()).rev() {
+    for length in (min_length..=items.len()).rev() {
         for mut sub in find_subs_of_length(&items, length) {
+            //println!("considering {sub:?}");
+            sub.remove_internal_overlaps();
+            //println!("After internal purge: {sub:?}");
             for result_sub in result.iter() {
-                sub.remove_superseded(result_sub);
+                sub.remove_overlaps(result_sub);
             }
-            if sub.len() >= min_sub_length {
+            //println!("After external purge: {sub:?}");
+            if sub.num_repeats() >= min_repeats {
+                //println!("Keeping");
                 result.push(sub);
             }
         }
@@ -83,17 +117,14 @@ mod tests {
             0, 1, 0, 0, 0, 0, 2, 0, 0, 0, 2, 0, -1, 0, -1, 0, 7, 0, -7, 0, -1, 0, -2, 0, 1, 0, -2,
             0, 1, 0, 1, 0, 0, 0, -1, 0, -1, 0, 1, 0, 1, 0, -2, 0,
         ];
-        let subs = find_maximal_repeated_subs(&example, 2);
+        let subs = find_maximal_repeated_subs(&example, 2, 1);
         let expected: VecSet<Subsequences> = [
             (15, vec![10, 46]),
-            (7, vec![4, 36]),
-            (6, vec![20, 27]),
-            (5, vec![0, 42]),
-            (5, vec![8, 60]),
-            (5, vec![23, 58]),
+            (6, vec![4, 36]),
             (5, vec![25, 62]),
-            (5, vec![30, 34]),
-            (1, vec![68, 70]),
+            (4, vec![0, 42]),
+            (2, vec![31, 34]),
+            (1, vec![30, 68, 70]),
         ]
         .iter()
         .map(|(length, starts)| Subsequences {
@@ -102,9 +133,18 @@ mod tests {
         })
         .collect();
 
+        assert_eq!(subs.len(), expected.len());
+
         for sub in subs.iter() {
-            println!("{sub:?}");
             assert!(expected.contains(&sub));
         }
+    }
+
+    #[test]
+    fn lean_on_test() {
+        let lean_on_intervals = vec![1, 1, 1, -1, -1, 1, -1, -1, 1, 1, -1, 1, -2, 1, 1, 1, -1, 1, -1, -1, 1, -4, 5, -1, -5, 4, -1];
+        let subs = find_maximal_repeated_subs(&lean_on_intervals, 2, 4);
+        println!("{subs:?}");
+        // 0-3, 4-8, 8-11, 13-16, 14-17, 16-20
     }
 }

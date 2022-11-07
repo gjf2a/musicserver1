@@ -233,6 +233,15 @@ impl Melody {
         Melody { notes: vec![] }
     }
 
+    /// This method exists solely for debugging purposes, to give a more concise
+    /// representation than the `Debug` version.
+    pub fn tuple_print(&self) {
+        for n in self.notes.iter() {
+            print!("({}, {}, {}), ", n.pitch, n.duration.into_inner(), n.velocity);
+        }
+        println!();
+    }
+
     pub fn duration(&self) -> f64 {
         self.notes.iter().map(|n| n.duration.into_inner()).sum()
     }
@@ -936,13 +945,10 @@ impl MelodyMaker {
     }
 
     const MIN_MOTIVE_LEN: usize = 4;
+    const MIN_MOTIVE_REPETITIONS: usize = 2;
 
     pub fn create_motive_variation(&mut self, original: &Melody, p_remap: f64) -> Melody {
-        let consolidated = original.get_consolidated_notes();
-        let consolidated_melody = Melody {notes: consolidated.iter().map(|(_,n)| *n).collect()};
-        let intervals = consolidated_melody.diatonic_intervals();
-        let subs = find_maximal_repeated_subs(&intervals, Self::MIN_MOTIVE_LEN);
-        let mut sections = MelodySection::from(&subs, &intervals, &consolidated);
+        let mut sections = self.get_melody_sections(original);
         for section in sections.iter_mut() {
             section.vary(p_remap, self);
         }
@@ -952,8 +958,20 @@ impl MelodyMaker {
         }
         variation
     }
+
+    pub fn get_melody_sections(&self, melody: &Melody) -> Vec<MelodySection> {
+        let consolidated = melody.get_consolidated_notes();
+        let consolidated_melody = Melody {notes: consolidated.iter().map(|(_,n)| *n).collect()};
+        consolidated_melody.tuple_print();
+        let intervals = consolidated_melody.diatonic_intervals();
+        println!("{:?}", intervals.iter().map(|d| (d.degree, d.chroma)).collect::<Vec<_>>());
+        let subs = find_maximal_repeated_subs(&intervals, Self::MIN_MOTIVE_REPETITIONS, Self::MIN_MOTIVE_LEN);
+        println!("{subs:?}");
+        MelodySection::from(&subs, &intervals, &consolidated)
+    }
 }
 
+#[derive(Clone, Debug)]
 pub struct MelodySection {
     intervals: Vec<DiatonicInterval>,
     starts: Vec<usize>
@@ -1013,7 +1031,7 @@ impl MelodySection {
         }
     }
 
-    pub fn remelodize_at(&self, melody: &mut Melody, start: usize, scale: &MusicMode) {
+    fn remelodize_at(&self, melody: &mut Melody, start: usize, scale: &MusicMode) {
         let mut pitch = melody[start].pitch;
         let mut i = 0;
         let mut m = start;
@@ -1026,6 +1044,7 @@ impl MelodySection {
             }
             if last_pitch != melody[m].pitch {
                 pitch = scale.next_pitch(pitch, self.intervals[i]);
+                i += 1;
             }
         }
     }
@@ -2364,5 +2383,18 @@ mod tests {
             println!("{n}: {start} ({degree} {chroma}) {expected}");
             assert_eq!(expected, n);
         }
+    }
+
+    const LEAN_ON_ME: [(MidiByte, f64, MidiByte); 62] = [(60, 0.487445772, 92), (60, 0.377421752, 0), (60, 0.289316858, 93), (60, 0.005971111, 0), (62, 0.248933836, 102), (62, 0.05767016, 0), (64, 0.25962179, 113), (64, 0.229479448, 0), (65, 0.317320844, 4), (65, 0.042830378, 0), (65, 0.582655121, 70), (65, 0.50379576, 0), (65, 0.250825755, 106), (65, 0.017210736, 0), (64, 0.272029135, 100), (64, 0.027428442, 0), (62, 1.126041184, 99), (64, 0.548192689, 99), (62, 0.273066185, 99), (60, 0.60045823, 117), (60, 0.450277594, 0), (60, 0.269494265, 85), (60, 0.003552609, 0), (62, 0.267746147, 96), (62, 0.016828202, 0), (64, 0.382390025, 123), (64, 0.128571533, 0), (64, 0.699718069, 113), (64, 0.126759354, 0), (62, 0.867493649, 117), (62, 0.46433006, 0), (64, 0.268483555, 106), (60, 1.323782698, 106), (60, 0.247095603, 100), (60, 0.026361804, 0), (62, 0.312539865, 30), (62, 0.008570104, 0), (64, 0.267542603, 100), (64, 0.05672056, 0), (65, 0.60457732, 110), (65, 0.537155291, 0), (65, 0.271879248, 113), (65, 0.06866826, 0), (64, 0.253815119, 88), (64, 0.10896619, 0), (65, 1.4822801190000001, 78), (64, 0.362781309, 78), (62, 0.202632925, 78), (64, 0.651313167, 118), (64, 0.412422427, 0), (64, 0.315570477, 86), (64, 0.032453773, 0), (57, 1.254315847, 92), (65, 0.321109969, 92), (64, 0.64096164, 117), (64, 0.485079544, 0), (55, 0.530547672, 94), (55, 0.017645017, 0), (62, 0.263664442, 125), (62, 0.009401743, 0), (60, 0.670999911, 111), (60, 1.5000003039999998, 0)];
+
+    #[test]
+    fn test_melody_sections() {
+        let maker = MelodyMaker::new();
+        let mut melody = Melody::new();
+        for (pitch, duration, velocity) in LEAN_ON_ME.iter().copied() {
+            melody.add(Note::new(pitch, duration, velocity));
+        }
+        assert_eq!(melody.len(), LEAN_ON_ME.len());
+        println!("{:?}", maker.get_melody_sections(&melody));
     }
 }
