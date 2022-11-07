@@ -1,10 +1,9 @@
 use std::fmt::Debug;
-use std::hash::Hash;
 use trait_set::trait_set;
 use vecmap::VecMap;
 
 trait_set! {
-    pub trait SeqItem = Eq + PartialEq + Hash + Debug + Copy + Clone;
+    pub trait SeqItem = Eq + PartialEq + Debug + Copy + Clone;
 }
 
 #[derive(Debug, Clone, Eq, PartialEq)]

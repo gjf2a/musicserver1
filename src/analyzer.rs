@@ -8,6 +8,7 @@ use ordered_float::OrderedFloat;
 use rand::prelude::SliceRandom;
 use std::cmp::{max, min};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::ops::Neg;
 use std::time::Instant;
 use crate::{find_maximal_repeated_subs, Subsequences};
 
@@ -376,7 +377,7 @@ impl Melody {
         mode_by_weight!(mode_weights).unwrap()
     }
 
-    pub fn diatonic_intervals(&self) -> Vec<Option<MidiByte>> {
+    pub fn diatonic_intervals(&self) -> Vec<DiatonicInterval> {
         let scale = self.best_scale_for();
         (0..self.notes.len() - 1)
             .map(|i| scale.diatonic_steps_between(self.notes[i].pitch, self.notes[i + 1].pitch))
@@ -484,6 +485,12 @@ impl Melody {
     }
 }
 
+impl std::ops::IndexMut<usize> for Melody {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.notes[index]
+    }
+}
+
 impl std::ops::Index<usize> for Melody {
     type Output = Note;
 
@@ -514,6 +521,7 @@ impl Neighbor {
             let consolidated = melody.get_consolidated_notes();
             let duration_options = consolidated.iter().map(|(_, n)| n.duration).collect();
             scale.diatonic_steps_between(melody[i - 1].pitch, melody[i].pitch)
+                .pure_degree()
                 .map(|s| Neighbor {gap: s, prev_pitch: melody[i - 1].pitch, velocity: melody[i].velocity, duration_options})
         }
     }
@@ -561,7 +569,7 @@ impl MelodyMaker {
         let scale = melody.best_scale_for();
         for length in FIGURE_LENGTHS.iter() {
             if let Some(pitches) = melody.pitch_subsequence_at(start, *length) {
-                if let Some(step_gap) = scale.diatonic_steps_between(*pitches.first().unwrap(), *pitches.last().unwrap()) {
+                if let Some(step_gap) = scale.diatonic_steps_between(*pitches.first().unwrap(), *pitches.last().unwrap()).pure_degree() {
                     if let Some(candidates) = self.figure_candidates(*length, step_gap) {
                         for candidate in candidates.iter() {
                             if let Some(match_len) = candidate.match_length(melody, &scale, start) {
@@ -934,17 +942,25 @@ impl MelodyMaker {
         let consolidated_melody = Melody {notes: consolidated.iter().map(|(_,n)| *n).collect()};
         let intervals = consolidated_melody.diatonic_intervals();
         let subs = find_maximal_repeated_subs(&intervals, Self::MIN_MOTIVE_LEN);
-        panic!("implmentation incomplete!");
+        let mut sections = MelodySection::from(&subs, &intervals, &consolidated);
+        for section in sections.iter_mut() {
+            section.vary(p_remap, self);
+        }
+        let mut variation = original.clone();
+        for section in sections.iter() {
+            section.remelodize(&mut variation);
+        }
+        variation
     }
 }
 
 pub struct MelodySection {
-    intervals: Vec<Option<MidiByte>>,
+    intervals: Vec<DiatonicInterval>,
     starts: Vec<usize>
 }
 
 impl MelodySection {
-    pub fn from(subs: &Vec<Subsequences>, intervals: &Vec<Option<MidiByte>>, consolidated: &Vec<(usize, Note)>) -> Vec<Self> {
+    pub fn from(subs: &Vec<Subsequences>, intervals: &Vec<DiatonicInterval>, consolidated: &Vec<(usize, Note)>) -> Vec<Self> {
         let mut result = vec![];
         for sub in subs.iter() {
             let starts = sub.starts().iter().map(|s| consolidated[*s].0).collect();
@@ -966,15 +982,15 @@ impl MelodySection {
             }
             let mut replaced = false;
             if rand::random::<f64>() < replace_prob {
-                if let Some(end) = self.intervals[figure_end] {
-                    if let Some(start) = self.intervals[i] {
+                if let Some(end) = self.intervals[figure_end].pure_degree() {
+                    if let Some(start) = self.intervals[i].pure_degree() {
                         let step_gap = end - start;
                         if let Some(figure_candidates) = maker.figure_candidates(*figure_length, step_gap) {
                             if let Some(figure) = figure_candidates.choose(&mut rng).copied() {
                                 let replacement = maker.pick_figure(figure);
                                 if replacement != figure {
                                     for (j, interval) in replacement.pattern().iter().enumerate() {
-                                        self.intervals[i + j] = Some(*interval);
+                                        self.intervals[i + j] = DiatonicInterval::pure(*interval);
                                     }
                                     i = figure_end;
                                     replaced = true;
@@ -988,6 +1004,62 @@ impl MelodySection {
                 i += 1;
             }
         }
+    }
+
+    pub fn remelodize(&self, melody: &mut Melody) {
+        let scale = melody.best_scale_for();
+        for start in self.starts.iter() {
+            self.remelodize_at(melody, *start, &scale);
+        }
+    }
+
+    pub fn remelodize_at(&self, melody: &mut Melody, start: usize, scale: &MusicMode) {
+        let mut pitch = melody[start].pitch;
+        let mut i = 0;
+        let mut m = start;
+        loop {
+            let last_pitch = melody[m].pitch;
+            melody[m].pitch = pitch;
+            m += 1;
+            if m >= melody.len() {
+                break;
+            }
+            if last_pitch != melody[m].pitch {
+                pitch = scale.next_pitch(pitch, self.intervals[i].unwrap_pure_degree());
+            }
+        }
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct DiatonicInterval {
+    degree: MidiByte,
+    chroma: MidiByte
+}
+
+impl DiatonicInterval {
+    pub fn pure(degree: MidiByte) -> Self {
+        DiatonicInterval {degree, chroma: 0}
+    }
+
+    pub fn chromatic(degree: MidiByte, chroma: MidiByte) -> Self {
+        DiatonicInterval {degree, chroma}
+    }
+
+    pub fn pure_degree(&self) -> Option<MidiByte> {
+        if self.chroma == 0 {Some(self.degree)} else {None}
+    }
+
+    pub fn unwrap_pure_degree(&self) -> MidiByte {
+        self.pure_degree().unwrap()
+    }
+}
+
+impl Neg for DiatonicInterval {
+    type Output = DiatonicInterval;
+
+    fn neg(self) -> Self::Output {
+        Self {degree: -self.degree, chroma: -self.chroma}
     }
 }
 
@@ -1096,25 +1168,23 @@ impl MusicMode {
     }
 
     pub fn diatonic_steps_between_round_up(&self, pitch1: MidiByte, pitch2: MidiByte) -> MidiByte {
-        self.diatonic_steps_between(self.closest_pitch_below(pitch1), self.closest_pitch_above(pitch2)).unwrap()
+        self.diatonic_steps_between(self.closest_pitch_below(pitch1), self.closest_pitch_above(pitch2)).unwrap_pure_degree()
     }
 
-    pub fn diatonic_steps_between(&self, pitch1: MidiByte, pitch2: MidiByte) -> Option<MidiByte> {
+    pub fn diatonic_steps_between(&self, pitch1: MidiByte, pitch2: MidiByte) -> DiatonicInterval {
         assert!(pitch1 < i8::MAX as MidiByte + NOTES_PER_OCTAVE);
         if pitch1 > pitch2 {
-            self.diatonic_steps_between(pitch2, pitch1)
-                .map(|steps| -steps)
-        } else if !self.contains(pitch1) || !self.contains(pitch2) {
-            None
+            -self.diatonic_steps_between(pitch2, pitch1)
         } else {
+            let steps_before = self.half_steps_up_to_scale(pitch1);
             let mut count = 0;
-            let mut p = pitch1;
-            while p != pitch2 {
+            let mut p = pitch1 + steps_before;
+            while p < pitch2 {
                 p = self.next_pitch(p, 1);
-                assert!(self.contains(p));
                 count += 1;
             }
-            Some(count)
+            let steps_after = self.half_steps_up_to_scale(pitch2);
+            DiatonicInterval {degree: count, chroma: steps_before + steps_after}
         }
     }
 
@@ -1166,6 +1236,14 @@ impl MusicMode {
         pitch
     }
 
+    fn half_steps_up_to_scale(&self, pitch: MidiByte) -> MidiByte {
+        let mut count = 0;
+        while !self.contains(pitch + count) {
+            count += 1;
+        }
+        count
+    }
+
     fn root(&self) -> MidiByte {
         self.octave_notes[self.root_pos.a()].a()
     }
@@ -1174,10 +1252,11 @@ impl MusicMode {
         self.octave_notes.contains(&(ModNumC::new(pitch)))
     }
 
-    pub fn diatonic_degree(&self, pitch: MidiByte) -> Option<MidiByte> {
+    pub fn diatonic_degree(&self, pitch: MidiByte) -> DiatonicInterval {
         let pertinent_root = self.find_closest_root_beneath(pitch);
-        self.diatonic_steps_between(pertinent_root, pitch)
-            .map(|d| d + 1)
+        let mut result = self.diatonic_steps_between(pertinent_root, pitch);
+        result.degree += 1;
+        result
     }
 
     fn find_closest_root_beneath(&self, pitch: MidiByte) -> MidiByte {
@@ -1213,7 +1292,7 @@ impl MusicMode {
     }
 
     pub fn diatonic_note_name(&self, pitch: MidiByte) -> Option<(NoteLetter, Accidental)> {
-        self.diatonic_degree(pitch).map(|degree| self.note_names()[(degree - 1) as usize])
+        self.diatonic_degree(pitch).pure_degree().map(|degree| self.note_names()[(degree - 1) as usize])
     }
 
     pub fn note_name(&self, pitch: MidiByte) -> (NoteLetter, Accidental) {
@@ -1251,12 +1330,13 @@ impl MusicMode {
     /// Returns positive numbers for the treble clef.
     /// Returns negative numbers for the bass clef.
     pub fn staff_position(&self, pitch: MidiByte) -> (MidiByte, Option<Accidental>) {
-        if self.contains(pitch) {
-            (self.diatonic_steps_between(self.c_value(), pitch).unwrap(), None)
+        let (pitch, acc) = if self.contains(pitch) {
+            (pitch, None)
         } else {
-            let (pitch, _, acc) = self.closest_scale_match(pitch);
-            (self.diatonic_steps_between(self.c_value(), pitch).unwrap(), Some(acc))
-        }
+            let closest = self.closest_scale_match(pitch);
+            (closest.0, Some(closest.2))
+        };
+        (self.diatonic_steps_between(self.c_value(), pitch).unwrap_pure_degree(), acc)
     }
 
     pub fn key_signature(&self) -> KeySignature {
@@ -1327,7 +1407,7 @@ impl KeySignature {
         };
         let c_major = Self::c_major();
         let middle_c = c_major.c_value();
-        let start1 = Self::constrain_up(c_major.diatonic_steps_between(middle_c, middle_c + self.notes[0].natural_pitch()).unwrap());
+        let start1 = Self::constrain_up(c_major.diatonic_steps_between(middle_c, middle_c + self.notes[0].natural_pitch()).unwrap_pure_degree());
         let mut frontier = [start1, Self::constrain_up(start1 + offset)];
         let mut result = vec![];
         for (i, _) in self.notes.iter().enumerate() {
@@ -1414,7 +1494,7 @@ impl MelodicFigure {
         let mut m = start;
         while p < self.pattern().len() && m + 1 < melody.len() {
             if melody[m].pitch != melody[m + 1].pitch {
-                match scale.diatonic_steps_between(melody[m].pitch, melody[m + 1].pitch) {
+                match scale.diatonic_steps_between(melody[m].pitch, melody[m + 1].pitch).pure_degree() {
                     None => return None,
                     Some(actual) => {
                         if actual != self.pattern()[p] {
@@ -1550,7 +1630,7 @@ impl MelodicFigureShape {
 #[cfg(test)]
 mod tests {
     use crate::analyzer::{FigureDirection, FigurePolarity, MelodicFigure, MelodicFigureShape, Melody, MelodyMaker, MusicMode, DIATONIC_SCALE_SIZE, major_sharps_for, major_flats_for, sharps_for, flats_for};
-    use crate::{MidiByte, Note, Accidental, NoteLetter};
+    use crate::{MidiByte, Note, Accidental, NoteLetter, DiatonicInterval};
     use bare_metal_modulo::ModNumC;
     use ordered_float::OrderedFloat;
     use std::cmp::{max, min};
@@ -1688,7 +1768,7 @@ mod tests {
             intervals: [2, 2, 1, 2, 2, 2, 1]
         };
         let steps = mode.diatonic_steps_between(54, 57);
-        assert_eq!(steps.unwrap(), 2);
+        assert_eq!(steps, DiatonicInterval::pure(2));
     }
 
     #[test]
@@ -1769,8 +1849,8 @@ mod tests {
             .enumerate()
         {
             assert_eq!(
-                (i % DIATONIC_SCALE_SIZE) as MidiByte + 1,
-                scale.diatonic_degree(*pitch).unwrap()
+                DiatonicInterval::pure((i % DIATONIC_SCALE_SIZE) as MidiByte + 1),
+                scale.diatonic_degree(*pitch)
             );
         }
     }
@@ -1898,10 +1978,8 @@ mod tests {
 
         let pitch1 = melody.pitch_subsequence_at(0, 4).unwrap();
         assert_eq!(pitch1, vec![66, 73, 71, 73]);
-        let gap1 = scale
-            .diatonic_steps_between(*pitch1.first().unwrap(), *pitch1.last().unwrap())
-            .unwrap();
-        assert_eq!(gap1, 4);
+        let gap1 = scale.diatonic_steps_between(*pitch1.first().unwrap(), *pitch1.last().unwrap());
+        assert_eq!(gap1, DiatonicInterval::pure(4));
         let figure = MelodicFigure {
             shape: MelodicFigureShape::LeapingAux2,
             polarity: FigurePolarity::Positive,
