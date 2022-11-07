@@ -1025,7 +1025,7 @@ impl MelodySection {
                 break;
             }
             if last_pitch != melody[m].pitch {
-                pitch = scale.next_pitch(pitch, self.intervals[i].unwrap_pure_degree());
+                pitch = scale.next_pitch(pitch, self.intervals[i]);
             }
         }
     }
@@ -1180,7 +1180,7 @@ impl MusicMode {
             let mut count = 0;
             let mut p = pitch1 + steps_before;
             while p < pitch2 {
-                p = self.next_pitch(p, 1);
+                p = self.next_pitch(p, DiatonicInterval::pure(1));
                 count += 1;
             }
             let steps_after = self.half_steps_up_to_scale(pitch2);
@@ -1190,20 +1190,20 @@ impl MusicMode {
 
     /// Returns the diatonic pitch `scale_steps_away` from `reference_pitch`, if it exists.
     /// If not, rounds `reference_pitch` up to the next pitch that is within the scale.
-    pub fn next_pitch(&self, reference_pitch: MidiByte, scale_steps_away: MidiByte) -> MidiByte {
+    pub fn next_pitch(&self, reference_pitch: MidiByte, scale_steps_away: DiatonicInterval) -> MidiByte {
         assert!(reference_pitch < MidiByte::MAX);
         let mut octaves_up = reference_pitch / NOTES_PER_OCTAVE;
         let i = self.closest_position_for(reference_pitch);
         let ref_octave_basis = self.octave_notes[i].a();
         let j: ModNumC<MidiByte, DIATONIC_SCALE_SIZE> =
-            ModNumC::new(i as MidiByte + scale_steps_away);
+            ModNumC::new(i as MidiByte + scale_steps_away.degree);
         let next_octave_basis = self.octave_notes[j.a() as usize].a();
-        if scale_steps_away > 0 && ref_octave_basis > next_octave_basis {
+        if scale_steps_away.degree > 0 && ref_octave_basis > next_octave_basis {
             octaves_up += 1
-        } else if scale_steps_away < 0 && ref_octave_basis < next_octave_basis {
+        } else if scale_steps_away.degree < 0 && ref_octave_basis < next_octave_basis {
             octaves_up -= 1;
         }
-        octaves_up += scale_steps_away / 7;
+        octaves_up += scale_steps_away.degree / 7;
         next_octave_basis + octaves_up * NOTES_PER_OCTAVE
     }
 
@@ -1514,7 +1514,7 @@ impl MelodicFigure {
     pub fn make_pitches(&self, start_pitch: MidiByte, scale: &MusicMode) -> VecDeque<MidiByte> {
         let mut result = VecDeque::from([start_pitch]);
         for interval in self.pattern() {
-            result.push_back(scale.next_pitch(*result.back().unwrap(), interval));
+            result.push_back(scale.next_pitch(*result.back().unwrap(), DiatonicInterval::pure(interval)));
         }
         result
     }
@@ -1654,17 +1654,17 @@ mod tests {
         println!("{} {:?}", mode.name(), mode);
         for (i, n) in notes.iter().enumerate() {
             let i = i as MidiByte;
-            let next = mode.next_pitch(notes[0], i);
+            let next = mode.next_pitch(notes[0], DiatonicInterval::pure(i));
             assert_eq!(next, *n);
             assert!(mode.contains(*n));
-            let prev = mode.next_pitch(*n, -i);
+            let prev = mode.next_pitch(*n, -DiatonicInterval::pure(i));
             assert_eq!(notes[0], prev);
             assert!(mode.contains(prev));
         }
 
         let mut prev = notes[0];
         for n in notes.iter().skip(1) {
-            let next = mode.next_pitch(prev, 1);
+            let next = mode.next_pitch(prev, DiatonicInterval::pure(1));
             assert_eq!(next, *n);
             prev = next;
         }
@@ -1828,7 +1828,7 @@ mod tests {
             (122, 1, 124),
         ];
         for (reference_pitch, scale_steps_away, expected) in tests {
-            let np = mode.next_pitch(reference_pitch, scale_steps_away);
+            let np = mode.next_pitch(reference_pitch, DiatonicInterval::pure(scale_steps_away));
             assert_eq!(np, expected);
         }
     }
