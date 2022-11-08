@@ -11,6 +11,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter::Sum;
 use std::ops::{AddAssign, Neg};
 use std::time::Instant;
+use distribution_select::Distribution;
 use crate::{find_maximal_repeated_subs, Subsequences};
 
 pub type MidiByte = i16;
@@ -509,12 +510,6 @@ impl std::ops::Index<usize> for Melody {
     }
 }
 
-pub struct MelodyMaker {
-    figure_tables: BTreeMap<usize, BTreeMap<MidiByte, Vec<MelodicFigure>>>,
-    figure_mappings: HashMap<MelodicFigure, MelodicFigure>,
-    all_figures: HashSet<MelodicFigure>,
-}
-
 #[derive(Clone)]
 struct Neighbor {
     gap: MidiByte,
@@ -552,6 +547,12 @@ impl Neighbor {
     }
 }
 
+pub struct MelodyMaker {
+    figure_tables: BTreeMap<usize, BTreeMap<MidiByte, Vec<MelodicFigure>>>,
+    figure_mappings: HashMap<MelodicFigure, MelodicFigure>,
+    all_figures: HashSet<MelodicFigure>,
+}
+
 impl MelodyMaker {
     pub fn new() -> Self {
         let figure_tables: BTreeMap<usize, BTreeMap<MidiByte, Vec<MelodicFigure>>> = FIGURE_LENGTHS
@@ -571,6 +572,18 @@ impl MelodyMaker {
         MelodyMaker {
             figure_tables, figure_mappings: HashMap::new(), all_figures
         }
+    }
+
+    pub fn make_figure_distribution(&self) -> Distribution<MelodicFigure> {
+        let mut result = Distribution::new();
+        for table in self.figure_tables.values() {
+            for figures in table.values() {
+                for figure in figures.iter() {
+                    result.add(figure, 1.0);
+                }
+            }
+        }
+        result
     }
 
     /// Finds a MelodicFigure that matches the pitch sequence in `melody` starting at `start`.
@@ -967,6 +980,29 @@ impl MelodyMaker {
         let intervals = consolidated_melody.diatonic_intervals();
         let subs = find_maximal_repeated_subs(&intervals, Self::MIN_MOTIVE_REPETITIONS, Self::MIN_MOTIVE_LEN);
         MelodySection::from(&subs, &intervals, &consolidated)
+    }
+
+    pub fn suffix_whimsified_melody(&self, original: &Melody, portion_to_replace: f64) -> Melody {
+        let prefix_size = max(1, ((1.0 - portion_to_replace) * original.len() as f64) as usize);
+        let mut result = original.fragment(0, prefix_size);
+        let start = result.len() - 1;
+        let scale = original.best_scale_for();
+        let mut distro = self.make_figure_distribution();
+        for (_, figure, _) in self.all_figure_matches(original) {
+            distro.add(&figure, 1.0);
+        }
+        let mut i = start;
+        while i < original.len() {
+            let generator = distro.random_pick();
+            let pitches = generator.make_pitches(result.last_note().pitch, &scale);
+            if let Some(num_adds) = original.distinct_seq_len(i, generator.len()) {
+                Self::append_pitches_to(&mut result, &pitches, i, num_adds, original);
+                i += num_adds - 1;
+            } else {
+                break;
+            }
+        }
+        result
     }
 }
 
@@ -1394,9 +1430,9 @@ impl MusicMode {
 
     pub fn key_signature(&self) -> KeySignature {
         if self.is_sharp_key() {
-            KeySignature { notes: Self::traverse_fifths(SHARP_START, |note: &mut ModNumC<usize, DIATONIC_SCALE_SIZE>| *note += 4, self.num_sharps()), accidental: Accidental::Sharp}
+            KeySignature { notes: Self::traverse_fifths(SHARP_START, |note| *note += 4, self.num_sharps()), accidental: Accidental::Sharp}
         } else if self.is_flat_key() {
-            KeySignature { notes: Self::traverse_fifths(FLAT_START, |note: &mut ModNumC<usize, DIATONIC_SCALE_SIZE>| *note -= 4, self.num_flats()), accidental: Accidental::Flat}
+            KeySignature { notes: Self::traverse_fifths(FLAT_START, |note| *note -= 4, self.num_flats()), accidental: Accidental::Flat}
         } else {
             KeySignature { notes: vec![], accidental: Accidental::Natural}
         }

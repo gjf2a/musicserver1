@@ -4,7 +4,7 @@ use eframe::egui::{Color32, Sense, Vec2, Visuals, Ui, Stroke, Pos2, Align2, Font
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
-use musicserver1::{make_ai_table, make_synth_table, prob_slider, ornament_gap_slider, replay_slider, start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue, SynthTable, Preference, MelodyInfo, Database, start_database_thread, SynthChoice, send_recorded_melody, GuiDatabaseUpdate, Melody, Note, MidiByte, MusicMode, KeySignature, Accidental};
+use musicserver1::{make_ai_table, make_synth_table, prob_slider, ornament_gap_slider, replay_slider, start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue, SynthTable, Preference, MelodyInfo, Database, start_database_thread, SynthChoice, send_recorded_melody, GuiDatabaseUpdate, Melody, Note, MidiByte, MusicMode, KeySignature, Accidental, VariationControlSliders};
 use std::{mem, thread};
 use std::cmp::max;
 use std::ops::RangeInclusive;
@@ -112,9 +112,7 @@ struct ReplayerApp {
     human_synth_table: Arc<Mutex<SynthTable>>,
     ai_synth_name: String,
     ai_synth_table: Arc<Mutex<SynthTable>>,
-    p_random_slider: Arc<AtomicCell<SliderValue<f64>>>,
-    p_ornament_slider: Arc<AtomicCell<SliderValue<f64>>>,
-    ornament_gap_slider: Arc<AtomicCell<SliderValue<i64>>>,
+    variation_controls: VariationControlSliders,
     replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
     in_port: Option<MidiInputPort>,
     in_port_name: Option<String>,
@@ -209,9 +207,7 @@ impl ReplayerApp {
         let ai_table = Arc::new(Mutex::new(ai_table));
         let human_synth_table = Arc::new(Mutex::new(human_synth_table));
         let ai_synth_table = Arc::new(Mutex::new(ai_synth_table));
-        let p_random_slider = Arc::new(AtomicCell::new(prob_slider()));
-        let p_ornament_slider = Arc::new(AtomicCell::new(prob_slider()));
-        let ornament_gap_slider = Arc::new(AtomicCell::new(ornament_gap_slider()));
+        let variation_controls = VariationControlSliders::new();
         let replay_delay_slider = Arc::new(AtomicCell::new(replay_slider()));
         let mut database = Database::new();
         let melody_var_info = Arc::new(Mutex::new({
@@ -223,9 +219,7 @@ impl ReplayerApp {
         let app = ReplayerApp {
             midi_scenario: Arc::new(Mutex::new(MidiScenario::StartingUp)),
             midi_in: Arc::new(Mutex::new(None)),
-            p_random_slider,
-            p_ornament_slider,
-            ornament_gap_slider,
+            variation_controls,
             replay_delay_slider,
             ai_table,
             human_synth_table,
@@ -259,9 +253,10 @@ impl ReplayerApp {
             Self::update_table_choice(self.human_synth_table.clone(),self.human_synth_name.as_str());
             Self::update_table_choice(self.ai_synth_table.clone(), self.ai_synth_name.as_str());
 
-            Self::insert_slider(ui,self.p_random_slider.clone(),"Probability of Randomization");
-            Self::insert_slider(ui,self.p_ornament_slider.clone(),"Probability of Inserting Ornament");
-            Self::insert_slider(ui, self.ornament_gap_slider.clone(), "Notes Between Ornaments");
+            Self::insert_slider(ui,self.variation_controls.p_random_slider.clone(),"Probability of Randomization");
+            Self::insert_slider(ui,self.variation_controls.p_ornament_slider.clone(),"Probability of Inserting Ornament");
+            Self::insert_slider(ui, self.variation_controls.ornament_gap_slider.clone(), "Notes Between Ornaments");
+            Self::insert_slider(ui, self.variation_controls.whimsification_slider.clone(), "Portion of Suffix to Whimsify");
             Self::insert_slider(ui, self.replay_delay_slider.clone(), "Replay Delay");
             let empty = {
                 let melody_var_info = self.melody_var_info.lock().unwrap();
@@ -518,10 +513,8 @@ impl ReplayerApp {
             input2ai.clone(),
             self.ai2output.clone(),
             ai2dbase.clone(),
+            self.variation_controls.clone(),
             self.replay_delay_slider.clone(),
-            self.ornament_gap_slider.clone(),
-            self.p_random_slider.clone(),
-            self.p_ornament_slider.clone(),
         );
         start_input_thread(
             input2ai,

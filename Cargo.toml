@@ -9,6 +9,7 @@ edition = "2021"
 #bare_metal_modulo = "1"
 bare_metal_modulo = {git = "https://github.com/gjf2a/bare_metal_modulo"}
 ordered-float = "3"
+distribution_select = {git = "https://github.com/gjf2a/distribution_select"}
 histogram_macros = {git = "https://github.com/gjf2a/histogram_macros"}
 rand = "0.8"
 enum-iterator = "1"

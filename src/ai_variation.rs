@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use crate::{arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue, SynthChoice, FromAiMsg, send_recorded_melody, analyzer};
+use crate::{arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue, SynthChoice, FromAiMsg, send_recorded_melody, analyzer, VariationControlSliders};
 use crossbeam_queue::SegQueue;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use std::sync::{Arc, Mutex};
@@ -25,10 +25,8 @@ pub fn start_ai_thread(
     input2ai: Arc<SegQueue<MidiMsg>>,
     ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
     ai2dbase: Arc<SegQueue<FromAiMsg>>,
+    variation_controls: VariationControlSliders,
     replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
-    ornament_gap_slider: Arc<AtomicCell<SliderValue<i64>>>,
-    p_random_slider: Arc<AtomicCell<SliderValue<f64>>>,
-    p_ornament_slider: Arc<AtomicCell<SliderValue<f64>>>,
 ) {
     std::thread::spawn(move || {
         let mut recorder = PlayerRecorder::new(
@@ -36,8 +34,7 @@ pub fn start_ai_thread(
             ai2output.clone(),
             replay_delay_slider.clone(),
         );
-        let mut performer =
-            Performer::new(p_random_slider, p_ornament_slider,ornament_gap_slider, ai_table);
+        let mut performer = Performer::new(variation_controls, ai_table);
         let min_melody_pitches = *analyzer::FIGURE_LENGTHS.iter().max().unwrap();
 
         loop {
@@ -127,24 +124,15 @@ impl PlayerRecorder {
 
 struct Performer {
     maker: MelodyMaker,
-    p_random_slider: Arc<AtomicCell<SliderValue<f64>>>,
-    p_ornament_slider: Arc<AtomicCell<SliderValue<f64>>>,
-    ornament_gap_slider: Arc<AtomicCell<SliderValue<i64>>>,
+    variation_controls: VariationControlSliders,
     ai_table: Arc<Mutex<AITable>>
 }
 
 impl Performer {
-    fn new(
-        p_random_slider: Arc<AtomicCell<SliderValue<f64>>>,
-        p_ornament_slider: Arc<AtomicCell<SliderValue<f64>>>,
-        ornament_gap_slider: Arc<AtomicCell<SliderValue<i64>>>,
-        ai_table: Arc<Mutex<AITable>>
-    ) -> Self {
+    fn new(variation_controls: VariationControlSliders, ai_table: Arc<Mutex<AITable>>) -> Self {
         Performer {
             maker: MelodyMaker::new(),
-            p_random_slider,
-            p_ornament_slider,
-            ornament_gap_slider,
+            variation_controls,
             ai_table
         }
     }
@@ -154,14 +142,18 @@ impl Performer {
     }
 
     fn create_variation(&mut self, melody: &Melody) -> Melody {
-        let p_random = Self::from_slider(&self.p_random_slider);
-        let p_ornament = Self::from_slider(&self.p_ornament_slider);
-        let ornament_gap = Self::from_slider(&self.ornament_gap_slider);
+        let p_random = Self::from_slider(&self.variation_controls.p_random_slider);
+        let p_ornament = Self::from_slider(&self.variation_controls.p_ornament_slider);
+        let ornament_gap = Self::from_slider(&self.variation_controls.ornament_gap_slider);
+        let whimsification = Self::from_slider(&self.variation_controls.whimsification_slider);
         let var_func = {
             let ai_table = self.ai_table.lock().unwrap();
             ai_table.current_choice()
         };
-        let variation = var_func(&mut self.maker, &melody, p_random);
+        let mut variation = var_func(&mut self.maker, &melody, p_random);
+        if variation.len() > 0 {
+            variation = self.maker.suffix_whimsified_melody(&variation, whimsification);
+        }
         self.maker.ornamented(&variation, p_ornament, ornament_gap)
     }
 }

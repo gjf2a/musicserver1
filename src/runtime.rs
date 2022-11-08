@@ -6,6 +6,7 @@ use std::sync::Arc;
 use crate::Melody;
 use std::time::Duration;
 use crossbeam_queue::SegQueue;
+use crossbeam_utils::atomic::AtomicCell;
 use midi_msg::MidiMsg;
 
 pub const SHOW_MIDI_MSG: bool = false;
@@ -67,6 +68,25 @@ macro_rules! arc_vec {
     ($( ($s:expr, $f:expr)),* ) => {vec![$(($s, Arc::new($f)),)*]}
 }
 
+#[derive(Clone)]
+pub struct VariationControlSliders {
+    pub p_random_slider: Arc<AtomicCell<SliderValue<f64>>>,
+    pub p_ornament_slider: Arc<AtomicCell<SliderValue<f64>>>,
+    pub ornament_gap_slider: Arc<AtomicCell<SliderValue<i64>>>,
+    pub whimsification_slider: Arc<AtomicCell<SliderValue<f64>>>,
+}
+
+impl VariationControlSliders {
+    pub fn new() -> Self {
+        Self {
+            p_random_slider: Arc::new(AtomicCell::new(prob_slider(0.8))),
+            p_ornament_slider: Arc::new(AtomicCell::new(prob_slider(0.5))),
+            ornament_gap_slider: Arc::new(AtomicCell::new(ornament_gap_slider())),
+            whimsification_slider: Arc::new(AtomicCell::new(prob_slider(0.0)))
+        }
+    }
+}
+
 #[derive(Copy, Clone)]
 pub struct SliderValue<T: Copy + Clone> {
     current: T,
@@ -108,8 +128,8 @@ pub fn replay_slider() -> SliderValue<f64> {
     SliderValue::new(1.5, 1.0, 5.0)
 }
 
-pub fn prob_slider() -> SliderValue<f64> {
-    SliderValue::new(0.5, 0.0, 1.0)
+pub fn prob_slider(start_prob: f64) -> SliderValue<f64> {
+    SliderValue::new(start_prob, 0.0, 1.0)
 }
 
 pub fn ornament_gap_slider() -> SliderValue<i64> {
