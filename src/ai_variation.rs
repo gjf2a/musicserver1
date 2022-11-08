@@ -12,8 +12,6 @@ pub type AITable = ChooserTable<Arc<AIFuncType>>;
 pub fn make_ai_table() -> AITable {
     let ai_funcs: Vec<(&str, Arc<AIFuncType>)> = arc_vec![
         ("Bypass", |_, _, _| Melody::new()),
-        ("Emphasis-Anchored Choice", MelodyMaker::create_emphasis_variation),
-        ("Consistent Figure Replacement", MelodyMaker::create_figure_mapped_variation),
         ("Motive Mapper", MelodyMaker::create_motive_variation)
     ];
     ChooserTable::from(&ai_funcs)
@@ -150,7 +148,7 @@ impl Performer {
             ai_table.current_choice()
         };
         let mut variation = var_func(&mut self.maker, &melody, p_random);
-        if variation.len() > 0 {
+        if variation.len() > 0 && whimsification > 0.0 {
             variation = self.maker.suffix_whimsified_melody(&variation, whimsification);
         }
         self.maker.ornamented(&variation, p_ornament, ornament_gap)
