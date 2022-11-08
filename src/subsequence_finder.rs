@@ -1,5 +1,4 @@
 use std::fmt::Debug;
-use std::ops::Range;
 use trait_set::trait_set;
 use vecmap::VecMap;
 
@@ -47,21 +46,9 @@ impl Subsequences {
         self.starts.len()
     }
 
-    fn ranges(&self) -> Vec<Range<usize>> {
-        self.starts.iter().map(|s| *s..*s + self.length).collect()
-    }
-
     pub fn sub_len(&self) -> usize {self.length}
 
     pub fn starts(&self) -> &Vec<usize> {&self.starts}
-}
-
-fn all_independent(subs: &Vec<Subsequences>) -> bool {
-    let mut ranges = vec![];
-    for sub in subs.iter() {
-        ranges.append(&mut sub.ranges());
-    }
-    (0..ranges.len()).all(|i| (0..i).all(|j| !ranges[i].contains(&ranges[j].start)))
 }
 
 fn find_subs_of_length<T: SeqItem>(items: &Vec<T>, length: usize) -> Vec<Subsequences> {
@@ -98,8 +85,23 @@ pub fn find_maximal_repeated_subs<T: SeqItem>(items: &Vec<T>, min_repeats: usize
 
 #[cfg(test)]
 mod tests {
-    use crate::subsequence_finder::{all_independent, find_maximal_repeated_subs, Subsequences};
+    use std::ops::Range;
+    use crate::subsequence_finder::{find_maximal_repeated_subs, Subsequences};
     use vecmap::VecSet;
+
+    impl Subsequences {
+        fn ranges(&self) -> Vec<Range<usize>> {
+            self.starts.iter().map(|s| *s..*s + self.length).collect()
+        }
+    }
+
+    fn all_independent(subs: &Vec<Subsequences>) -> bool {
+        let mut ranges = vec![];
+        for sub in subs.iter() {
+            ranges.append(&mut sub.ranges());
+        }
+        (0..ranges.len()).all(|i| (0..i).all(|j| !ranges[i].contains(&ranges[j].start)))
+    }
 
     #[test]
     fn test_finder() {
