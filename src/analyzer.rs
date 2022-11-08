@@ -2082,6 +2082,12 @@ mod tests {
     }
 
     #[test]
+    fn test_motive_variation() {
+        test_variation_unchanged(MelodyMaker::create_motive_variation);
+        test_variation_changed(MelodyMaker::create_motive_variation, 0.40, 0.60);
+    }
+
+    #[test]
     fn test_variation_2() {
         test_variation_unchanged(MelodyMaker::create_emphasis_variation);
         test_variation_changed(MelodyMaker::create_emphasis_variation, 0.40, 0.60);
