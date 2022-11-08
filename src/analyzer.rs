@@ -1016,12 +1016,45 @@ impl MelodySection {
     pub fn from(subs: &Vec<Subsequences>, intervals: &Vec<DiatonicInterval>, consolidated: &Vec<(usize, Note)>) -> Vec<Self> {
         let mut result = vec![];
         for sub in subs.iter() {
-            let starts = sub.starts().iter().map(|s| consolidated[*s].0).collect();
-            let start = sub.starts().iter().next().copied().unwrap();
-            let intervals = (0..(sub.sub_len())).map(|i| intervals[i + start]).collect();
-            result.push(MelodySection { intervals, starts});
+            result.push(Self::sub2section(sub, intervals, consolidated));
         }
+        Self::intersperse_missing_sections(&mut result, intervals);
         result
+    }
+
+    fn sub2section(sub: &Subsequences, intervals: &Vec<DiatonicInterval>, consolidated: &Vec<(usize, Note)>) -> Self {
+        let starts = sub.starts().iter().map(|s| consolidated[*s].0).collect();
+        let start = sub.starts().iter().next().copied().unwrap();
+        let intervals = (0..(sub.sub_len())).map(|i| intervals[i + start]).collect();
+        MelodySection { intervals, starts}
+    }
+
+    fn intersperse_missing_sections(sections: &mut Vec<Self>, intervals: &Vec<DiatonicInterval>) {
+        let mut uncovered = (0..intervals.len()).collect::<BTreeSet<usize>>();
+        for section in sections.iter() {
+            for start in section.starts.iter() {
+                for i in *start..*start + section.intervals.len() {
+                    uncovered.remove(&i);
+                }
+            }
+        }
+        let mut uncoverer = uncovered.iter();
+        if let Some(mut prev) = uncoverer.next().copied() {
+            let mut current = Self {intervals: vec![intervals[prev]], starts: vec![prev]};
+            for i in uncoverer.copied() {
+                if i == prev + 1 {
+                    current.intervals.push(intervals[i]);
+                } else {
+                    let mut adding = Self {intervals: vec![intervals[i]], starts: vec![i]};
+                    std::mem::swap(&mut adding, &mut current);
+                    if adding.intervals.len() >= MelodyMaker::MIN_MOTIVE_LEN {
+                        sections.push(adding);
+                    }
+                }
+                prev = i;
+            }
+            sections.push(current);
+        }
     }
 
     pub fn vary(&mut self, scale: &MusicMode, replace_prob: f64, maker: &mut MelodyMaker) {
