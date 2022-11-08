@@ -8,7 +8,8 @@ use ordered_float::OrderedFloat;
 use rand::prelude::SliceRandom;
 use std::cmp::{max, min};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
-use std::ops::Neg;
+use std::iter::Sum;
+use std::ops::{AddAssign, Neg};
 use std::time::Instant;
 use crate::{find_maximal_repeated_subs, Subsequences};
 
@@ -944,13 +945,14 @@ impl MelodyMaker {
         }
     }
 
-    const MIN_MOTIVE_LEN: usize = 4;
+    const MIN_MOTIVE_LEN: usize = 2;
     const MIN_MOTIVE_REPETITIONS: usize = 2;
 
     pub fn create_motive_variation(&mut self, original: &Melody, p_remap: f64) -> Melody {
+        let scale = original.best_scale_for();
         let mut sections = self.get_melody_sections(original);
         for section in sections.iter_mut() {
-            section.vary(p_remap, self);
+            section.vary(&scale,p_remap, self);
         }
         let mut variation = original.clone();
         for section in sections.iter() {
@@ -962,11 +964,8 @@ impl MelodyMaker {
     pub fn get_melody_sections(&self, melody: &Melody) -> Vec<MelodySection> {
         let consolidated = melody.get_consolidated_notes();
         let consolidated_melody = Melody {notes: consolidated.iter().map(|(_,n)| *n).collect()};
-        consolidated_melody.tuple_print();
         let intervals = consolidated_melody.diatonic_intervals();
-        println!("{:?}", intervals.iter().map(|d| (d.degree, d.chroma)).collect::<Vec<_>>());
         let subs = find_maximal_repeated_subs(&intervals, Self::MIN_MOTIVE_REPETITIONS, Self::MIN_MOTIVE_LEN);
-        println!("{subs:?}");
         MelodySection::from(&subs, &intervals, &consolidated)
     }
 }
@@ -989,7 +988,7 @@ impl MelodySection {
         result
     }
 
-    pub fn vary(&mut self, replace_prob: f64, maker: &mut MelodyMaker) {
+    pub fn vary(&mut self, scale: &MusicMode, replace_prob: f64, maker: &mut MelodyMaker) {
         let mut rng = rand::thread_rng();
         let mut i = 0;
         loop {
@@ -1000,19 +999,16 @@ impl MelodySection {
             }
             let mut replaced = false;
             if rand::random::<f64>() < replace_prob {
-                if let Some(end) = self.intervals[figure_end].pure_degree() {
-                    if let Some(start) = self.intervals[i].pure_degree() {
-                        let step_gap = end - start;
-                        if let Some(figure_candidates) = maker.figure_candidates(*figure_length, step_gap) {
-                            if let Some(figure) = figure_candidates.choose(&mut rng).copied() {
-                                let replacement = maker.pick_figure(figure);
-                                if replacement != figure {
-                                    for (j, interval) in replacement.pattern().iter().enumerate() {
-                                        self.intervals[i + j] = DiatonicInterval::pure(*interval);
-                                    }
-                                    i = figure_end;
-                                    replaced = true;
+                if let Some(step_gap) = self.intervals[i..=figure_end].iter().copied().sum::<DiatonicInterval>().normalized(scale).pure_degree() {
+                    if let Some(figure_candidates) = maker.figure_candidates(*figure_length, step_gap) {
+                        if let Some(figure) = figure_candidates.choose(&mut rng).copied() {
+                            let replacement = maker.pick_figure(figure);
+                            if replacement != figure {
+                                for (j, interval) in replacement.pattern().iter().enumerate() {
+                                    self.intervals[i + j] = DiatonicInterval::pure(*interval);
                                 }
+                                i = figure_end;
+                                replaced = true;
                             }
                         }
                     }
@@ -1065,12 +1061,33 @@ impl DiatonicInterval {
         DiatonicInterval {degree, chroma}
     }
 
+    pub fn normalized(&self, scale: &MusicMode) -> Self {
+        scale.diatonic_steps_between(scale.root(), scale.next_pitch(scale.root(), *self))
+    }
+
     pub fn pure_degree(&self) -> Option<MidiByte> {
         if self.chroma == 0 {Some(self.degree)} else {None}
     }
 
     pub fn unwrap_pure_degree(&self) -> MidiByte {
         self.pure_degree().unwrap()
+    }
+}
+
+impl AddAssign for DiatonicInterval {
+    fn add_assign(&mut self, rhs: Self) {
+        self.degree += rhs.degree;
+        self.chroma += rhs.chroma;
+    }
+}
+
+impl Sum for DiatonicInterval {
+    fn sum<I: Iterator<Item=Self>>(iter: I) -> Self {
+        let mut result = DiatonicInterval {degree: 0, chroma: 0};
+        for item in iter {
+            result += item;
+        }
+        result
     }
 }
 
@@ -2395,6 +2412,28 @@ mod tests {
             melody.add(Note::new(pitch, duration, velocity));
         }
         assert_eq!(melody.len(), LEAN_ON_ME.len());
-        println!("{:?}", maker.get_melody_sections(&melody));
+        let sections = maker.get_melody_sections(&melody);
+        assert_eq!(2, sections.len());
+        assert_eq!(format!("{sections:?}"), "[MelodySection { intervals: [DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }], starts: [14, 39] }, MelodySection { intervals: [DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }], starts: [0, 32] }]");
+    }
+
+    #[test]
+    fn test_remelodize() {
+        let mut maker = MelodyMaker::new();
+        let mut melody = Melody::new();
+        for (pitch, duration, velocity) in LEAN_ON_ME.iter().copied() {
+            melody.add(Note::new(pitch, duration, velocity));
+        }
+        let scale = melody.best_scale_for();
+        let mut sections = maker.get_melody_sections(&melody);
+        println!("Before: {sections:?}");
+        for section in sections.iter_mut() {
+            section.vary(&scale, 1.0, &mut maker);
+        }
+        println!("After: {sections:?}");
+        // TODO:
+        // Testing of `vary()` to make sure the interval sums match up. I think I saw an example
+        // that did not add up.
+        // Creation of a model example to use for testing `remelodize()`
     }
 }
