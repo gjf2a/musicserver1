@@ -997,7 +997,6 @@ impl MelodySection {
             if figure_end >= self.intervals.len() {
                 break;
             }
-            let mut replaced = false;
             if rand::random::<f64>() < replace_prob {
                 if let Some(step_gap) = self.intervals[i..=figure_end].iter().copied().sum::<DiatonicInterval>().normalized(scale).pure_degree() {
                     if let Some(figure_candidates) = maker.figure_candidates(*figure_length, step_gap) {
@@ -1008,15 +1007,12 @@ impl MelodySection {
                                     self.intervals[i + j] = DiatonicInterval::pure(*interval);
                                 }
                                 i = figure_end;
-                                replaced = true;
                             }
                         }
                     }
                 }
             }
-            if !replaced {
-                i += 1;
-            }
+            i += 1;
         }
     }
 
@@ -1053,6 +1049,10 @@ pub struct DiatonicInterval {
 }
 
 impl DiatonicInterval {
+    pub fn new() -> Self {
+        DiatonicInterval {degree: 0, chroma: 0}
+    }
+
     pub fn pure(degree: MidiByte) -> Self {
         DiatonicInterval {degree, chroma: 0}
     }
@@ -1083,7 +1083,7 @@ impl AddAssign for DiatonicInterval {
 
 impl Sum for DiatonicInterval {
     fn sum<I: Iterator<Item=Self>>(iter: I) -> Self {
-        let mut result = DiatonicInterval {degree: 0, chroma: 0};
+        let mut result = DiatonicInterval::new();
         for item in iter {
             result += item;
         }
@@ -2415,6 +2415,32 @@ mod tests {
         let sections = maker.get_melody_sections(&melody);
         assert_eq!(2, sections.len());
         assert_eq!(format!("{sections:?}"), "[MelodySection { intervals: [DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }], starts: [14, 39] }, MelodySection { intervals: [DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }], starts: [0, 32] }]");
+    }
+
+    #[test]
+    fn test_vary() {
+        let mut maker = MelodyMaker::new();
+        let mut melody = Melody::new();
+        for (pitch, duration, velocity) in LEAN_ON_ME.iter().copied() {
+            melody.add(Note::new(pitch, duration, velocity));
+        }
+        let scale = melody.best_scale_for();
+        let mut num_differ = 0;
+        for _ in 0..NUM_RANDOM_TESTS {
+            let mut sections = maker.get_melody_sections(&melody);
+            for section in sections.iter_mut() {
+                let len_before = section.intervals.len();
+                let total_before = section.intervals.iter().copied().sum::<DiatonicInterval>();
+                let values_before = section.intervals.clone();
+                section.vary(&scale, 1.0, &mut maker);
+                assert_eq!(len_before, section.intervals.len());
+                assert_eq!(total_before, section.intervals.iter().copied().sum::<DiatonicInterval>());
+                if values_before != section.intervals {
+                    num_differ += 1;
+                }
+            }
+        }
+        assert!(num_differ > NUM_RANDOM_TESTS);
     }
 
     #[test]
