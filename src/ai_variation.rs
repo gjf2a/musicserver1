@@ -14,7 +14,8 @@ pub fn make_ai_table() -> AITable {
         ("Bypass", |_, _, _| Melody::new()),
         ("Emphasis-Anchored Choice", MelodyMaker::create_emphasis_variation),
         ("Consistent Figure Replacement", MelodyMaker::create_figure_mapped_variation),
-        ("Whimsical Variation", MelodyMaker::create_whimsical_variation)
+        ("Whimsical Variation", MelodyMaker::create_whimsical_variation),
+        ("Motive Mapper", MelodyMaker::create_motive_variation)
     ];
     ChooserTable::from(&ai_funcs)
 }
