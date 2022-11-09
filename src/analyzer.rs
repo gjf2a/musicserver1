@@ -1018,7 +1018,7 @@ impl MelodySection {
         for sub in subs.iter() {
             result.push(Self::sub2section(sub, intervals, consolidated));
         }
-        Self::intersperse_missing_sections(&mut result, intervals);
+        Self::intersperse_missing_sections(&mut result, intervals, consolidated);
         result
     }
 
@@ -1029,15 +1029,25 @@ impl MelodySection {
         MelodySection { intervals, starts}
     }
 
-    fn intersperse_missing_sections(sections: &mut Vec<Self>, intervals: &Vec<DiatonicInterval>) {
-        let mut uncovered = (0..intervals.len()).collect::<BTreeSet<usize>>();
+    fn intersperse_missing_sections(sections: &mut Vec<Self>, intervals: &Vec<DiatonicInterval>, consolidated: &Vec<(usize, Note)>) {
+        let uncovered = Self::find_uncovered_indices(sections, consolidated);
+        Self::intersperse_uncovered(sections, intervals, &uncovered);
+    }
+
+    fn find_uncovered_indices(sections: &Vec<Self>, consolidated: &Vec<(usize, Note)>) -> BTreeSet<usize> {
+        let mut uncovered = (0..consolidated.len()).collect::<BTreeSet<usize>>();
         for section in sections.iter() {
             for start in section.starts.iter() {
-                for i in *start..*start + section.intervals.len() {
-                    uncovered.remove(&i);
+                let covered = consolidated.iter().enumerate().find(|(_,(i,_))| i == start).unwrap().0;
+                for i in 0..section.intervals.len() {
+                    uncovered.remove(&(covered + i));
                 }
             }
         }
+        uncovered
+    }
+
+    fn intersperse_uncovered(sections: &mut Vec<Self>, intervals: &Vec<DiatonicInterval>, uncovered: &BTreeSet<usize>) {
         let mut uncoverer = uncovered.iter();
         if let Some(mut prev) = uncoverer.next().copied() {
             let mut current = Self {intervals: vec![intervals[prev]], starts: vec![prev]};
@@ -2547,5 +2557,18 @@ mod tests {
         }
         let expected = Melody { notes: vec![Note { pitch: 60, duration: OrderedFloat(0.487445772), velocity: 92 }, Note { pitch: 60, duration: OrderedFloat(0.377421752), velocity: 0 }, Note { pitch: 60, duration: OrderedFloat(0.289316858), velocity: 93 }, Note { pitch: 60, duration: OrderedFloat(0.005971111), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.248933836), velocity: 102 }, Note { pitch: 64, duration: OrderedFloat(0.05767016), velocity: 0 }, Note { pitch: 62, duration: OrderedFloat(0.25962179), velocity: 113 }, Note { pitch: 62, duration: OrderedFloat(0.229479448), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(0.317320844), velocity: 4 }, Note { pitch: 65, duration: OrderedFloat(0.042830378), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(0.582655121), velocity: 70 }, Note { pitch: 65, duration: OrderedFloat(0.50379576), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(0.250825755), velocity: 106 }, Note { pitch: 65, duration: OrderedFloat(0.017210736), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.272029135), velocity: 100 }, Note { pitch: 64, duration: OrderedFloat(0.027428442), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(1.126041184), velocity: 99 }, Note { pitch: 64, duration: OrderedFloat(0.548192689), velocity: 99 }, Note { pitch: 65, duration: OrderedFloat(0.273066185), velocity: 99 }, Note { pitch: 64, duration: OrderedFloat(0.60045823), velocity: 117 }, Note { pitch: 64, duration: OrderedFloat(0.450277594), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.269494265), velocity: 85 }, Note { pitch: 64, duration: OrderedFloat(0.003552609), velocity: 0 }, Note { pitch: 62, duration: OrderedFloat(0.267746147), velocity: 96 }, Note { pitch: 62, duration: OrderedFloat(0.016828202), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.382390025), velocity: 123 }, Note { pitch: 64, duration: OrderedFloat(0.128571533), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.699718069), velocity: 113 }, Note { pitch: 64, duration: OrderedFloat(0.126759354), velocity: 0 }, Note { pitch: 62, duration: OrderedFloat(0.867493649), velocity: 117 }, Note { pitch: 62, duration: OrderedFloat(0.46433006), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.268483555), velocity: 106 }, Note { pitch: 60, duration: OrderedFloat(1.323782698), velocity: 106 }, Note { pitch: 60, duration: OrderedFloat(0.247095603), velocity: 100 }, Note { pitch: 60, duration: OrderedFloat(0.026361804), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.312539865), velocity: 30 }, Note { pitch: 64, duration: OrderedFloat(0.008570104), velocity: 0 }, Note { pitch: 62, duration: OrderedFloat(0.267542603), velocity: 100 }, Note { pitch: 62, duration: OrderedFloat(0.05672056), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(0.60457732), velocity: 110 }, Note { pitch: 65, duration: OrderedFloat(0.537155291), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(0.271879248), velocity: 113 }, Note { pitch: 65, duration: OrderedFloat(0.06866826), velocity: 0 }, Note { pitch: 67, duration: OrderedFloat(0.253815119), velocity: 88 }, Note { pitch: 67, duration: OrderedFloat(0.10896619), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(1.4822801190000001), velocity: 78 }, Note { pitch: 67, duration: OrderedFloat(0.362781309), velocity: 78 }, Note { pitch: 65, duration: OrderedFloat(0.202632925), velocity: 78 }, Note { pitch: 64, duration: OrderedFloat(0.651313167), velocity: 118 }, Note { pitch: 64, duration: OrderedFloat(0.412422427), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.315570477), velocity: 86 }, Note { pitch: 64, duration: OrderedFloat(0.032453773), velocity: 0 }, Note { pitch: 57, duration: OrderedFloat(1.254315847), velocity: 92 }, Note { pitch: 65, duration: OrderedFloat(0.321109969), velocity: 92 }, Note { pitch: 64, duration: OrderedFloat(0.64096164), velocity: 117 }, Note { pitch: 64, duration: OrderedFloat(0.485079544), velocity: 0 }, Note { pitch: 55, duration: OrderedFloat(0.530547672), velocity: 94 }, Note { pitch: 55, duration: OrderedFloat(0.017645017), velocity: 0 }, Note { pitch: 62, duration: OrderedFloat(0.263664442), velocity: 125 }, Note { pitch: 62, duration: OrderedFloat(0.009401743), velocity: 0 }, Note { pitch: 60, duration: OrderedFloat(0.670999911), velocity: 111 }, Note { pitch: 60, duration: OrderedFloat(1.5000003039999998), velocity: 0 }] };
         assert_eq!(melody, expected);
+    }
+
+    #[test]
+    fn test_find_uncovered() {
+        let mut melody = Melody::new();
+        for (pitch, duration, velocity) in LEAN_ON_ME.iter().copied() {
+            melody.add(Note::new(pitch, duration, velocity));
+        }
+        let consolidated = melody.get_consolidated_notes();
+        let sections = vec![MelodySection { intervals: vec![DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }], starts: vec![14, 39] }, MelodySection { intervals: vec![DiatonicInterval { degree: 2, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: 2, chroma: 0 }], starts: vec![0, 32] }];
+        let expected = [8, 9, 10, 11, 12, 13, 23, 24, 25, 26, 27, 28, 29, 30, 31, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61].iter().copied().collect::<BTreeSet<usize>>();
+        let actual = MelodySection::find_uncovered_indices(&sections, &consolidated);
+        assert_eq!(expected, actual);
     }
 }
