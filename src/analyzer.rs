@@ -1091,9 +1091,15 @@ impl MelodySection {
 
     fn figure_replace(&mut self, maker: &mut MelodyMaker, i: &mut usize, scale: &MusicMode, figure_length: usize, figure_end: usize) {
         let mut rng = rand::thread_rng();
-        if let Some(step_gap) = self.intervals[*i..=figure_end].iter().copied().sum::<DiatonicInterval>().normalized(scale).pure_degree() {
+        let current_intervals = &self.intervals[*i..=figure_end];
+        println!("Current intervals: {current_intervals:?} {:?} {:?}", current_intervals.iter().copied().sum::<DiatonicInterval>(), current_intervals.iter().copied().sum::<DiatonicInterval>().normalized(scale));
+        if let Some(step_gap) = current_intervals.iter().copied().sum::<DiatonicInterval>().normalized(scale).pure_degree() {
+            println!("step_gap: {step_gap}");
             if let Some(figure_candidates) = maker.figure_candidates(figure_length, step_gap) {
                 if let Some(replacement) = figure_candidates.choose(&mut rng).copied() {
+                    let originals = &self.intervals[*i..*i+replacement.pattern().len()];
+                    assert_eq!(current_intervals, originals);
+                    println!("replacement at {}: {replacement:?} {:?} {:?}", *i, replacement.pattern(), originals);
                     for (j, interval) in replacement.pattern().iter().enumerate() {
                         self.intervals[*i + j] = DiatonicInterval::pure(*interval);
                     }
@@ -1157,10 +1163,6 @@ impl DiatonicInterval {
 
     pub fn pure_degree(&self) -> Option<MidiByte> {
         if self.chroma == 0 {Some(self.degree)} else {None}
-    }
-
-    pub fn unwrap_pure_degree(&self) -> MidiByte {
-        self.pure_degree().unwrap()
     }
 }
 
@@ -1294,7 +1296,7 @@ impl MusicMode {
     }
 
     pub fn diatonic_steps_between_round_up(&self, pitch1: MidiByte, pitch2: MidiByte) -> MidiByte {
-        self.diatonic_steps_between(self.closest_pitch_below(pitch1), self.closest_pitch_above(pitch2)).unwrap_pure_degree()
+        self.diatonic_steps_between(self.closest_pitch_below(pitch1), self.closest_pitch_above(pitch2)).pure_degree().unwrap()
     }
 
     pub fn diatonic_steps_between(&self, pitch1: MidiByte, pitch2: MidiByte) -> DiatonicInterval {
@@ -1324,7 +1326,7 @@ impl MusicMode {
     pub fn next_pitch(&self, reference_pitch: MidiByte, scale_steps_away: DiatonicInterval) -> MidiByte {
         assert!(reference_pitch < MidiByte::MAX);
         let (reference_pitch, scale_steps_away) = self.reference_on_scale(reference_pitch, scale_steps_away);
-        let mut octaves_up = reference_pitch / NOTES_PER_OCTAVE;
+        let mut octaves_up = num::integer::div_floor(reference_pitch, NOTES_PER_OCTAVE);
         let i = self.closest_position_for(reference_pitch);
         let ref_octave_basis = self.octave_notes[i].a();
         let j: ModNumC<MidiByte, DIATONIC_SCALE_SIZE> =
@@ -1476,7 +1478,7 @@ impl MusicMode {
             let closest = self.closest_scale_match(pitch);
             (closest.0, Some(closest.2))
         };
-        (self.diatonic_steps_between(self.c_value(), pitch).unwrap_pure_degree(), acc)
+        (self.diatonic_steps_between(self.c_value(), pitch).pure_degree().unwrap(), acc)
     }
 
     pub fn key_signature(&self) -> KeySignature {
@@ -1547,7 +1549,7 @@ impl KeySignature {
         };
         let c_major = Self::c_major();
         let middle_c = c_major.c_value();
-        let start1 = Self::constrain_up(c_major.diatonic_steps_between(middle_c, middle_c + self.notes[0].natural_pitch()).unwrap_pure_degree());
+        let start1 = Self::constrain_up(c_major.diatonic_steps_between(middle_c, middle_c + self.notes[0].natural_pitch()).pure_degree().unwrap());
         let mut frontier = [start1, Self::constrain_up(start1 + offset)];
         let mut result = vec![];
         for (i, _) in self.notes.iter().enumerate() {
@@ -2568,5 +2570,36 @@ mod tests {
         }
         let expected = Melody { notes: vec![Note { pitch: 60, duration: OrderedFloat(0.487445772), velocity: 92 }, Note { pitch: 60, duration: OrderedFloat(0.377421752), velocity: 0 }, Note { pitch: 60, duration: OrderedFloat(0.289316858), velocity: 93 }, Note { pitch: 60, duration: OrderedFloat(0.005971111), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.248933836), velocity: 102 }, Note { pitch: 64, duration: OrderedFloat(0.05767016), velocity: 0 }, Note { pitch: 62, duration: OrderedFloat(0.25962179), velocity: 113 }, Note { pitch: 62, duration: OrderedFloat(0.229479448), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(0.317320844), velocity: 4 }, Note { pitch: 65, duration: OrderedFloat(0.042830378), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(0.582655121), velocity: 70 }, Note { pitch: 65, duration: OrderedFloat(0.50379576), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(0.250825755), velocity: 106 }, Note { pitch: 65, duration: OrderedFloat(0.017210736), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.272029135), velocity: 100 }, Note { pitch: 64, duration: OrderedFloat(0.027428442), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(1.126041184), velocity: 99 }, Note { pitch: 64, duration: OrderedFloat(0.548192689), velocity: 99 }, Note { pitch: 65, duration: OrderedFloat(0.273066185), velocity: 99 }, Note { pitch: 64, duration: OrderedFloat(0.60045823), velocity: 117 }, Note { pitch: 64, duration: OrderedFloat(0.450277594), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.269494265), velocity: 85 }, Note { pitch: 64, duration: OrderedFloat(0.003552609), velocity: 0 }, Note { pitch: 62, duration: OrderedFloat(0.267746147), velocity: 96 }, Note { pitch: 62, duration: OrderedFloat(0.016828202), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.382390025), velocity: 123 }, Note { pitch: 64, duration: OrderedFloat(0.128571533), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.699718069), velocity: 113 }, Note { pitch: 64, duration: OrderedFloat(0.126759354), velocity: 0 }, Note { pitch: 62, duration: OrderedFloat(0.867493649), velocity: 117 }, Note { pitch: 62, duration: OrderedFloat(0.46433006), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.268483555), velocity: 106 }, Note { pitch: 60, duration: OrderedFloat(1.323782698), velocity: 106 }, Note { pitch: 60, duration: OrderedFloat(0.247095603), velocity: 100 }, Note { pitch: 60, duration: OrderedFloat(0.026361804), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.312539865), velocity: 30 }, Note { pitch: 64, duration: OrderedFloat(0.008570104), velocity: 0 }, Note { pitch: 62, duration: OrderedFloat(0.267542603), velocity: 100 }, Note { pitch: 62, duration: OrderedFloat(0.05672056), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(0.60457732), velocity: 110 }, Note { pitch: 65, duration: OrderedFloat(0.537155291), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(0.271879248), velocity: 113 }, Note { pitch: 65, duration: OrderedFloat(0.06866826), velocity: 0 }, Note { pitch: 67, duration: OrderedFloat(0.253815119), velocity: 88 }, Note { pitch: 67, duration: OrderedFloat(0.10896619), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(1.4822801190000001), velocity: 78 }, Note { pitch: 67, duration: OrderedFloat(0.362781309), velocity: 78 }, Note { pitch: 65, duration: OrderedFloat(0.202632925), velocity: 78 }, Note { pitch: 64, duration: OrderedFloat(0.651313167), velocity: 118 }, Note { pitch: 64, duration: OrderedFloat(0.412422427), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.315570477), velocity: 86 }, Note { pitch: 64, duration: OrderedFloat(0.032453773), velocity: 0 }, Note { pitch: 57, duration: OrderedFloat(1.254315847), velocity: 92 }, Note { pitch: 65, duration: OrderedFloat(0.321109969), velocity: 92 }, Note { pitch: 64, duration: OrderedFloat(0.64096164), velocity: 117 }, Note { pitch: 64, duration: OrderedFloat(0.485079544), velocity: 0 }, Note { pitch: 55, duration: OrderedFloat(0.530547672), velocity: 94 }, Note { pitch: 55, duration: OrderedFloat(0.017645017), velocity: 0 }, Note { pitch: 62, duration: OrderedFloat(0.263664442), velocity: 125 }, Note { pitch: 62, duration: OrderedFloat(0.009401743), velocity: 0 }, Note { pitch: 60, duration: OrderedFloat(0.670999911), velocity: 111 }, Note { pitch: 60, duration: OrderedFloat(1.5000003039999998), velocity: 0 }] };
         assert_eq!(melody, expected);
+    }
+
+    #[test]
+    fn test_next_pitch() {
+        let scale = MusicMode::new(ModNumC::new(0), 0);
+        let cs = [-12, -10, -8, -7, -5, -3, -1, 0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23, 24];
+        for (i, p) in cs.iter().enumerate().skip(1) {
+            assert_eq!(scale.next_pitch(cs[i - 1], DiatonicInterval::pure(1)), *p);
+        }
+        let next_pitch = scale.next_pitch(scale.root(), DiatonicInterval::pure(-6));
+        assert_eq!(next_pitch, -10);
+        let steps_between = scale.diatonic_steps_between(scale.root(), next_pitch);
+        assert_eq!(steps_between, DiatonicInterval::pure(-6))
+    }
+
+    #[test]
+    fn diatonic_step_bug() {
+        let scale = MusicMode::new(ModNumC::new(0), 0);
+        assert_eq!(scale.half_steps_up_to_scale(-10), 0);
+        assert_eq!(scale.half_steps_up_to_scale(0), 0);
+        assert_eq!(scale.diatonic_steps_between(-10, 0), DiatonicInterval::pure(6));
+    }
+
+    #[test]
+    fn test_normalize_interval() {
+        let intervals = vec![DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: -5, chroma: 0 }];
+        let sum = intervals.iter().copied().sum::<DiatonicInterval>();
+        assert_eq!(sum, DiatonicInterval {degree: -6, chroma: 0});
+        let scale = MusicMode::new(ModNumC::new(0), 0);
+        let normalized = sum.normalized(&scale);
+        assert_eq!(normalized, DiatonicInterval {degree: -6, chroma: 0});
     }
 }
