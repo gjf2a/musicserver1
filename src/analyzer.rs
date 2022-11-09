@@ -1035,7 +1035,7 @@ impl MelodySection {
     }
 
     fn find_uncovered_indices(sections: &Vec<Self>, consolidated: &Vec<(usize, Note)>) -> BTreeSet<usize> {
-        let mut uncovered = (0..consolidated.len()).collect::<BTreeSet<usize>>();
+        let mut uncovered = (0..consolidated.len() - 1).collect::<BTreeSet<usize>>();
         for section in sections.iter() {
             for start in section.starts.iter() {
                 let covered = consolidated.iter().enumerate().find(|(_,(i,_))| i == start).unwrap().0;
@@ -1067,6 +1067,10 @@ impl MelodySection {
         }
     }
 
+    pub fn overall_interval_change(&self) -> DiatonicInterval {
+        self.intervals.iter().copied().sum()
+    }
+
     pub fn vary(&mut self, scale: &MusicMode, replace_prob: f64, maker: &mut MelodyMaker) {
         let mut rng = rand::thread_rng();
         let mut i = 0;
@@ -1077,21 +1081,25 @@ impl MelodySection {
                 break;
             }
             if rand::random::<f64>() < replace_prob {
-                if let Some(step_gap) = self.intervals[i..=figure_end].iter().copied().sum::<DiatonicInterval>().normalized(scale).pure_degree() {
-                    if let Some(figure_candidates) = maker.figure_candidates(*figure_length, step_gap) {
-                        if let Some(figure) = figure_candidates.choose(&mut rng).copied() {
-                            let replacement = maker.pick_figure(figure);
-                            if replacement != figure {
-                                for (j, interval) in replacement.pattern().iter().enumerate() {
-                                    self.intervals[i + j] = DiatonicInterval::pure(*interval);
-                                }
-                                i = figure_end;
-                            }
-                        }
-                    }
-                }
+                let overall = self.overall_interval_change();
+                self.figure_replace(maker, &mut i, scale, *figure_length, figure_end);
+                assert_eq!(overall, self.overall_interval_change());
             }
             i += 1;
+        }
+    }
+
+    fn figure_replace(&mut self, maker: &mut MelodyMaker, i: &mut usize, scale: &MusicMode, figure_length: usize, figure_end: usize) {
+        let mut rng = rand::thread_rng();
+        if let Some(step_gap) = self.intervals[*i..=figure_end].iter().copied().sum::<DiatonicInterval>().normalized(scale).pure_degree() {
+            if let Some(figure_candidates) = maker.figure_candidates(figure_length, step_gap) {
+                if let Some(replacement) = figure_candidates.choose(&mut rng).copied() {
+                    for (j, interval) in replacement.pattern().iter().enumerate() {
+                        self.intervals[*i + j] = DiatonicInterval::pure(*interval);
+                    }
+                    *i = figure_end;
+                }
+            }
         }
     }
 
@@ -2515,6 +2523,7 @@ mod tests {
         }
         assert_eq!(melody.len(), LEAN_ON_ME.len());
         let sections = maker.get_melody_sections(&melody);
+        println!("{sections:?}");
         assert_eq!(2, sections.len());
         assert_eq!(format!("{sections:?}"), "[MelodySection { intervals: [DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }], starts: [14, 39] }, MelodySection { intervals: [DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }], starts: [0, 32] }]");
     }
@@ -2531,12 +2540,14 @@ mod tests {
         for _ in 0..NUM_RANDOM_TESTS {
             let mut sections = maker.get_melody_sections(&melody);
             for section in sections.iter_mut() {
+                println!("before: {section:?}");
                 let len_before = section.intervals.len();
-                let total_before = section.intervals.iter().copied().sum::<DiatonicInterval>();
+                let total_before = section.overall_interval_change();
                 let values_before = section.intervals.clone();
                 section.vary(&scale, 1.0, &mut maker);
+                println!("after: {section:?}");
                 assert_eq!(len_before, section.intervals.len());
-                assert_eq!(total_before, section.intervals.iter().copied().sum::<DiatonicInterval>());
+                assert_eq!(total_before, section.overall_interval_change());
                 if values_before != section.intervals {
                     num_differ += 1;
                 }
@@ -2557,18 +2568,5 @@ mod tests {
         }
         let expected = Melody { notes: vec![Note { pitch: 60, duration: OrderedFloat(0.487445772), velocity: 92 }, Note { pitch: 60, duration: OrderedFloat(0.377421752), velocity: 0 }, Note { pitch: 60, duration: OrderedFloat(0.289316858), velocity: 93 }, Note { pitch: 60, duration: OrderedFloat(0.005971111), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.248933836), velocity: 102 }, Note { pitch: 64, duration: OrderedFloat(0.05767016), velocity: 0 }, Note { pitch: 62, duration: OrderedFloat(0.25962179), velocity: 113 }, Note { pitch: 62, duration: OrderedFloat(0.229479448), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(0.317320844), velocity: 4 }, Note { pitch: 65, duration: OrderedFloat(0.042830378), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(0.582655121), velocity: 70 }, Note { pitch: 65, duration: OrderedFloat(0.50379576), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(0.250825755), velocity: 106 }, Note { pitch: 65, duration: OrderedFloat(0.017210736), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.272029135), velocity: 100 }, Note { pitch: 64, duration: OrderedFloat(0.027428442), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(1.126041184), velocity: 99 }, Note { pitch: 64, duration: OrderedFloat(0.548192689), velocity: 99 }, Note { pitch: 65, duration: OrderedFloat(0.273066185), velocity: 99 }, Note { pitch: 64, duration: OrderedFloat(0.60045823), velocity: 117 }, Note { pitch: 64, duration: OrderedFloat(0.450277594), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.269494265), velocity: 85 }, Note { pitch: 64, duration: OrderedFloat(0.003552609), velocity: 0 }, Note { pitch: 62, duration: OrderedFloat(0.267746147), velocity: 96 }, Note { pitch: 62, duration: OrderedFloat(0.016828202), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.382390025), velocity: 123 }, Note { pitch: 64, duration: OrderedFloat(0.128571533), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.699718069), velocity: 113 }, Note { pitch: 64, duration: OrderedFloat(0.126759354), velocity: 0 }, Note { pitch: 62, duration: OrderedFloat(0.867493649), velocity: 117 }, Note { pitch: 62, duration: OrderedFloat(0.46433006), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.268483555), velocity: 106 }, Note { pitch: 60, duration: OrderedFloat(1.323782698), velocity: 106 }, Note { pitch: 60, duration: OrderedFloat(0.247095603), velocity: 100 }, Note { pitch: 60, duration: OrderedFloat(0.026361804), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.312539865), velocity: 30 }, Note { pitch: 64, duration: OrderedFloat(0.008570104), velocity: 0 }, Note { pitch: 62, duration: OrderedFloat(0.267542603), velocity: 100 }, Note { pitch: 62, duration: OrderedFloat(0.05672056), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(0.60457732), velocity: 110 }, Note { pitch: 65, duration: OrderedFloat(0.537155291), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(0.271879248), velocity: 113 }, Note { pitch: 65, duration: OrderedFloat(0.06866826), velocity: 0 }, Note { pitch: 67, duration: OrderedFloat(0.253815119), velocity: 88 }, Note { pitch: 67, duration: OrderedFloat(0.10896619), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(1.4822801190000001), velocity: 78 }, Note { pitch: 67, duration: OrderedFloat(0.362781309), velocity: 78 }, Note { pitch: 65, duration: OrderedFloat(0.202632925), velocity: 78 }, Note { pitch: 64, duration: OrderedFloat(0.651313167), velocity: 118 }, Note { pitch: 64, duration: OrderedFloat(0.412422427), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.315570477), velocity: 86 }, Note { pitch: 64, duration: OrderedFloat(0.032453773), velocity: 0 }, Note { pitch: 57, duration: OrderedFloat(1.254315847), velocity: 92 }, Note { pitch: 65, duration: OrderedFloat(0.321109969), velocity: 92 }, Note { pitch: 64, duration: OrderedFloat(0.64096164), velocity: 117 }, Note { pitch: 64, duration: OrderedFloat(0.485079544), velocity: 0 }, Note { pitch: 55, duration: OrderedFloat(0.530547672), velocity: 94 }, Note { pitch: 55, duration: OrderedFloat(0.017645017), velocity: 0 }, Note { pitch: 62, duration: OrderedFloat(0.263664442), velocity: 125 }, Note { pitch: 62, duration: OrderedFloat(0.009401743), velocity: 0 }, Note { pitch: 60, duration: OrderedFloat(0.670999911), velocity: 111 }, Note { pitch: 60, duration: OrderedFloat(1.5000003039999998), velocity: 0 }] };
         assert_eq!(melody, expected);
-    }
-
-    #[test]
-    fn test_find_uncovered() {
-        let mut melody = Melody::new();
-        for (pitch, duration, velocity) in LEAN_ON_ME.iter().copied() {
-            melody.add(Note::new(pitch, duration, velocity));
-        }
-        let consolidated = melody.get_consolidated_notes();
-        let sections = vec![MelodySection { intervals: vec![DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }], starts: vec![14, 39] }, MelodySection { intervals: vec![DiatonicInterval { degree: 2, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: 2, chroma: 0 }], starts: vec![0, 32] }];
-        let expected = [8, 9, 10, 11, 12, 13, 23, 24, 25, 26, 27, 28, 29, 30, 31, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61].iter().copied().collect::<BTreeSet<usize>>();
-        let actual = MelodySection::find_uncovered_indices(&sections, &consolidated);
-        assert_eq!(expected, actual);
     }
 }
