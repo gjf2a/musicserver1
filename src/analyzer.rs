@@ -2084,7 +2084,21 @@ mod tests {
     #[test]
     fn test_motive_variation() {
         test_variation_unchanged(MelodyMaker::create_motive_variation);
-        test_variation_changed(MelodyMaker::create_motive_variation, 0.40, 0.60);
+        test_variation_changed(MelodyMaker::create_motive_variation, 0.10, 0.60);
+    }
+
+    #[test]
+    fn test_motive_remelodize_unchanged() {
+        let melody = Melody::from(COUNTDOWN_MELODY);
+        melody.tuple_print();
+        let maker = MelodyMaker::new();
+        let sections = maker.get_melody_sections(&melody);
+        let mut variation = melody.clone();
+        for section in sections.iter() {
+            println!("{section:?}");
+            section.remelodize(&mut variation);
+            assert_eq!(variation, melody);
+        }
     }
 
     #[test]

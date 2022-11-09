@@ -12,7 +12,8 @@ pub type AITable = ChooserTable<Arc<AIFuncType>>;
 pub fn make_ai_table() -> AITable {
     let ai_funcs: Vec<(&str, Arc<AIFuncType>)> = arc_vec![
         ("Bypass", |_, _, _| Melody::new()),
-        ("Motive Mapper", MelodyMaker::create_motive_variation)
+        ("Motive Mapper", MelodyMaker::create_motive_variation),
+        ("Anchored Emphasis", MelodyMaker::create_emphasis_variation)
     ];
     ChooserTable::from(&ai_funcs)
 }
