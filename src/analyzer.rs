@@ -1006,7 +1006,7 @@ impl MelodyMaker {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MelodySection {
     intervals: Vec<DiatonicInterval>,
     starts: Vec<usize>
@@ -1067,8 +1067,8 @@ impl MelodySection {
         }
     }
 
-    pub fn overall_interval_change(&self) -> DiatonicInterval {
-        self.intervals.iter().copied().sum()
+    pub fn overall_interval_change(&self, scale: &MusicMode) -> DiatonicInterval {
+        self.intervals.iter().copied().sum::<DiatonicInterval>().normalized(scale)
     }
 
     pub fn vary(&mut self, scale: &MusicMode, replace_prob: f64, maker: &mut MelodyMaker) {
@@ -1081,9 +1081,9 @@ impl MelodySection {
                 break;
             }
             if rand::random::<f64>() < replace_prob {
-                let overall = self.overall_interval_change();
+                let overall = self.overall_interval_change(scale);
                 self.figure_replace(maker, &mut i, scale, *figure_length, figure_end);
-                assert_eq!(overall, self.overall_interval_change());
+                assert_eq!(overall, self.overall_interval_change(scale));
             }
             i += 1;
         }
@@ -2579,8 +2579,9 @@ mod tests {
         assert_eq!(melody.len(), LEAN_ON_ME.len());
         let sections = maker.get_melody_sections(&melody);
         println!("{sections:?}");
-        assert_eq!(2, sections.len());
-        assert_eq!(format!("{sections:?}"), "[MelodySection { intervals: [DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }], starts: [14, 39] }, MelodySection { intervals: [DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }], starts: [0, 32] }]");
+        assert_eq!(4, sections.len());
+        let expected = vec![MelodySection { intervals: vec![DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }], starts: vec![14, 39] }, MelodySection { intervals: vec![DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }], starts: vec![0, 32] }, MelodySection { intervals: vec![DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: -2, chroma: 0 }], starts: vec![23] }, MelodySection { intervals: vec![DiatonicInterval { degree: -4, chroma: 0 }, DiatonicInterval { degree: 5, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: -5, chroma: 0 }, DiatonicInterval { degree: 4, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }], starts: vec![48] }];
+        assert_eq!(sections, expected);
     }
 
     #[test]
@@ -2597,12 +2598,12 @@ mod tests {
             for section in sections.iter_mut() {
                 println!("before: {section:?}");
                 let len_before = section.intervals.len();
-                let total_before = section.overall_interval_change();
+                let total_before = section.overall_interval_change(&scale);
                 let values_before = section.intervals.clone();
                 section.vary(&scale, 1.0, &mut maker);
                 println!("after: {section:?}");
                 assert_eq!(len_before, section.intervals.len());
-                assert_eq!(total_before, section.overall_interval_change());
+                assert_eq!(total_before, section.overall_interval_change(&scale));
                 if values_before != section.intervals {
                     num_differ += 1;
                 }
