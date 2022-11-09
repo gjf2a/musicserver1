@@ -1081,9 +1081,7 @@ impl MelodySection {
                 break;
             }
             if rand::random::<f64>() < replace_prob {
-                let overall = self.overall_interval_change(scale);
                 self.figure_replace(maker, &mut i, scale, *figure_length, figure_end);
-                assert_eq!(overall, self.overall_interval_change(scale));
             }
             i += 1;
         }
@@ -1092,14 +1090,9 @@ impl MelodySection {
     fn figure_replace(&mut self, maker: &mut MelodyMaker, i: &mut usize, scale: &MusicMode, figure_length: usize, figure_end: usize) {
         let mut rng = rand::thread_rng();
         let current_intervals = &self.intervals[*i..=figure_end];
-        println!("Current intervals: {current_intervals:?} {:?} {:?}", current_intervals.iter().copied().sum::<DiatonicInterval>(), current_intervals.iter().copied().sum::<DiatonicInterval>().normalized(scale));
         if let Some(step_gap) = current_intervals.iter().copied().sum::<DiatonicInterval>().normalized(scale).pure_degree() {
-            println!("step_gap: {step_gap}");
             if let Some(figure_candidates) = maker.figure_candidates(figure_length, step_gap) {
                 if let Some(replacement) = figure_candidates.choose(&mut rng).copied() {
-                    let originals = &self.intervals[*i..*i+replacement.pattern().len()];
-                    assert_eq!(current_intervals, originals);
-                    println!("replacement at {}: {replacement:?} {:?} {:?}", *i, replacement.pattern(), originals);
                     for (j, interval) in replacement.pattern().iter().enumerate() {
                         self.intervals[*i + j] = DiatonicInterval::pure(*interval);
                     }
