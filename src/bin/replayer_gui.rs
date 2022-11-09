@@ -319,7 +319,7 @@ impl ReplayerApp {
         let (mut lo, mut hi) = melody.min_max_pitches();
         lo = scale.closest_pitch_below(lo);
         hi = scale.closest_pitch_above(hi);
-        let num_diatonic_pitches = max(NUM_DIATONIC_STAFF_NOTES, scale.diatonic_steps_between(lo, hi).unwrap_pure_degree());
+        let num_diatonic_pitches = max(NUM_DIATONIC_STAFF_NOTES, scale.diatonic_steps_between(lo, hi).pure_degree().unwrap());
         let y_per_pitch = Self::pixels_per_pitch(response.rect, |p| p.y, BORDER_SIZE * 2.0, num_diatonic_pitches as f32);
         let staff_line_space = y_per_pitch * 2.0;
 
