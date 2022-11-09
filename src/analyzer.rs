@@ -1031,7 +1031,7 @@ impl MelodySection {
 
     fn intersperse_missing_sections(sections: &mut Vec<Self>, intervals: &Vec<DiatonicInterval>, consolidated: &Vec<(usize, Note)>) {
         let uncovered = Self::find_uncovered_indices(sections, consolidated);
-        Self::intersperse_uncovered(sections, intervals, &uncovered);
+        Self::intersperse_uncovered(sections, intervals, &uncovered, consolidated);
     }
 
     fn find_uncovered_indices(sections: &Vec<Self>, consolidated: &Vec<(usize, Note)>) -> BTreeSet<usize> {
@@ -1047,15 +1047,15 @@ impl MelodySection {
         uncovered
     }
 
-    fn intersperse_uncovered(sections: &mut Vec<Self>, intervals: &Vec<DiatonicInterval>, uncovered: &BTreeSet<usize>) {
+    fn intersperse_uncovered(sections: &mut Vec<Self>, intervals: &Vec<DiatonicInterval>, uncovered: &BTreeSet<usize>, consolidated: &Vec<(usize, Note)>) {
         let mut uncoverer = uncovered.iter();
         if let Some(mut prev) = uncoverer.next().copied() {
-            let mut current = Self {intervals: vec![intervals[prev]], starts: vec![prev]};
+            let mut current = Self {intervals: vec![intervals[prev]], starts: vec![consolidated[prev].0]};
             for i in uncoverer.copied() {
                 if i == prev + 1 {
                     current.intervals.push(intervals[i]);
                 } else {
-                    let mut adding = Self {intervals: vec![intervals[i]], starts: vec![i]};
+                    let mut adding = Self {intervals: vec![intervals[i]], starts: vec![consolidated[i].0]};
                     std::mem::swap(&mut adding, &mut current);
                     if adding.intervals.len() >= MelodyMaker::MIN_MOTIVE_LEN {
                         sections.push(adding);
@@ -1307,7 +1307,7 @@ impl MusicMode {
             let steps_before = self.half_steps_up_to_scale(pitch1);
             let mut count = 0;
             let mut p = pitch1 + steps_before;
-            while p < pitch2 {
+            while p < self.closest_pitch_below(pitch2) {
                 p = self.next_pitch(p, DiatonicInterval::pure(1));
                 count += 1;
             }
@@ -2111,13 +2111,66 @@ mod tests {
     fn test_motive_remelodize_unchanged() {
         let melody = Melody::from(COUNTDOWN_MELODY);
         melody.tuple_print();
+        println!("{melody:?}");
         let maker = MelodyMaker::new();
         let sections = maker.get_melody_sections(&melody);
         let mut variation = melody.clone();
         for section in sections.iter() {
             println!("{section:?}");
             section.remelodize(&mut variation);
+            assert_eq!(melody.len(), variation.len());
+            for i in 0..melody.len() {
+                if melody.notes[i] != variation.notes[i] {
+                    let pre_m = melody.notes[..i+3].iter().map(|n| n.pitch()).collect::<Vec<_>>();
+                    let pre_v = variation.notes[..i+3].iter().map(|n| n.pitch()).collect::<Vec<_>>();
+                    println!("{pre_m:?}");
+                    println!("{pre_v:?}");
+                    panic!("Died at {i}: {:?} vs {:?}", melody.notes[i], variation.notes[i]);
+                }
+            }
             assert_eq!(variation, melody);
+        }
+    }
+
+    #[test]
+    fn remelodize_countdown_bug() {
+        let melody = Melody { notes: vec![Note { pitch: 74, duration: OrderedFloat(0.56), velocity: 127 }, Note { pitch: 74, duration: OrderedFloat(0.01), velocity: 0 }, Note { pitch: 73, duration: OrderedFloat(1.09), velocity: 100 }, Note { pitch: 73, duration: OrderedFloat(0.07), velocity: 0 }, Note { pitch: 75, duration: OrderedFloat(0.16), velocity: 114 }, Note { pitch: 75, duration: OrderedFloat(0.03), velocity: 0 }, Note { pitch: 73, duration: OrderedFloat(0.16), velocity: 106 }, Note { pitch: 73, duration: OrderedFloat(0.03), velocity: 0 }, Note { pitch: 71, duration: OrderedFloat(0.18), velocity: 72 }, Note { pitch: 71, duration: OrderedFloat(0.03), velocity: 0 }, Note { pitch: 73, duration: OrderedFloat(0.78), velocity: 81 }, Note { pitch: 73, duration: OrderedFloat(0.06), velocity: 0 }, Note { pitch: 73, duration: OrderedFloat(0.14), velocity: 115 }, Note { pitch: 73, duration: OrderedFloat(0.04), velocity: 0 }, Note { pitch: 73, duration: OrderedFloat(0.14), velocity: 110 }, Note { pitch: 73, duration: OrderedFloat(0.04), velocity: 0 }, Note { pitch: 73, duration: OrderedFloat(0.26), velocity: 102 }, Note { pitch: 73, duration: OrderedFloat(0.1), velocity: 0 }, Note { pitch: 71, duration: OrderedFloat(0.23), velocity: 115 }, Note { pitch: 71, duration: OrderedFloat(0.07), velocity: 0 }, Note { pitch: 69, duration: OrderedFloat(0.19), velocity: 124 }, Note { pitch: 69, duration: OrderedFloat(0.1), velocity: 0 }, Note { pitch: 68, duration: OrderedFloat(0.23), velocity: 74 }, Note { pitch: 68, duration: OrderedFloat(0.15), velocity: 0 }, Note { pitch: 66, duration: OrderedFloat(1.22), velocity: 86 }, Note { pitch: 66, duration: OrderedFloat(2.0), velocity: 0 }] };
+        let scale = melody.best_scale_for();
+        println!("{} {}", scale.name(), scale.root());
+        melody.tuple_print();
+        let consolidated = melody.get_consolidated_notes();
+        let consolidated_melody = Melody {notes: consolidated.iter().map(|(_,n)| *n).collect()};
+        println!("{consolidated_melody:?}");
+        let intervals = consolidated_melody.diatonic_intervals();
+        println!("{intervals:?}");
+        let maker = MelodyMaker::new();
+        let sections = maker.get_melody_sections(&melody);
+        let mut variation = melody.clone();
+        for section in sections.iter() {
+            println!("{section:?}");
+            section.remelodize(&mut variation);
+            assert_eq!(melody.len(), variation.len());
+            for i in 0..melody.len() {
+                if melody.notes[i] != variation.notes[i] {
+                    let pre_m = melody.notes[..i+3].iter().map(|n| n.pitch()).collect::<Vec<_>>();
+                    let pre_v = variation.notes[..i+3].iter().map(|n| n.pitch()).collect::<Vec<_>>();
+                    println!("{pre_m:?}");
+                    println!("{pre_v:?}");
+                    panic!("Died at {i}: {:?} vs {:?}", melody.notes[i], variation.notes[i]);
+                }
+            }
+            assert_eq!(variation, melody);
+        }
+
+    }
+
+    #[test]
+    fn chromatic_bug_1() {
+        let scale = MusicMode::new(ModNumC::new(5), 6);
+        assert_eq!(scale.name(), "F♯ Aeolian");
+        for (p, d, c) in [(73, 0, 0), (74, 1, 0), (75, 1, 1), (76, 2, 0), (77, 2, 1), (78, 3, 0)] {
+            assert_eq!(scale.diatonic_steps_between(73, p), DiatonicInterval::chromatic(d, c));
+
         }
     }
 
