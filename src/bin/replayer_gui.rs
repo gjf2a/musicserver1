@@ -145,10 +145,10 @@ impl Clef {
         }
     }
 
-    fn size(&self, y_per_pitch: f32) -> f32 {
-        y_per_pitch.powf(2.0) * match self {
-            Self::Treble => 3.7,
-            Self::Bass => 2.0
+    fn size(&self) -> f32 {
+        match self {
+            Self::Treble => 13.5,
+            Self::Bass => 8.0
         }
     }
 
@@ -158,13 +158,13 @@ impl Clef {
 
     fn y_offset(&self) -> f32 {
         match self {
-            Self::Treble => 20.0,
-            Self::Bass => -2.75
+            Self::Treble => 5.0,
+            Self::Bass => -0.45
         }
     }
 
     fn render(&self, painter: &Painter, x: f32, y: f32, y_per_pitch: f32) {
-        painter.text(Pos2 {x: x + self.x_offset(), y: y + self.y_offset()}, Align2::CENTER_CENTER, self.symbol(), ReplayerApp::font_id(self.size(y_per_pitch)), Color32::BLACK);
+        painter.text(Pos2 {x: x + self.x_offset(), y: y + self.y_offset() * y_per_pitch}, Align2::CENTER_CENTER, self.symbol(), ReplayerApp::font_id(self.size() * y_per_pitch), Color32::BLACK);
     }
 }
 
