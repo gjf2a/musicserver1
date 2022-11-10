@@ -1092,6 +1092,8 @@ impl MelodySection {
         let current_intervals = &self.intervals[*i..=figure_end];
         if let Some(step_gap) = current_intervals.iter().copied().sum::<DiatonicInterval>().normalized(scale).pure_degree() {
             if let Some(figure_candidates) = maker.figure_candidates(figure_length, step_gap) {
+                let current_diatonic = current_intervals.iter().map(|i| i.degree).collect::<Vec<_>>();
+                let figure_candidates = figure_candidates.iter().filter(|f| f.pattern() != current_diatonic).collect::<Vec<_>>();
                 if let Some(replacement) = figure_candidates.choose(&mut rng).copied() {
                     for (j, interval) in replacement.pattern().iter().enumerate() {
                         self.intervals[*i + j] = DiatonicInterval::pure(*interval);
