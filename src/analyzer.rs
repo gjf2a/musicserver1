@@ -575,7 +575,7 @@ impl MelodyMaker {
         MelodyMaker { figure_tables }
     }
 
-    pub fn make_figure_distribution(&self) -> Distribution<MelodicFigure> {
+    pub fn make_figure_distribution(&self, melody: &Melody) -> Distribution<MelodicFigure> {
         let mut result = Distribution::new();
         for table in self.figure_tables.values() {
             for figures in table.values() {
@@ -583,6 +583,9 @@ impl MelodyMaker {
                     result.add(figure, 1.0);
                 }
             }
+        }
+        for (_, figure, _) in self.all_figure_matches(melody) {
+            result.add(&figure, 1.0);
         }
         result
     }
@@ -722,10 +725,7 @@ impl MelodyMaker {
         let mut result = original.fragment(0, prefix_size);
         let start = result.len() - 1;
         let scale = original.best_scale_for();
-        let mut distro = self.make_figure_distribution();
-        for (_, figure, _) in self.all_figure_matches(original) {
-            distro.add(&figure, 1.0);
-        }
+        let distro = self.make_figure_distribution(original);
         let mut i = start;
         while i < original.len() {
             let generator = distro.random_pick();

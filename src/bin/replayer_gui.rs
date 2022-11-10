@@ -6,7 +6,7 @@ use crossbeam_utils::atomic::AtomicCell;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
 use musicserver1::{make_ai_table, make_synth_table, replay_slider, start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue, SynthTable, Preference, MelodyInfo, Database, start_database_thread, SynthChoice, send_recorded_melody, GuiDatabaseUpdate, Melody, Note, MidiByte, MusicMode, KeySignature, Accidental, VariationControlSliders};
 use std::{mem, thread};
-use std::cmp::max;
+use std::cmp::{min, max};
 use std::ops::RangeInclusive;
 use std::sync::{Arc, Mutex};
 use enum_iterator::all;
@@ -168,7 +168,8 @@ impl Clef {
     }
 }
 
-const NUM_DIATONIC_STAFF_NOTES: MidiByte = 24;
+const LOWEST_STAFF_PITCH: MidiByte = 41;
+const HIGHEST_STAFF_PITCH: MidiByte = 79;
 const BORDER_SIZE: f32 = 8.0;
 const Y_OFFSET: f32 = BORDER_SIZE * 2.0;
 const MIDDLE_C_Y_MULTIPLIER: f32 = 10.0;
@@ -317,10 +318,7 @@ impl ReplayerApp {
     pub fn draw_melody(ui: &mut Ui, melody: &Melody, size: Vec2, fill_color: Color32) {
         let (response, painter) = ui.allocate_painter(size, Sense::hover());
         let scale = melody.best_scale_for();
-        let (mut lo, mut hi) = melody.min_max_pitches();
-        lo = scale.closest_pitch_below(lo);
-        hi = scale.closest_pitch_above(hi);
-        let num_diatonic_pitches = max(NUM_DIATONIC_STAFF_NOTES, scale.diatonic_steps_between(lo, hi).pure_degree().unwrap());
+        let num_diatonic_pitches = Self::staff_diatonic_pitches(&scale, melody);
         let y_per_pitch = Self::pixels_per_pitch(response.rect, |p| p.y, BORDER_SIZE * 2.0, num_diatonic_pitches as f32);
         let staff_line_space = y_per_pitch * 2.0;
 
@@ -343,6 +341,18 @@ impl ReplayerApp {
                 Self::draw_accidental(&painter, auxiliary_symbol, x + staff_line_space, y, y_per_pitch);
             }
         }
+    }
+
+    fn staff_diatonic_pitches(scale: &MusicMode, melody: &Melody) -> MidiByte {
+        let (lo, hi) = Self::min_max_staff(scale, melody);
+        scale.diatonic_steps_between(lo, hi).pure_degree().unwrap()
+    }
+
+    fn min_max_staff(scale: &MusicMode, melody: &Melody) -> (MidiByte, MidiByte) {
+        let (mut lo, mut hi) = melody.min_max_pitches();
+        lo = min(lo, LOWEST_STAFF_PITCH);
+        hi = max(hi, HIGHEST_STAFF_PITCH);
+        (scale.closest_pitch_below(lo), scale.closest_pitch_above(hi))
     }
 
     fn font_id(size: f32) -> FontId {
