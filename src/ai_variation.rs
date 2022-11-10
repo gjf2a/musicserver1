@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use crossbeam_utils::atomic::AtomicCell;
 use eframe::emath::Numeric;
 
-pub type AIFuncType = dyn Fn(&mut MelodyMaker, &Melody, f64) -> Melody + Send + Sync;
+pub type AIFuncType = dyn Fn(&MelodyMaker, &Melody, f64) -> Melody + Send + Sync;
 pub type AITable = ChooserTable<Arc<AIFuncType>>;
 
 const MIN_NOTE_DURATION: f64 = 0.10;
@@ -33,7 +33,7 @@ pub fn start_ai_thread(
             ai2output.clone(),
             replay_delay_slider.clone(),
         );
-        let mut performer = Performer::new(variation_controls, ai_table);
+        let performer = Performer::new(variation_controls, ai_table);
         let min_melody_pitches = *analyzer::FIGURE_LENGTHS.iter().max().unwrap();
 
         loop {
@@ -145,7 +145,7 @@ impl Performer {
         slider.load().current()
     }
 
-    fn create_variation(&mut self, melody: &Melody) -> Melody {
+    fn create_variation(&self, melody: &Melody) -> Melody {
         let p_random = Self::from_slider(&self.variation_controls.p_random_slider);
         let p_ornament = Self::from_slider(&self.variation_controls.p_ornament_slider);
         let ornament_gap = Self::from_slider(&self.variation_controls.ornament_gap_slider);
@@ -154,7 +154,7 @@ impl Performer {
             let ai_table = self.ai_table.lock().unwrap();
             ai_table.current_choice()
         };
-        let mut variation = var_func(&mut self.maker, &melody, p_random);
+        let mut variation = var_func(&self.maker, &melody, p_random);
         if variation.len() > 0 && whimsification > 0.0 {
             variation = self.maker.suffix_whimsified_melody(&variation, whimsification);
         }

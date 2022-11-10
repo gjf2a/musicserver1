@@ -680,7 +680,7 @@ impl MelodyMaker {
         }
     }
 
-    pub fn pick_figure(&mut self, figure: MelodicFigure) -> MelodicFigure {
+    pub fn pick_figure(&self, figure: MelodicFigure) -> MelodicFigure {
         let figure_length = figure.len();
         let jump = figure.total_change();
         let table = self.figure_tables.get(&figure_length).unwrap();
@@ -701,7 +701,7 @@ impl MelodyMaker {
     const MIN_MOTIVE_LEN: usize = 2;
     const MIN_MOTIVE_REPETITIONS: usize = 2;
 
-    pub fn create_motive_variation(&mut self, original: &Melody, p_remap: f64) -> Melody {
+    pub fn create_motive_variation(&self, original: &Melody, p_remap: f64) -> Melody {
         let scale = original.best_scale_for();
         let mut sections = self.get_melody_sections(original);
         for section in sections.iter_mut() {
@@ -811,7 +811,7 @@ impl MelodySection {
         self.intervals.iter().copied().sum::<DiatonicInterval>().normalized(scale)
     }
 
-    pub fn vary(&mut self, scale: &MusicMode, replace_prob: f64, maker: &mut MelodyMaker) {
+    pub fn vary(&mut self, scale: &MusicMode, replace_prob: f64, maker: &MelodyMaker) {
         let mut rng = rand::thread_rng();
         let mut i = 0;
         loop {
@@ -827,7 +827,7 @@ impl MelodySection {
         }
     }
 
-    fn figure_replace(&mut self, maker: &mut MelodyMaker, i: &mut usize, scale: &MusicMode, figure_length: usize, figure_end: usize) {
+    fn figure_replace(&mut self, maker: &MelodyMaker, i: &mut usize, scale: &MusicMode, figure_length: usize, figure_end: usize) {
         let mut rng = rand::thread_rng();
         let current_intervals = &self.intervals[*i..=figure_end];
         if let Some(step_gap) = current_intervals.iter().copied().sum::<DiatonicInterval>().normalized(scale).pure_degree() {
