@@ -547,6 +547,7 @@ impl Neighbor {
     fn make_ornament_pitches(&self, figure: MelodicFigure, scale: &MusicMode) -> VecDeque<MidiByte> {
         let mut ornament_pitches = figure.make_pitches(self.prev_pitch, scale);
         ornament_pitches.pop_front();
+        ornament_pitches.pop_back();
         ornament_pitches
     }
 }
@@ -619,7 +620,6 @@ impl MelodyMaker {
         let mut countup = 1;
         let mut i = 0;
         while i < melody.len() {
-            let mut ornamented = false;
             if !melody[i].is_rest() {
                 let neighbor = Neighbor::new(&melody, &scale, i);
                 if let Some(neighbor) = neighbor {
@@ -627,20 +627,15 @@ impl MelodyMaker {
                         let p_choose = p_ornament * countup as f64 / ornament_gap as f64;
                         if rand::random::<f64>() < p_choose {
                             neighbor.add_ornament_pitches(&mut result, &scale, figure);
-                            ornamented = true;
                             countup = 1;
-                            i += 1;
-                            while i < melody.len() && melody[i].is_rest() {i += 1;}
                         } else {
                             countup += 1;
                         }
                     }
                 }
             }
-            if !ornamented {
-                result.add(melody[i]);
-                i += 1;
-            }
+            result.add(melody[i]);
+            i += 1;
         }
         let end = result.last_note();
         if !end.is_rest() {
@@ -1734,7 +1729,7 @@ mod tests {
         (figures.len(), figure_set)
     }
 
-    fn test_variation_unchanged<V: Fn(&mut MelodyMaker, &Melody, f64) -> Melody>(v_func: V) {
+    fn test_variation_unchanged<V: Fn(&MelodyMaker, &Melody, f64) -> Melody>(v_func: V) {
         let melody = Melody::from(COUNTDOWN_MELODY);
         let mut maker = MelodyMaker::new();
         let v = v_func(&mut maker, &melody, 0.0);
@@ -1742,7 +1737,7 @@ mod tests {
         assert_eq!(v.sonic_pi_list().as_str(), COUNTDOWN_ECHO);
     }
 
-    fn test_variation_changed<V: Fn(&mut MelodyMaker, &Melody, f64) -> Melody>(
+    fn test_variation_changed<V: Fn(&MelodyMaker, &Melody, f64) -> Melody>(
         v_func: V,
         expected_lo: f64,
         expected_hi: f64,
@@ -2323,5 +2318,26 @@ mod tests {
         let melody = Melody { notes: vec![Note { pitch: 72, duration: OrderedFloat(0.369792827), velocity: 127 }, Note { pitch: 72, duration: OrderedFloat(0.061621093), velocity: 0 }, Note { pitch: 74, duration: OrderedFloat(0.329988672), velocity: 127 }, Note { pitch: 74, duration: OrderedFloat(0.127228427), velocity: 0 }, Note { pitch: 76, duration: OrderedFloat(0.3714564), velocity: 99 }, Note { pitch: 76, duration: OrderedFloat(0.085686124), velocity: 0 }, Note { pitch: 77, duration: OrderedFloat(0.330959396), velocity: 127 }, Note { pitch: 77, duration: OrderedFloat(0.159859305), velocity: 0 }, Note { pitch: 72, duration: OrderedFloat(0.314343867), velocity: 76 }, Note { pitch: 72, duration: OrderedFloat(0.026874508), velocity: 0 }, Note { pitch: 74, duration: OrderedFloat(0.037653197), velocity: 12 }, Note { pitch: 74, duration: OrderedFloat(0.044087338), velocity: 0 }, Note { pitch: 75, duration: OrderedFloat(0.024298299), velocity: 77 }, Note { pitch: 75, duration: OrderedFloat(2.524e-6), velocity: 0 }, Note { pitch: 74, duration: OrderedFloat(0.280279047), velocity: 80 }, Note { pitch: 74, duration: OrderedFloat(0.178904154), velocity: 0 }, Note { pitch: 76, duration: OrderedFloat(0.323056836), velocity: 89 }, Note { pitch: 76, duration: OrderedFloat(0.1009156), velocity: 0 }, Note { pitch: 77, duration: OrderedFloat(0.330098162), velocity: 127 }, Note { pitch: 77, duration: OrderedFloat(0.10557298), velocity: 0 }, Note { pitch: 72, duration: OrderedFloat(0.300934497), velocity: 80 }, Note { pitch: 72, duration: OrderedFloat(2.87e-6), velocity: 0 }, Note { pitch: 73, duration: OrderedFloat(0.022893581), velocity: 20 }, Note { pitch: 73, duration: OrderedFloat(0.044463414), velocity: 0 }, Note { pitch: 74, duration: OrderedFloat(0.394669786), velocity: 101 }, Note { pitch: 74, duration: OrderedFloat(0.078055973), velocity: 0 }, Note { pitch: 77, duration: OrderedFloat(0.025097277), velocity: 91 }, Note { pitch: 77, duration: OrderedFloat(2.56e-6), velocity: 0 }, Note { pitch: 76, duration: OrderedFloat(0.332283936), velocity: 92 }, Note { pitch: 76, duration: OrderedFloat(0.113469215), velocity: 0 }, Note { pitch: 77, duration: OrderedFloat(0.345122384), velocity: 127 }, Note { pitch: 77, duration: OrderedFloat(1.5000002829999999), velocity: 0 }] };
         let expected = Melody { notes: vec![Note { pitch: 72, duration: OrderedFloat(0.369792827), velocity: 127 }, Note { pitch: 72, duration: OrderedFloat(0.061621093), velocity: 0 }, Note { pitch: 74, duration: OrderedFloat(0.329988672), velocity: 127 }, Note { pitch: 74, duration: OrderedFloat(0.127228427), velocity: 0 }, Note { pitch: 76, duration: OrderedFloat(0.3714564), velocity: 99 }, Note { pitch: 76, duration: OrderedFloat(0.085686124), velocity: 0 }, Note { pitch: 77, duration: OrderedFloat(0.330959396), velocity: 127 }, Note { pitch: 77, duration: OrderedFloat(0.159859305), velocity: 0 }, Note { pitch: 72, duration: OrderedFloat(0.314343867), velocity: 76 }, Note { pitch: 72, duration: OrderedFloat(0.026874508), velocity: 0 }, Note { pitch: 74, duration: OrderedFloat(0.280279047), velocity: 80 }, Note { pitch: 74, duration: OrderedFloat(0.178904154), velocity: 0 }, Note { pitch: 76, duration: OrderedFloat(0.323056836), velocity: 89 }, Note { pitch: 76, duration: OrderedFloat(0.1009156), velocity: 0 }, Note { pitch: 77, duration: OrderedFloat(0.330098162), velocity: 127 }, Note { pitch: 77, duration: OrderedFloat(0.10557298), velocity: 0 }, Note { pitch: 72, duration: OrderedFloat(0.300934497), velocity: 80 }, Note { pitch: 72, duration: OrderedFloat(2.87e-6), velocity: 0 }, Note { pitch: 74, duration: OrderedFloat(0.394669786), velocity: 101 }, Note { pitch: 74, duration: OrderedFloat(0.078055973), velocity: 0 }, Note { pitch: 76, duration: OrderedFloat(0.332283936), velocity: 92 }, Note { pitch: 76, duration: OrderedFloat(0.113469215), velocity: 0 }, Note { pitch: 77, duration: OrderedFloat(0.345122384), velocity: 127 }, Note { pitch: 77, duration: OrderedFloat(1.5000002829999999), velocity: 0 }] };
         assert_eq!(melody.without_brief_notes(0.1), expected);
+    }
+
+    #[test]
+    fn test_ornamentation() {
+        let maker = MelodyMaker::new();
+        let mut melody = Melody::new();
+        for (pitch, duration, velocity) in LEAN_ON_ME.iter().copied() {
+            melody.add(Note::new(pitch, duration, velocity));
+        }
+        for _ in 0..NUM_RANDOM_TESTS {
+            let ornamented = maker.ornamented(&melody, 1.0, (melody.len() / 4) as i64);
+            let mut ornaments = 0;
+            assert!(ornamented.len() > melody.len());
+            for i in 0..melody.len() {
+                assert!(i + ornaments < ornamented.len());
+                if ornamented[i + ornaments] != melody[i] {
+                    ornaments += 1;
+                }
+            }
+            println!("{ornaments} ({})", melody.len());
+        }
     }
 }
