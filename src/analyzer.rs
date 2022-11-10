@@ -535,7 +535,9 @@ impl Neighbor {
             None
         } else {
             let consolidated = melody.get_consolidated_notes();
-            let duration_options = consolidated.iter().map(|(_, n)| n.duration).collect();
+            let shortest_duration = consolidated.iter().map(|(_,n)| n.duration).min().unwrap();
+            //let duration_options = consolidated.iter().map(|(_, n)| n.duration).collect();
+            let duration_options = vec![shortest_duration, shortest_duration, shortest_duration];
             scale.diatonic_steps_between(melody[i - 1].pitch, melody[i].pitch)
                 .pure_degree()
                 .map(|s| Neighbor {gap: s, prev_pitch: melody[i - 1].pitch, velocity: melody[i].velocity, duration_options})

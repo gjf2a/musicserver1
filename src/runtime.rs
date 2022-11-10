@@ -80,7 +80,7 @@ impl VariationControlSliders {
     pub fn new() -> Self {
         Self {
             p_random_slider: Arc::new(AtomicCell::new(prob_slider(0.8))),
-            p_ornament_slider: Arc::new(AtomicCell::new(prob_slider(0.5))),
+            p_ornament_slider: Arc::new(AtomicCell::new(prob_slider(0.2))),
             ornament_gap_slider: Arc::new(AtomicCell::new(ornament_gap_slider())),
             whimsification_slider: Arc::new(AtomicCell::new(prob_slider(0.0)))
         }
