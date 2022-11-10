@@ -258,6 +258,7 @@ impl ReplayerApp {
             Self::insert_slider(ui, self.variation_controls.ornament_gap_slider.clone(), "Notes Between Ornaments");
             Self::insert_slider(ui, self.variation_controls.whimsification_slider.clone(), "Portion of Suffix to Whimsify");
             Self::insert_slider(ui, self.replay_delay_slider.clone(), "Replay Delay");
+            Self::insert_slider(ui, self.variation_controls.shortest_note_slider.clone(), "Shortest Playable Note (seconds)");
             let empty = {
                 let melody_var_info = self.melody_var_info.lock().unwrap();
                 melody_var_info.is_empty()

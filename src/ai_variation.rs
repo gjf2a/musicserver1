@@ -9,8 +9,6 @@ use eframe::emath::Numeric;
 pub type AIFuncType = dyn Fn(&MelodyMaker, &Melody, f64) -> Melody + Send + Sync;
 pub type AITable = ChooserTable<Arc<AIFuncType>>;
 
-const MIN_NOTE_DURATION: f64 = 0.10;
-
 pub fn make_ai_table() -> AITable {
     let ai_funcs: Vec<(&str, Arc<AIFuncType>)> = arc_vec![
         ("Bypass", |_, _, _| Melody::new()),
@@ -33,13 +31,13 @@ pub fn start_ai_thread(
             ai2output.clone(),
             replay_delay_slider.clone(),
         );
-        let performer = Performer::new(variation_controls, ai_table);
+        let performer = Performer::new(variation_controls.clone(), ai_table);
         let min_melody_pitches = *analyzer::FIGURE_LENGTHS.iter().max().unwrap();
 
         loop {
             let melody = recorder.record();
             if long_enough(&melody, min_melody_pitches, replay_delay_slider.load().current()) {
-                let melody = melody.without_brief_notes(MIN_NOTE_DURATION);
+                let melody = melody.without_brief_notes(variation_controls.shortest_note_slider.load().current());
                 let variation = performer.create_variation(&melody);
                 if long_enough(&variation, min_melody_pitches, replay_delay_slider.load().current()) {
                     println!("melody: {melody:?}");
