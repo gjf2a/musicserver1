@@ -168,11 +168,12 @@ impl Clef {
     }
 }
 
-const LOWEST_STAFF_PITCH: MidiByte = 41;
-const HIGHEST_STAFF_PITCH: MidiByte = 79;
+const MIDDLE_C: MidiByte = 60;
+const STAFF_PITCH_WIDTH: MidiByte = 19;
+const LOWEST_STAFF_PITCH: MidiByte = MIDDLE_C - STAFF_PITCH_WIDTH;
+const HIGHEST_STAFF_PITCH: MidiByte = MIDDLE_C + STAFF_PITCH_WIDTH;
 const BORDER_SIZE: f32 = 8.0;
 const Y_OFFSET: f32 = BORDER_SIZE * 2.0;
-const MIDDLE_C_Y_MULTIPLIER: f32 = 10.0;
 const X_OFFSET: f32 = BORDER_SIZE * 5.0;
 const ACCIDENTAL_SIZE_MULTIPLIER: f32 = 5.0;
 const KEY_SIGNATURE_OFFSET: f32 = 28.0;
@@ -318,13 +319,16 @@ impl ReplayerApp {
     pub fn draw_melody(ui: &mut Ui, melody: &Melody, size: Vec2, fill_color: Color32) {
         let (response, painter) = ui.allocate_painter(size, Sense::hover());
         let scale = melody.best_scale_for();
-        let num_diatonic_pitches = Self::staff_diatonic_pitches(&scale, melody);
+        let (lo, hi) = Self::min_max_staff(&scale, melody);
+        let num_diatonic_pitches = 1 + scale.diatonic_steps_between(lo, hi).pure_degree().unwrap();
         let y_per_pitch = Self::pixels_per_pitch(response.rect, |p| p.y, BORDER_SIZE * 2.0, num_diatonic_pitches as f32);
         let staff_line_space = y_per_pitch * 2.0;
 
+        let y_border = Y_OFFSET + response.rect.min.y;
         let x_range = response.rect.min.x + BORDER_SIZE..=response.rect.max.x - BORDER_SIZE;
-        let y_middle_c = Y_OFFSET + response.rect.min.y + y_per_pitch * MIDDLE_C_Y_MULTIPLIER;
-        Self::draw_staff(&painter, Clef::Treble, x_range.clone(), response.rect.min.y + Y_OFFSET, y_per_pitch, y_middle_c, &scale);
+        let y_middle_c = y_border + y_per_pitch * scale.diatonic_steps_between_round_up(MIDDLE_C, hi) as f32;
+        let space_above_staff = 1.0 + scale.diatonic_steps_between_round_up(HIGHEST_STAFF_PITCH, hi) as f32;
+        Self::draw_staff(&painter, Clef::Treble, x_range.clone(), y_border + y_per_pitch * space_above_staff, y_per_pitch, y_middle_c, &scale);
         Self::draw_staff(&painter, Clef::Bass, x_range, y_middle_c + staff_line_space, y_per_pitch, y_middle_c, &scale);
 
         let notes_of_interest: Vec<&Note> = melody.iter().filter(|n| n.velocity() > 0).collect();
@@ -341,11 +345,6 @@ impl ReplayerApp {
                 Self::draw_accidental(&painter, auxiliary_symbol, x + staff_line_space, y, y_per_pitch);
             }
         }
-    }
-
-    fn staff_diatonic_pitches(scale: &MusicMode, melody: &Melody) -> MidiByte {
-        let (lo, hi) = Self::min_max_staff(scale, melody);
-        scale.diatonic_steps_between(lo, hi).pure_degree().unwrap()
     }
 
     fn min_max_staff(scale: &MusicMode, melody: &Melody) -> (MidiByte, MidiByte) {
