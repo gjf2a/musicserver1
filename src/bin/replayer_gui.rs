@@ -255,11 +255,11 @@ impl ReplayerApp {
             Self::update_table_choice(self.human_synth_table.clone(),self.human_synth_name.as_str());
             Self::update_table_choice(self.ai_synth_table.clone(), self.ai_synth_name.as_str());
 
+            Self::insert_slider(ui, self.variation_controls.whimsification_slider.clone(), "Portion of Suffix to Whimsify");
             Self::insert_slider(ui,self.variation_controls.p_random_slider.clone(),"Probability of Randomization");
             Self::insert_slider(ui,self.variation_controls.p_ornament_slider.clone(),"Probability of Inserting Ornament");
-            Self::insert_slider(ui, self.variation_controls.ornament_gap_slider.clone(), "Notes Between Ornaments");
-            Self::insert_slider(ui, self.variation_controls.whimsification_slider.clone(), "Portion of Suffix to Whimsify");
-            Self::insert_slider(ui, self.replay_delay_slider.clone(), "Replay Delay");
+            Self::insert_slider(ui, self.variation_controls.ornament_gap_slider.clone(), "Maximum Notes Between Ornaments");
+            Self::insert_slider(ui, self.replay_delay_slider.clone(), "Replay Delay (seconds)");
             Self::insert_slider(ui, self.variation_controls.shortest_note_slider.clone(), "Shortest Playable Note (seconds)");
             let empty = {
                 let melody_var_info = self.melody_var_info.lock().unwrap();
