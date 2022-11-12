@@ -4,7 +4,7 @@ use eframe::egui::{Color32, Sense, Vec2, Visuals, Ui, Stroke, Pos2, Align2, Font
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
-use musicserver1::{make_ai_table, make_synth_table, replay_slider, start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue, SynthTable, Preference, MelodyInfo, Database, start_database_thread, SynthChoice, send_recorded_melody, GuiDatabaseUpdate, Melody, Note, MidiByte, MusicMode, KeySignature, Accidental, VariationControlSliders};
+use musicserver1::{make_ai_table, make_synth_table, replay_slider, start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue, SynthTable, Preference, MelodyInfo, Database, start_database_thread, SynthChoice, send_recorded_melody, GuiDatabaseUpdate, Melody, MidiByte, MusicMode, KeySignature, Accidental, VariationControlSliders};
 use std::{mem, thread};
 use std::cmp::{min, max};
 use std::ops::RangeInclusive;
@@ -308,7 +308,7 @@ impl ReplayerApp {
 
         let size = Vec2::new(ui.available_width(), (ui.min_size().y - ui.available_height()) / 2.0);
         Self::draw_melody(ui, melody_info.melody(), size, Color32::BLACK);
-        Self::draw_melody(ui, variation_info.melody(), size, Color32::BLUE);
+        Self::draw_melody(ui, variation_info.melody(), size, Color32::RED);
     }
 
     /// Musical symbols are a very tricky issue. Here are resources I've used:
@@ -328,20 +328,22 @@ impl ReplayerApp {
         let y_middle_c = y_border + y_per_pitch * scale.diatonic_steps_between_round_up(MIDDLE_C, hi) as f32;
         let space_above_staff = 1.0 + scale.diatonic_steps_between_round_up(HIGHEST_STAFF_PITCH, hi) as f32;
         Self::draw_staff(&painter, Clef::Treble, x_range.clone(), y_border + y_per_pitch * space_above_staff, y_per_pitch, y_middle_c, &scale);
-        Self::draw_staff(&painter, Clef::Bass, x_range, y_middle_c + staff_line_space, y_per_pitch, y_middle_c, &scale);
+        Self::draw_staff(&painter, Clef::Bass, x_range.clone(), y_middle_c + staff_line_space, y_per_pitch, y_middle_c, &scale);
 
-        let notes_of_interest: Vec<&Note> = melody.iter().filter(|n| n.velocity() > 0).collect();
         let sig = scale.key_signature();
         let x_left = X_OFFSET + KEY_SIGNATURE_OFFSET + y_per_pitch * sig.len() as f32;
-        let x_per_pitch = Self::pixels_per_pitch(response.rect, |p| p.x, x_left + BORDER_SIZE, notes_of_interest.len() as f32);
-        for (i, note) in notes_of_interest.iter().enumerate() {
-            let x = response.rect.min.x + x_left + i as f32 * x_per_pitch;
-            let (staff_offset, auxiliary_symbol) = scale.staff_position(note.pitch());
-            let y = y_middle_c - staff_offset as f32 * y_per_pitch;
-            let center = Pos2 { x, y };
-            painter.circle_filled(center, y_per_pitch, fill_color);
-            if let Some(auxiliary_symbol) = auxiliary_symbol {
-                Self::draw_accidental(&painter, auxiliary_symbol, x + staff_line_space, y, y_per_pitch);
+        let mut total_duration = 0.0;
+        for note in melody.iter() {
+            let x = response.rect.min.x + x_left + (response.rect.max.x - response.rect.min.x) * total_duration / melody.duration() as f32;
+            total_duration += note.duration() as f32;
+            if !note.is_rest() {
+                let (staff_offset, auxiliary_symbol) = scale.staff_position(note.pitch());
+                let y = y_middle_c - staff_offset as f32 * y_per_pitch;
+                let center = Pos2 { x, y };
+                painter.circle_filled(center, y_per_pitch, fill_color);
+                if let Some(auxiliary_symbol) = auxiliary_symbol {
+                    Self::draw_accidental(&painter, auxiliary_symbol, x + staff_line_space, y, y_per_pitch);
+                }
             }
         }
     }

@@ -40,16 +40,19 @@ pub fn start_ai_thread(
                 let melody = melody.without_brief_notes(variation_controls.shortest_note_slider.load().current());
                 let variation = performer.create_variation(&melody);
                 if long_enough(&variation, min_melody_pitches, replay_delay_slider.load().current()) {
-                    println!("melody: {melody:?}");
-                    melody.tuple_print();
-                    println!("variation: {variation:?}");
-                    variation.tuple_print();
+                    print_debug(&melody, "melody");
+                    print_debug(&variation, "variation");
                     ai2dbase.push(FromAiMsg { melody, variation: variation.clone() });
                     send_recorded_melody(&variation, SynthChoice::Ai, ai2output.clone());
                 }
             }
         }
     });
+}
+
+fn print_debug(melody: &Melody, label: &str) {
+    println!("{label} ({} s): {melody:?}", melody.duration());
+    melody.tuple_print();
 }
 
 fn long_enough(melody: &Melody, min_melody_pitches: usize, min_duration: f64) -> bool {
