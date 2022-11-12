@@ -72,7 +72,6 @@ macro_rules! arc_vec {
 pub struct VariationControlSliders {
     pub p_random_slider: Arc<AtomicCell<SliderValue<f64>>>,
     pub p_ornament_slider: Arc<AtomicCell<SliderValue<f64>>>,
-    pub ornament_gap_slider: Arc<AtomicCell<SliderValue<i64>>>,
     pub whimsification_slider: Arc<AtomicCell<SliderValue<f64>>>,
     pub shortest_note_slider: Arc<AtomicCell<SliderValue<f64>>>,
 }
@@ -82,7 +81,6 @@ impl VariationControlSliders {
         Self {
             p_random_slider: Arc::new(AtomicCell::new(prob_slider(0.8))),
             p_ornament_slider: Arc::new(AtomicCell::new(prob_slider(0.2))),
-            ornament_gap_slider: Arc::new(AtomicCell::new(SliderValue::new(20, 1, 40))),
             whimsification_slider: Arc::new(AtomicCell::new(prob_slider(0.0))),
             shortest_note_slider: Arc::new(AtomicCell::new(SliderValue::new(0.1, 0.0, 0.2)))
         }

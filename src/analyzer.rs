@@ -516,42 +516,6 @@ impl std::ops::Index<usize> for Melody {
     }
 }
 
-#[derive(Clone)]
-struct Neighbor {
-    gap: MidiByte,
-    prev_pitch: MidiByte,
-    velocity: MidiByte,
-    duration: OrderedFloat<f64>
-}
-
-impl Neighbor {
-    fn new(melody: &Melody, scale: &MusicMode, i: usize) -> Option<Self> {
-        if i == 0 || i >= melody.len() {
-            None
-        } else {
-            let consolidated = melody.get_consolidated_notes();
-            let duration = consolidated.iter().map(|(_,n)| n.duration).min().unwrap();
-            scale.diatonic_steps_between(melody[i - 1].pitch, melody[i].pitch)
-                .pure_degree()
-                .map(|s| Neighbor {gap: s, prev_pitch: melody[i - 1].pitch, velocity: melody[i].velocity, duration})
-        }
-    }
-
-    fn add_ornament_pitches(&self, result: &mut Melody, scale: &MusicMode, figure: MelodicFigure) {
-        let ornament_pitches = self.make_ornament_pitches(figure, scale);
-        for i in 0..ornament_pitches.len() {
-            result.add(Note {pitch: ornament_pitches[i], duration: self.duration, velocity: self.velocity});
-        }
-    }
-
-    fn make_ornament_pitches(&self, figure: MelodicFigure, scale: &MusicMode) -> VecDeque<MidiByte> {
-        let mut ornament_pitches = figure.make_pitches(self.prev_pitch, scale);
-        ornament_pitches.pop_front();
-        ornament_pitches.pop_back();
-        ornament_pitches
-    }
-}
-
 pub struct MelodyMaker {
     figure_tables: BTreeMap<usize, BTreeMap<MidiByte, Vec<MelodicFigure>>>
 }
@@ -614,52 +578,69 @@ impl MelodyMaker {
         self.figure_tables.get(&figure_length).unwrap().get(&step_gap)
     }
 
-    pub fn ornamented(&self, melody: &Melody, p_ornament: f64, ornament_gap: i64) -> Melody {
+    pub fn ornamented(&self, melody: &Melody, p_ornament: f64) -> Melody {
         if melody.len() == 0 {
             return melody.clone();
         }
+        let mut rng = rand::thread_rng();
         let scale = melody.best_scale_for();
+        let consolidated = melody.get_consolidated_notes();
+        let ornament_duration = consolidated.iter().map(|(_,n)| n.duration).min().unwrap();
+
         let mut result = Melody::new();
-        let mut countup = 1;
         let mut i = 0;
         while i < melody.len() {
-            if !melody[i].is_rest() {
-                let neighbor = Neighbor::new(&melody, &scale, i);
-                if let Some(neighbor) = neighbor {
-                    if let Some(figure) = self.choose_ornament_figure(neighbor.gap) {
-                        let p_choose = p_ornament * countup as f64 / ornament_gap as f64;
-                        if rand::random::<f64>() < p_choose {
-                            neighbor.add_ornament_pitches(&mut result, &scale, figure);
-                            countup = 1;
-                        } else {
-                            countup += 1;
+            let mut ornamented = false;
+            if let Some(gap) = Self::next_diatonic_gap(&scale, melody, i).and_then(|g| g.pure_degree()) {
+                if let Some((figure_length, lead_duration)) = Self::ornament_figure_length(ornament_duration, melody, i) {
+                    if let Some(figure_list) = self.figure_tables.get(&figure_length).unwrap().get(&gap) {
+                        if rand::random::<f64>() < p_ornament {
+                            let figure = figure_list.choose(&mut rng).unwrap();
+                            let mut pitches = figure.make_pitches(melody[i].pitch, &scale);
+                            pitches.pop_back();
+                            result.add(Note::new(pitches.pop_front().unwrap(), lead_duration.into_inner(), melody[i].velocity));
+                            while !pitches.is_empty() {
+                                result.add(Note::new(pitches.pop_front().unwrap(), ornament_duration.into_inner(), melody[i].velocity));
+                            }
+                            ornamented = true;
+                            i += 1;
+                            while i < melody.len() && melody[i].is_rest() {
+                                i += 1;
+                            }
                         }
                     }
                 }
             }
-            result.add(melody[i]);
-            i += 1;
-        }
-        let end = result.last_note();
-        if !end.is_rest() {
-            result.add(Note {pitch: end.pitch, velocity: 0, duration: end.duration});
+            if !ornamented {
+                result.add(melody[i]);
+                i += 1;
+            }
         }
         result
     }
 
-    fn random_element_from<T: Copy>(v: &Vec<T>) -> Option<T> {
-        match v.len() {
-            0 => None,
-            _ => Some(v[rand::random::<usize>() % v.len()])
+    fn ornament_figure_length(ornament_duration: OrderedFloat<f64>, melody: &Melody, i: usize) -> Option<(usize,OrderedFloat<f64>)> {
+        if !melody[i].is_rest() {
+            let duration = melody.duration_with_rest(i);
+            for len in FIGURE_LENGTHS {
+                let leftover = duration - ornament_duration * (OrderedFloat(len as f64) - 2.0);
+                if leftover >= OrderedFloat(0.0) {
+                    return Some((len, leftover))
+                }
+            }
         }
+        None
     }
 
-    fn choose_ornament_figure(&self, gap: MidiByte) -> Option<MelodicFigure> {
-        let options = self.figure_tables.values()
-            .filter_map(|t| t.get(&gap))
-            .map(|v| v[rand::random::<usize>() % v.len()])
-            .collect::<Vec<_>>();
-        Self::random_element_from(&options)
+    fn next_diatonic_gap(scale: &MusicMode, melody: &Melody, i: usize) -> Option<DiatonicInterval> {
+        let next = if i + 1 < melody.len() && !melody[i + 1].is_rest() {
+            Some(i + 1)
+        } else if i + 2 < melody.len() {
+            Some(i + 2)
+        } else {
+            None
+        };
+        next.map(|n| scale.diatonic_steps_between(melody[i].pitch, melody[n].pitch))
     }
 
     pub fn all_figure_matches(&self, melody: &Melody) -> Vec<(usize, MelodicFigure, usize)> {
@@ -1507,6 +1488,7 @@ mod tests {
     use ordered_float::OrderedFloat;
     use std::cmp::{max, min};
     use std::collections::{BTreeSet, VecDeque};
+    use float_cmp::assert_approx_eq;
 
     const EXAMPLE_MELODY: &str = "55,0.39,0.91,55,0.04,0.0,59,0.33,0.73,60,0.06,0.44,62,0.02,0.87,59,0.05,0.0,60,0.16,0.0,62,0.2,0.0,55,0.39,0.61,55,0.01,0.0,57,0.34,0.98,57,0.05,0.0,55,0.39,0.78,54,0.02,0.98,55,0.19,0.0,54,0.12,0.0,52,0.11,0.74,52,0.0,0.0,54,0.12,0.46,54,0.03,0.0,50,0.1,0.84,50,0.27,0.0,55,0.27,0.74,55,0.1,0.0,59,0.27,0.44,60,0.07,0.54,62,0.04,0.91,59,0.09,0.0,60,0.11,0.0,62,0.19,0.0,55,0.29,0.67,55,0.07,0.0,57,0.32,0.76,57,0.06,0.0,55,0.23,0.7,55,0.05,0.0,54,0.12,0.93,54,0.07,0.0,50,0.37,0.8,50,0.5,0.0,55,0.36,0.76,55,0.05,0.0,59,0.28,0.76,60,0.05,0.7,62,0.01,0.91,59,0.07,0.0,60,0.15,0.0,62,0.2,0.0,55,0.33,0.67,55,0.02,0.0,57,0.29,0.8,57,0.1,0.0,55,0.29,0.9,55,0.08,0.0,54,0.16,1.0,54,0.12,0.0,52,0.12,0.72,54,0.01,0.71,52,0.14,0.0,54,0.07,0.0,50,0.1,0.76,50,0.23,0.0,55,0.22,0.65,55,0.13,0.0,57,0.29,0.64,57,0.08,0.0,55,0.23,0.76,55,0.07,0.0,54,0.12,0.99,54,0.04,0.0,52,0.24,0.95,52,0.19,0.0,54,0.13,1.0,54,0.15,0.0,52,0.12,0.72,52,0.03,0.0,54,0.19,0.83,54,0.13,0.0,50,0.06,0.69,50,0.15,0.0,55,0.01,0.73,57,0.07,0.66,57,0.55,0.0,55,1.5,0.0";
     const COUNTDOWN_MELODY: &str = "66,0.42,1.0,66,0.55,0.0,73,0.17,1.0,73,0.01,0.0,71,0.13,0.77,71,0.0,0.0,73,0.45,0.41,73,0.13,0.0,66,0.85,0.8,66,0.32,0.0,74,0.16,1.0,74,0.0,0.0,74,0.37,0.87,74,0.03,0.0,73,0.2,1.0,73,0.03,0.0,71,0.03,0.06,71,0.04,0.0,71,0.93,1.0,71,0.27,0.0,74,0.16,1.0,74,0.03,0.0,73,0.13,1.0,73,0.03,0.0,74,0.45,1.0,74,0.12,0.0,66,0.58,0.8,66,0.5,0.0,71,0.15,0.75,71,0.02,0.0,71,0.13,0.81,71,0.03,0.0,71,0.21,1.0,71,0.08,0.0,69,0.24,0.94,69,0.08,0.0,68,0.22,0.65,68,0.07,0.0,71,0.24,1.0,71,0.06,0.0,69,0.68,1.0,69,0.15,0.0,73,0.16,1.0,73,0.03,0.0,71,0.14,0.91,71,0.03,0.0,73,0.29,1.0,73,0.22,0.0,66,0.61,0.64,66,0.45,0.0,74,0.15,0.87,74,0.04,0.0,74,0.14,0.83,74,0.02,0.0,74,0.2,1.0,74,0.13,0.0,73,0.29,0.96,73,0.0,0.0,72,0.04,0.49,72,0.03,0.0,71,1.01,1.0,71,0.41,0.0,74,0.14,0.94,74,0.04,0.0,73,0.13,0.8,73,0.03,0.0,74,0.49,1.0,74,0.12,0.0,66,0.93,0.54,66,0.19,0.0,71,0.16,0.81,71,0.02,0.0,71,0.13,0.79,71,0.03,0.0,71,0.21,0.87,71,0.11,0.0,69,0.24,0.86,69,0.08,0.0,68,0.24,0.67,68,0.07,0.0,71,0.24,1.0,71,0.11,0.0,69,0.75,0.86,69,0.05,0.0,68,0.18,0.71,68,0.02,0.0,69,0.16,0.89,69,0.04,0.0,71,0.02,0.99,71,0.0,0.0,83,0.01,1.0,83,0.0,0.0,71,0.56,0.98,71,0.16,0.0,69,0.19,1.0,69,0.04,0.0,71,0.2,1.0,71,0.05,0.0,73,0.24,1.0,73,0.0,0.0,72,0.03,0.62,72,0.07,0.0,71,0.2,0.91,71,0.03,0.0,69,0.01,0.06,69,0.06,0.0,69,0.18,0.73,69,0.11,0.0,68,0.19,0.46,68,0.18,0.0,66,0.51,0.76,66,0.17,0.0,74,0.56,1.0,74,0.01,0.0,73,1.09,0.79,73,0.07,0.0,75,0.16,0.9,75,0.03,0.0,73,0.16,0.84,73,0.03,0.0,71,0.18,0.57,71,0.03,0.0,73,0.78,0.64,73,0.06,0.0,73,0.14,0.91,73,0.04,0.0,73,0.14,0.87,73,0.04,0.0,73,0.26,0.81,73,0.1,0.0,71,0.23,0.91,71,0.07,0.0,69,0.19,0.98,69,0.1,0.0,68,0.23,0.59,68,0.15,0.0,66,1.22,0.68,66,2.0,0.0";
@@ -2328,12 +2310,15 @@ mod tests {
             melody.add(Note::new(pitch, duration, velocity));
         }
         for _ in 0..NUM_RANDOM_TESTS {
-            let ornamented = maker.ornamented(&melody, 1.0, (melody.len() / 4) as i64);
-            let mut ornaments = 0;
+            let ornamented = maker.ornamented(&melody, 1.0);
             assert!(ornamented.len() > melody.len());
-            for i in 0..melody.len() {
-                assert!(i + ornaments < ornamented.len());
-                if ornamented[i + ornaments] != melody[i] {
+            assert_approx_eq!(f64, melody.duration(), ornamented.duration());
+            let cm = melody.get_consolidated_notes();
+            let om = ornamented.get_consolidated_notes();
+            let mut ornaments = 0;
+            for i in 0..cm.len() {
+                assert!(i + ornaments < om.len());
+                if om[i + ornaments].1.pitch != cm[i].1.pitch {
                     ornaments += 1;
                 }
             }

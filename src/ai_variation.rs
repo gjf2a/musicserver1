@@ -146,7 +146,6 @@ impl Performer {
     fn create_variation(&self, melody: &Melody) -> Melody {
         let p_random = Self::from_slider(&self.variation_controls.p_random_slider);
         let p_ornament = Self::from_slider(&self.variation_controls.p_ornament_slider);
-        let ornament_gap = Self::from_slider(&self.variation_controls.ornament_gap_slider);
         let whimsification = Self::from_slider(&self.variation_controls.whimsification_slider);
         let var_func = {
             let ai_table = self.ai_table.lock().unwrap();
@@ -156,6 +155,6 @@ impl Performer {
         if variation.len() > 0 && whimsification > 0.0 {
             variation = self.maker.suffix_whimsified_melody(&variation, whimsification);
         }
-        self.maker.ornamented(&variation, p_ornament, ornament_gap)
+        self.maker.ornamented(&variation, p_ornament)
     }
 }
