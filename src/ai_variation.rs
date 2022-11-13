@@ -20,6 +20,7 @@ pub fn make_ai_table() -> AITable {
 pub fn start_ai_thread(
     ai_table: Arc<Mutex<AITable>>,
     input2ai: Arc<SegQueue<MidiMsg>>,
+    gui2ai: Arc<SegQueue<Melody>>,
     ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
     ai2dbase: Arc<SegQueue<FromAiMsg>>,
     variation_controls: VariationControlSliders,
@@ -28,6 +29,7 @@ pub fn start_ai_thread(
     std::thread::spawn(move || {
         let mut recorder = PlayerRecorder::new(
             input2ai,
+            gui2ai,
             ai2output.clone(),
             replay_delay_slider.clone(),
         );
@@ -37,11 +39,11 @@ pub fn start_ai_thread(
         loop {
             let melody = recorder.record();
             if long_enough(&melody, min_melody_pitches, replay_delay_slider.load().current()) {
+                print_debug(&melody, "melody");
                 let melody = melody.without_brief_notes(variation_controls.shortest_note_slider.load().current());
                 let variation = performer.create_variation(&melody);
+                print_debug(&variation, "variation");
                 if long_enough(&variation, min_melody_pitches, replay_delay_slider.load().current()) {
-                    print_debug(&melody, "melody");
-                    print_debug(&variation, "variation");
                     ai2dbase.push(FromAiMsg { melody, variation: variation.clone() });
                     send_recorded_melody(&variation, SynthChoice::Ai, ai2output.clone());
                 }
@@ -61,6 +63,7 @@ fn long_enough(melody: &Melody, min_melody_pitches: usize, min_duration: f64) ->
 
 struct PlayerRecorder {
     input2ai: Arc<SegQueue<MidiMsg>>,
+    gui2ai: Arc<SegQueue<Melody>>,
     ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
     replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
     waiting: Option<PendingNote>,
@@ -70,11 +73,13 @@ struct PlayerRecorder {
 impl PlayerRecorder {
     fn new(
         input2ai: Arc<SegQueue<MidiMsg>>,
+        gui2ai: Arc<SegQueue<Melody>>,
         ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
         replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
     ) -> Self {
         PlayerRecorder {
             input2ai,
+            gui2ai,
             ai2output,
             replay_delay_slider,
             waiting: None,
@@ -86,6 +91,9 @@ impl PlayerRecorder {
         self.waiting = None;
         let mut player_finished = false;
         while !player_finished {
+            if let Some(melody) = self.gui2ai.pop() {
+                return melody;
+            }
             if let Some(msg) = self.input2ai.pop() {
                 self.handle_incoming(msg);
             }

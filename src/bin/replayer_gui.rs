@@ -121,6 +121,7 @@ struct ReplayerApp {
     database: Option<Database>,
     dbase2gui: Arc<SegQueue<(MelodyInfo,MelodyInfo)>>,
     gui2dbase: Arc<SegQueue<GuiDatabaseUpdate>>,
+    gui2ai: Arc<SegQueue<Melody>>,
     ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>
 }
 
@@ -238,6 +239,7 @@ impl ReplayerApp {
             database: Some(database),
             dbase2gui: Arc::new(SegQueue::new()),
             gui2dbase: Arc::new(SegQueue::new()),
+            gui2ai: Arc::new(SegQueue::new()),
             ai2output: Arc::new(SegQueue::new())
         };
         app.startup();
@@ -298,8 +300,12 @@ impl ReplayerApp {
 
         ui.vertical(|ui| {
             Self::melody_buttons(self.ai2output.clone(), ui, &melody_info, SynthChoice::Human);
-            Self::melody_buttons(self.ai2output.clone(), ui, &variation_info,  SynthChoice::Ai);
+            Self::melody_buttons(self.ai2output.clone(), ui, &variation_info, SynthChoice::Ai);
         });
+
+        if ui.button("Create New Variation").clicked() {
+            self.gui2ai.push(melody_info.melody().clone());
+        }
 
         let size = Vec2::new(ui.available_width(), (ui.min_size().y - ui.available_height()) / 2.0);
         MelodyRenderer::render(ui, size, &vec![(melody_info.melody(), Color32::BLACK), (variation_info.melody(), Color32::RED)]);
@@ -449,6 +455,7 @@ impl ReplayerApp {
         start_ai_thread(
             self.ai_table.clone(),
             input2ai.clone(),
+            self.gui2ai.clone(),
             self.ai2output.clone(),
             ai2dbase.clone(),
             self.variation_controls.clone(),
