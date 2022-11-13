@@ -307,78 +307,11 @@ impl ReplayerApp {
         });
 
         let size = Vec2::new(ui.available_width(), (ui.min_size().y - ui.available_height()) / 2.0);
-        Self::draw_melody(ui, melody_info.melody(), size, Color32::BLACK);
-        Self::draw_melody(ui, variation_info.melody(), size, Color32::RED);
-    }
-
-    /// Musical symbols are a very tricky issue. Here are resources I've used:
-    /// * Font: [Bravura](https://github.com/steinbergmedia/bravura)
-    /// * [Unicode for a few symbols](https://www.compart.com/en/unicode/block/U+2600)
-    /// * [Unicode for the remaining symbols](https://unicode.org/charts/PDF/U1D100.pdf)
-    pub fn draw_melody(ui: &mut Ui, melody: &Melody, size: Vec2, fill_color: Color32) {
-        let (response, painter) = ui.allocate_painter(size, Sense::hover());
-        let scale = melody.best_scale_for();
-        let (lo, hi) = Self::min_max_staff(&scale, melody);
-        let num_diatonic_pitches = 1 + scale.diatonic_steps_between(lo, hi).pure_degree().unwrap();
-        let y_per_pitch = Self::pixels_per_pitch(response.rect, |p| p.y, BORDER_SIZE * 2.0, num_diatonic_pitches as f32);
-        let staff_line_space = y_per_pitch * 2.0;
-
-        let y_border = Y_OFFSET + response.rect.min.y;
-        let x_range = response.rect.min.x + BORDER_SIZE..=response.rect.max.x - BORDER_SIZE;
-        let y_middle_c = y_border + y_per_pitch * scale.diatonic_steps_between_round_up(MIDDLE_C, hi) as f32;
-        let space_above_staff = 1.0 + scale.diatonic_steps_between_round_up(HIGHEST_STAFF_PITCH, hi) as f32;
-        Self::draw_staff(&painter, Clef::Treble, x_range.clone(), y_border + y_per_pitch * space_above_staff, y_per_pitch, y_middle_c, &scale);
-        Self::draw_staff(&painter, Clef::Bass, x_range.clone(), y_middle_c + staff_line_space, y_per_pitch, y_middle_c, &scale);
-
-        let sig = scale.key_signature();
-        let x_left = X_OFFSET + KEY_SIGNATURE_OFFSET + y_per_pitch * sig.len() as f32;
-        let mut total_duration = 0.0;
-        for note in melody.iter() {
-            let x = response.rect.min.x + x_left + (response.rect.max.x - response.rect.min.x) * total_duration / melody.duration() as f32;
-            total_duration += note.duration() as f32;
-            if !note.is_rest() {
-                let (staff_offset, auxiliary_symbol) = scale.staff_position(note.pitch());
-                let y = y_middle_c - staff_offset as f32 * y_per_pitch;
-                let center = Pos2 { x, y };
-                painter.circle_filled(center, y_per_pitch, fill_color);
-                if let Some(auxiliary_symbol) = auxiliary_symbol {
-                    Self::draw_accidental(&painter, auxiliary_symbol, x + staff_line_space, y, y_per_pitch);
-                }
-            }
-        }
-    }
-
-    fn min_max_staff(scale: &MusicMode, melody: &Melody) -> (MidiByte, MidiByte) {
-        let (mut lo, mut hi) = melody.min_max_pitches();
-        lo = min(lo, LOWEST_STAFF_PITCH);
-        hi = max(hi, HIGHEST_STAFF_PITCH);
-        (scale.closest_pitch_below(lo), scale.closest_pitch_above(hi))
+        MelodyRenderer::render(ui, size, &vec![(melody_info.melody(), Color32::BLACK), (variation_info.melody(), Color32::RED)]);
     }
 
     fn font_id(size: f32) -> FontId {
         FontId {size, family: FontFamily::Proportional}
-    }
-
-    fn pixels_per_pitch<F:Fn(Pos2)->f32>(r: Rect, picker: F, border: f32, item_count: f32) -> f32 {
-        ((picker(r.max) - picker(r.min)) - border) / item_count
-    }
-
-    fn draw_staff(painter: &Painter, clef: Clef, x: RangeInclusive<f32>, start_y: f32, y_per_pitch: f32, y_middle_c: f32, scale: &MusicMode) {
-        let spacing = y_per_pitch * 2.0;
-        let mut y = start_y;
-        clef.render(painter, *x.start(), y, y_per_pitch);
-        for _ in 0..5 {
-            painter.hline(x.clone(), y, Stroke { width: 1.0, color: Color32::BLACK });
-            y += spacing;
-        }
-        let sig = scale.key_signature();
-        for (i, position) in clef.key_signature_positions(&sig).iter().enumerate() {
-            Self::draw_accidental(painter, sig.symbol(), *x.start() + KEY_SIGNATURE_OFFSET + y_per_pitch * i as f32, y_middle_c - *position as f32 * y_per_pitch, y_per_pitch);
-        }
-    }
-
-    fn draw_accidental(painter: &Painter, text: Accidental, x: f32, y: f32, y_per_pitch: f32) {
-        painter.text(Pos2 {x, y}, Align2::CENTER_CENTER, text.symbol(), Self::font_id(ACCIDENTAL_SIZE_MULTIPLIER * y_per_pitch), Color32::BLACK);
     }
 
     fn melody_buttons(ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>, ui: &mut Ui, info: &MelodyInfo, pref: Arc<AtomicCell<Preference>>, synth: SynthChoice) {
@@ -558,6 +491,108 @@ impl ReplayerApp {
     fn set_in_port_name(&mut self, in_port: &MidiInputPort) {
         let midi_in = self.midi_in.lock().unwrap();
         self.in_port_name = midi_in.as_ref().and_then(|m| m.port_name(in_port).ok());
+    }
+}
+
+/// Musical symbols are a very tricky issue. Here are resources I've used:
+/// * Font: [Bravura](https://github.com/steinbergmedia/bravura)
+/// * [Unicode for a few symbols](https://www.compart.com/en/unicode/block/U+2600)
+/// * [Unicode for the remaining symbols](https://unicode.org/charts/PDF/U1D100.pdf)
+struct MelodyRenderer {
+    scale: MusicMode,
+    sig: KeySignature,
+    x_range: RangeInclusive<f32>,
+    y_per_pitch: f32,
+    y_middle_c: f32,
+    hi: MidiByte
+}
+
+impl MelodyRenderer {
+    fn staff_line_space(&self) -> f32 {
+        self.y_per_pitch * 2.0
+    }
+
+    fn space_above_staff(&self) -> f32 {
+        1.0 + self.scale.diatonic_steps_between_round_up(HIGHEST_STAFF_PITCH, self.hi) as f32
+    }
+
+    fn min_x(&self) -> f32 {
+        *self.x_range.start()
+    }
+
+    fn total_x(&self) -> f32 {
+        *self.x_range.end() - self.min_x()
+    }
+
+    fn note_offset_x(&self) -> f32 {
+        self.min_x() + X_OFFSET + KEY_SIGNATURE_OFFSET + self.y_per_pitch * self.sig.len() as f32
+    }
+
+    fn render(ui: &mut Ui, size: Vec2, melodies: &Vec<(&Melody,Color32)>) {
+        if melodies.len() > 0 {
+            let (response, painter) = ui.allocate_painter(size, Sense::hover());
+            let scale = melodies[0].0.best_scale_for();
+            let (lo, hi) = Self::min_max_staff(&scale, melodies);
+            let num_diatonic_pitches = 1 + scale.diatonic_steps_between(lo, hi).pure_degree().unwrap();
+            let y_per_pitch = ((response.rect.max.y - response.rect.min.y) - BORDER_SIZE * 2.0) / num_diatonic_pitches as f32;
+            let y_border = Y_OFFSET + response.rect.min.y;
+            let renderer = MelodyRenderer {
+                hi,
+                scale,
+                y_per_pitch,
+                x_range: response.rect.min.x + BORDER_SIZE..=response.rect.max.x - BORDER_SIZE,
+                sig: scale.key_signature(),
+                y_middle_c: y_border + y_per_pitch * scale.diatonic_steps_between_round_up(MIDDLE_C, hi) as f32,
+            };
+            renderer.draw_staff(&painter, Clef::Treble, y_border + y_per_pitch * renderer.space_above_staff());
+            renderer.draw_staff(&painter, Clef::Bass, renderer.y_middle_c + renderer.staff_line_space());
+            for (melody, color) in melodies.iter().rev() {
+                renderer.draw_melody(&painter, melody, *color);
+            }
+        }
+    }
+
+    fn draw_melody(&self, painter: &Painter, melody: &Melody, color: Color32) {
+        let mut total_duration = 0.0;
+        for note in melody.iter() {
+            let x = self.note_offset_x() + self.total_x() * total_duration / melody.duration() as f32;
+            total_duration += note.duration() as f32;
+            if !note.is_rest() {
+                let (staff_offset, auxiliary_symbol) = self.scale.staff_position(note.pitch());
+                let y = self.y_middle_c - staff_offset as f32 * self.y_per_pitch;
+                painter.circle_filled(Pos2 {x, y}, self.y_per_pitch, color);
+                if let Some(auxiliary_symbol) = auxiliary_symbol {
+                    self.draw_accidental(&painter, auxiliary_symbol, x + self.staff_line_space(), y);
+                }
+            }
+        }
+    }
+
+    fn draw_staff(&self, painter: &Painter, clef: Clef, start_y: f32) {
+        let mut y = start_y;
+        clef.render(painter, self.min_x(), y, self.y_per_pitch);
+        for _ in 0..5 {
+            painter.hline(self.x_range.clone(), y, Stroke { width: 1.0, color: Color32::BLACK });
+            y += self.staff_line_space();
+        }
+        for (i, position) in clef.key_signature_positions(&self.sig).iter().enumerate() {
+            self.draw_accidental(painter, self.sig.symbol(), self.min_x() + KEY_SIGNATURE_OFFSET + self.y_per_pitch * i as f32, self.y_middle_c - *position as f32 * self.y_per_pitch);
+        }
+    }
+
+    fn draw_accidental(&self, painter: &Painter, text: Accidental, x: f32, y: f32) {
+        painter.text(Pos2 {x, y}, Align2::CENTER_CENTER, text.symbol(), ReplayerApp::font_id(ACCIDENTAL_SIZE_MULTIPLIER * self.y_per_pitch), Color32::BLACK);
+    }
+
+    fn min_max_staff(scale: &MusicMode, melodies: &Vec<(&Melody,Color32)>) -> (MidiByte, MidiByte) {
+        let mut lo = LOWEST_STAFF_PITCH;
+        let mut hi = HIGHEST_STAFF_PITCH;
+        for (melody,_) in melodies.iter() {
+            let (mlo, mhi) = melody.min_max_pitches();
+            lo = min(lo, mlo);
+            hi = max(hi, mhi);
+        }
+        (scale.closest_pitch_below(lo), scale.closest_pitch_above(hi))
     }
 }
 
