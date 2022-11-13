@@ -212,16 +212,15 @@ impl ReplayerApp {
         let variation_controls = VariationControlSliders::new();
         let replay_delay_slider = Arc::new(AtomicCell::new(replay_slider()));
         let mut database = Database::new();
-        let melody_var_info = Arc::new(Mutex::new({
+        let (melody_var_info, melody_pref, variation_pref) = {
             let mut melody_var_info = VecTracker::new(database.get_melody_pairs().unwrap());
             melody_var_info.go_to_end();
-            melody_var_info
-        }));
-        let (melody_pref, variation_pref) = {
-            let melody_var_info = melody_var_info.lock();
-            melody_var_info.unwrap().get()
+            let (melody_pref, variation_pref) = melody_var_info.get()
                 .map_or((Preference::Neutral, Preference::Neutral),
-                        |(m, v)| (m.rating(), v.rating()))
+                        |(m, v)| (m.rating(), v.rating()));
+            (Arc::new(Mutex::new(melody_var_info)),
+             Arc::new(AtomicCell::new(melody_pref)),
+             Arc::new(AtomicCell::new(variation_pref)))
         };
 
         let app = ReplayerApp {
@@ -237,8 +236,8 @@ impl ReplayerApp {
             human_synth_name,
             in_port: None,
             in_port_name: None,
-            melody_pref: Arc::new(AtomicCell::new(melody_pref)),
-            variation_pref: Arc::new(AtomicCell::new(variation_pref)),
+            melody_pref,
+            variation_pref,
             melody_var_info,
             database: Some(database),
             dbase2gui: Arc::new(SegQueue::new()),
