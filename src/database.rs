@@ -196,7 +196,7 @@ impl MelodyInfo {
         self.scale_name.clone()
     }
 
-    pub fn get_rating(&self) -> Preference {
+    pub fn rating(&self) -> Preference {
         self.rating
     }
 

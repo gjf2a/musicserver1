@@ -1,6 +1,6 @@
 use eframe::egui;
 use eframe::emath::Numeric;
-use eframe::egui::{Color32, Sense, Vec2, Visuals, Ui, Stroke, Pos2, Align2, FontId, FontFamily, Painter, Rect, FontDefinitions, FontData};
+use eframe::egui::{Color32, Sense, Vec2, Visuals, Ui, Stroke, Pos2, Align2, FontId, FontFamily, Painter, FontDefinitions, FontData};
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
@@ -217,6 +217,12 @@ impl ReplayerApp {
             melody_var_info.go_to_end();
             melody_var_info
         }));
+        let (melody_pref, variation_pref) = {
+            let melody_var_info = melody_var_info.lock();
+            melody_var_info.unwrap().get()
+                .map_or((Preference::Neutral, Preference::Neutral),
+                        |(m, v)| (m.rating(), v.rating()))
+        };
 
         let app = ReplayerApp {
             midi_scenario: Arc::new(Mutex::new(MidiScenario::StartingUp)),
@@ -231,8 +237,8 @@ impl ReplayerApp {
             human_synth_name,
             in_port: None,
             in_port_name: None,
-            melody_pref: Arc::new(AtomicCell::new(Preference::Neutral)),
-            variation_pref: Arc::new(AtomicCell::new(Preference::Neutral)),
+            melody_pref: Arc::new(AtomicCell::new(melody_pref)),
+            variation_pref: Arc::new(AtomicCell::new(variation_pref)),
             melody_var_info,
             database: Some(database),
             dbase2gui: Arc::new(SegQueue::new()),
@@ -279,8 +285,8 @@ impl ReplayerApp {
             if !melody_var_info.at_start() && ui.button("<").clicked() {
                 melody_var_info.go_left();
                 let (melody_info, variation_info) = melody_var_info.get().unwrap();
-                self.melody_pref.store(melody_info.get_rating());
-                self.variation_pref.store(variation_info.get_rating());
+                self.melody_pref.store(melody_info.rating());
+                self.variation_pref.store(variation_info.rating());
             }
 
             let start_melody_pref = self.melody_pref.load();
@@ -292,8 +298,8 @@ impl ReplayerApp {
             if !melody_var_info.at_end() && ui.button(">").clicked() {
                 melody_var_info.go_right();
                 let (melody_info, variation_info) = melody_var_info.get().unwrap();
-                self.melody_pref.store(melody_info.get_rating());
-                self.variation_pref.store(variation_info.get_rating());
+                self.melody_pref.store(melody_info.rating());
+                self.variation_pref.store(variation_info.rating());
             }
 
             if start_melody_pref != self.melody_pref.load() {
@@ -477,8 +483,8 @@ impl ReplayerApp {
         thread::spawn(move || {
             loop {
                 if let Some((player_info, variation_info)) = dbase2gui.pop() {
-                    melody_pref.store(player_info.get_rating());
-                    variation_pref.store(variation_info.get_rating());
+                    melody_pref.store(player_info.rating());
+                    variation_pref.store(variation_info.rating());
                     let mut melody_var_info = melody_var_info.lock().unwrap();
                     melody_var_info.items.push((player_info, variation_info));
                     melody_var_info.go_to_end();
