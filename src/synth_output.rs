@@ -136,6 +136,7 @@ impl RunInstance {
         };
         sound.reset(Some(self.sample_rate));
         self.play_sound::<T>(sound, note_m);
+        println!("Playing {note}");
     }
 
     fn stop_excessive_notes(&mut self) {
@@ -147,8 +148,10 @@ impl RunInstance {
     }
 
     fn note_off(&mut self, note: u8) {
+        println!("note_off: {note}");
         if let Some(m) = self.note2msg.remove(&note) {
             m.store(SoundMsg::Release);
+            println!("released");
         }
     }
 
