@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use crate::analyzer::velocity2volume;
 use crate::runtime::{ChooserTable, SHOW_MIDI_MSG, SynthChoice};
 
-const MAX_SOUNDS: usize = 2;
+const MAX_SOUNDS: usize = 10;
 
 // Invaluable help with the function type: https://stackoverflow.com/a/59442384/906268
 pub type SynthFuncType =
@@ -21,7 +21,8 @@ pub type SynthTable = ChooserTable<Arc<SynthFuncType>>;
 
 pub struct SynthOutputMsg {
     pub synth: SynthChoice,
-    pub midi: MidiMsg
+    pub midi: MidiMsg,
+    pub tag: usize
 }
 
 pub fn convert_midi(note: u8, velocity: u8) -> (f64, f64) {
@@ -96,24 +97,24 @@ struct RunInstance {
     ai2output: Arc<SegQueue<SynthOutputMsg>>,
     device: Arc<Device>,
     config: Arc<StreamConfig>,
-    note2msg: BTreeMap<u8,Arc<AtomicCell<SoundMsg>>>,
+    note2msg: BTreeMap<(usize,u8),Arc<AtomicCell<SoundMsg>>>,
     recent_messages: VecDeque<Arc<AtomicCell<SoundMsg>>>,
 }
 
 impl RunInstance {
     fn listen_play_loop<T: Sample>(&mut self) {
         loop {
-            if let Some(SynthOutputMsg {synth, midi}) = self.ai2output.pop() {
+            if let Some(SynthOutputMsg {synth, midi, tag}) = self.ai2output.pop() {
                 if SHOW_MIDI_MSG {
                     println!("synth_output: {midi:?}");
                 }
                 if let MidiMsg::ChannelVoice { channel: _, msg } = midi {
                     match msg {
                         ChannelVoiceMsg::NoteOff { note, velocity: _ } => {
-                            self.note_off(note);
+                            self.note_off(note, tag);
                         }
                         ChannelVoiceMsg::NoteOn { note, velocity } => {
-                            self.note_on::<T>(note, velocity, synth);
+                            self.note_on::<T>(note, velocity, synth, tag);
                         }
                         _ => {}
                     }
@@ -122,10 +123,10 @@ impl RunInstance {
         }
     }
 
-    fn note_on<T: Sample>(&mut self, note: u8, velocity: u8, choice: SynthChoice) {
+    fn note_on<T: Sample>(&mut self, note: u8, velocity: u8, choice: SynthChoice, tag: usize) {
         self.stop_excessive_notes();
         let note_m = Arc::new(AtomicCell::new(SoundMsg::Play));
-        self.note2msg.insert(note, note_m.clone());
+        self.note2msg.insert((tag, note), note_m.clone());
         self.recent_messages.push_back(note_m.clone());
         let mut sound = {
             let synth_table = match choice {
@@ -147,9 +148,9 @@ impl RunInstance {
         }
     }
 
-    fn note_off(&mut self, note: u8) {
+    fn note_off(&mut self, note: u8, tag: usize) {
         println!("note_off: {note}");
-        if let Some(m) = self.note2msg.remove(&note) {
+        if let Some(m) = self.note2msg.remove(&(tag, note)) {
             m.store(SoundMsg::Release);
             println!("released");
         }

@@ -10,6 +10,9 @@ use crate::analyzer::Melody;
 use crate::synth_output::SynthOutputMsg;
 
 pub const SHOW_MIDI_MSG: bool = false;
+pub const LIVE_TAG: usize = 0;
+pub const MELODY_TAG: usize = 1;
+pub const VARIATION_TAG: usize = 2;
 
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum SynthChoice {
@@ -147,10 +150,10 @@ pub fn user_pick_element<T: Clone, S: Fn(&T) -> String>(
     choices[choice - 1].clone()
 }
 
-pub fn send_recorded_melody(melody: &Melody, synth: SynthChoice, ai2output: Arc<SegQueue<SynthOutputMsg>>) {
+pub fn send_recorded_melody(melody: &Melody, synth: SynthChoice, ai2output: Arc<SegQueue<SynthOutputMsg>>, tag: usize) {
     for note in melody.iter() {
         let (midi, duration) = note.to_midi();
-        ai2output.push(SynthOutputMsg {synth, midi});
+        ai2output.push(SynthOutputMsg {synth, midi, tag});
         std::thread::sleep(Duration::from_secs_f64(duration));
     }
 }
