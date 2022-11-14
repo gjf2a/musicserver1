@@ -15,7 +15,7 @@ use musicserver1::ai_variation::{start_ai_thread, AITable, make_ai_table};
 use musicserver1::analyzer::{Accidental, MusicMode, KeySignature, Melody, MidiByte};
 use musicserver1::database::{start_database_thread, Database, GuiDatabaseUpdate, MelodyInfo, Preference};
 use musicserver1::runtime::{ChooserTable, replay_slider, send_recorded_melody, SliderValue, SynthChoice, VariationControlSliders};
-use musicserver1::synth_output::{start_output_thread, StereoUsage, SynthOutputMsg, SynthTable};
+use musicserver1::synth_output::{start_output_thread, SynthOutputMsg, SynthTable};
 use musicserver1::synth_sounds::make_synth_table;
 use musicserver1::midi_input::start_input_thread;
 
@@ -304,12 +304,12 @@ impl ReplayerApp {
         });
 
         if ui.button("Play Both").clicked() {
-            Self::play_melody_thread(self.ai2output.clone(), melody_info.melody().clone(), SynthChoice::Human, StereoUsage::Left);
-            Self::play_melody_thread(self.ai2output.clone(), variation_info.melody().clone(), SynthChoice::Ai, StereoUsage::Right);
+            Self::play_melody_thread(self.ai2output.clone(), melody_info.melody().clone(), SynthChoice::Human);
+            Self::play_melody_thread(self.ai2output.clone(), variation_info.melody().clone(), SynthChoice::Ai);
         }
         ui.vertical(|ui| {
-            Self::melody_buttons(self.ai2output.clone(), ui, &melody_info, SynthChoice::Human, StereoUsage::Both);
-            Self::melody_buttons(self.ai2output.clone(), ui, &variation_info, SynthChoice::Ai, StereoUsage::Both);
+            Self::melody_buttons(self.ai2output.clone(), ui, &melody_info, SynthChoice::Human);
+            Self::melody_buttons(self.ai2output.clone(), ui, &variation_info, SynthChoice::Ai);
         });
 
         if ui.button("Create New Variation").clicked() {
@@ -324,19 +324,19 @@ impl ReplayerApp {
         FontId {size, family: FontFamily::Proportional}
     }
 
-    fn melody_buttons(ai2output: Arc<SegQueue<SynthOutputMsg>>, ui: &mut Ui, info: &MelodyInfo, synth: SynthChoice, stereo_usage: StereoUsage) {
+    fn melody_buttons(ai2output: Arc<SegQueue<SynthOutputMsg>>, ui: &mut Ui, info: &MelodyInfo, synth: SynthChoice) {
         ui.horizontal(|ui| {
             ui.label(info.date_time_stamp());
             ui.label(info.get_scale_name());
             if ui.button("Play").clicked() {
-                Self::play_melody_thread(ai2output,info.melody().clone(), synth, stereo_usage);
+                Self::play_melody_thread(ai2output, info.melody().clone(), synth);
             }
         });
     }
 
-    fn play_melody_thread(ai2output: Arc<SegQueue<SynthOutputMsg>>, melody: Melody, synth: SynthChoice, stereo_usage: StereoUsage) {
+    fn play_melody_thread(ai2output: Arc<SegQueue<SynthOutputMsg>>, melody: Melody, synth: SynthChoice) {
         thread::spawn(move || {
-            send_recorded_melody(&melody, synth, ai2output, stereo_usage);
+            send_recorded_melody(&melody, synth, ai2output);
         });
     }
 

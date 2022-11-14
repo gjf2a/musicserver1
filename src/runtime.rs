@@ -7,7 +7,7 @@ use std::time::Duration;
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use crate::analyzer::Melody;
-use crate::synth_output::{StereoUsage, SynthOutputMsg};
+use crate::synth_output::SynthOutputMsg;
 
 pub const SHOW_MIDI_MSG: bool = false;
 
@@ -147,10 +147,10 @@ pub fn user_pick_element<T: Clone, S: Fn(&T) -> String>(
     choices[choice - 1].clone()
 }
 
-pub fn send_recorded_melody(melody: &Melody, synth: SynthChoice, ai2output: Arc<SegQueue<SynthOutputMsg>>, stereo_usage: StereoUsage) {
+pub fn send_recorded_melody(melody: &Melody, synth: SynthChoice, ai2output: Arc<SegQueue<SynthOutputMsg>>) {
     for note in melody.iter() {
         let (midi, duration) = note.to_midi();
-        ai2output.push(SynthOutputMsg {synth, midi, stereo_usage});
+        ai2output.push(SynthOutputMsg {synth, midi});
         std::thread::sleep(Duration::from_secs_f64(duration));
     }
 }

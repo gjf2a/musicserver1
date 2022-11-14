@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use crate::adsr::SoundMsg;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, Sample, SampleFormat, StreamConfig};
@@ -11,6 +12,8 @@ use std::sync::{Arc, Mutex};
 use crate::analyzer::velocity2volume;
 use crate::runtime::{ChooserTable, SHOW_MIDI_MSG, SynthChoice};
 
+const MAX_SOUNDS: usize = 2;
+
 // Invaluable help with the function type: https://stackoverflow.com/a/59442384/906268
 pub type SynthFuncType =
     dyn Fn(u8, u8, Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> + Send + Sync;
@@ -18,23 +21,7 @@ pub type SynthTable = ChooserTable<Arc<SynthFuncType>>;
 
 pub struct SynthOutputMsg {
     pub synth: SynthChoice,
-    pub midi: MidiMsg,
-    pub stereo_usage: StereoUsage
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum StereoUsage {
-    Left, Right, Both
-}
-
-impl StereoUsage {
-    fn matches(&self, channel: usize) -> bool {
-        match self {
-            StereoUsage::Left => channel & 1 == 0,
-            StereoUsage::Right => channel & 1 == 1,
-            StereoUsage::Both => true
-        }
-    }
+    pub midi: MidiMsg
 }
 
 pub fn convert_midi(note: u8, velocity: u8) -> (f64, f64) {
@@ -91,8 +78,8 @@ fn run_synth<T: Sample>(
         ai2output: ai2output.clone(),
         device: Arc::new(device),
         config: Arc::new(config),
-        sound_thread_messages: VecDeque::new(),
-        live_note: None,
+        note2msg: BTreeMap::new(),
+        recent_messages: VecDeque::new()
     };
 
     std::thread::spawn(move || {
@@ -109,14 +96,14 @@ struct RunInstance {
     ai2output: Arc<SegQueue<SynthOutputMsg>>,
     device: Arc<Device>,
     config: Arc<StreamConfig>,
-    sound_thread_messages: VecDeque<Arc<AtomicCell<SoundMsg>>>,
-    live_note: Option<u8>,
+    note2msg: BTreeMap<u8,Arc<AtomicCell<SoundMsg>>>,
+    recent_messages: VecDeque<Arc<AtomicCell<SoundMsg>>>,
 }
 
 impl RunInstance {
     fn listen_play_loop<T: Sample>(&mut self) {
         loop {
-            if let Some(SynthOutputMsg {synth, midi, stereo_usage}) = self.ai2output.pop() {
+            if let Some(SynthOutputMsg {synth, midi}) = self.ai2output.pop() {
                 if SHOW_MIDI_MSG {
                     println!("synth_output: {midi:?}");
                 }
@@ -126,7 +113,7 @@ impl RunInstance {
                             self.note_off(note);
                         }
                         ChannelVoiceMsg::NoteOn { note, velocity } => {
-                            self.note_on::<T>(note, velocity, synth, stereo_usage);
+                            self.note_on::<T>(note, velocity, synth);
                         }
                         _ => {}
                     }
@@ -135,10 +122,11 @@ impl RunInstance {
         }
     }
 
-    fn note_on<T: Sample>(&mut self, note: u8, velocity: u8, choice: SynthChoice, stereo_usage: StereoUsage) {
-        self.stop_all_other_notes();
+    fn note_on<T: Sample>(&mut self, note: u8, velocity: u8, choice: SynthChoice) {
+        self.stop_excessive_notes();
         let note_m = Arc::new(AtomicCell::new(SoundMsg::Play));
-        self.sound_thread_messages.push_back(note_m.clone());
+        self.note2msg.insert(note, note_m.clone());
+        self.recent_messages.push_back(note_m.clone());
         let mut sound = {
             let synth_table = match choice {
                 SynthChoice::Human => self.human_synth_table.lock().unwrap(),
@@ -147,35 +135,27 @@ impl RunInstance {
             (synth_table.current_choice())(note, velocity, note_m.clone())
         };
         sound.reset(Some(self.sample_rate));
-        self.live_note = Some(note);
-        self.play_sound::<T>(sound, note_m, stereo_usage);
+        self.play_sound::<T>(sound, note_m);
     }
 
-    fn stop_all_other_notes(&mut self) {
-        loop {
-            match self.sound_thread_messages.pop_front() {
-                None => break,
-                Some(m) => m.store(SoundMsg::Finished),
+    fn stop_excessive_notes(&mut self) {
+        while self.recent_messages.len() >= MAX_SOUNDS {
+            if let Some(m) = self.recent_messages.pop_front() {
+                m.store(SoundMsg::Finished);
             }
         }
     }
 
     fn note_off(&mut self, note: u8) {
-        if let Some(m) = self.sound_thread_messages.back() {
-            if let Some(live) = self.live_note {
-                if live == note {
-                    self.live_note = None;
-                    m.store(SoundMsg::Release);
-                }
-            }
+        if let Some(m) = self.note2msg.remove(&note) {
+            m.store(SoundMsg::Release);
         }
     }
 
     fn play_sound<T: Sample>(
         &self,
         mut sound: Box<dyn AudioUnit64>,
-        note_m: Arc<AtomicCell<SoundMsg>>,
-        stereo_usage: StereoUsage,
+        note_m: Arc<AtomicCell<SoundMsg>>
     ) {
         let mut next_value = move || sound.get_stereo();
         let device = self.device.clone();
@@ -187,7 +167,7 @@ impl RunInstance {
                 .build_output_stream(
                     &config,
                     move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
-                        write_data(data, channels, &mut next_value, stereo_usage)
+                        write_data(data, channels, &mut next_value)
                     },
                     err_fn,
                 )
@@ -213,7 +193,6 @@ fn write_data<T: Sample>(
     output: &mut [T],
     channels: usize,
     next_sample: &mut dyn FnMut() -> (f64, f64),
-    stereo_usage: StereoUsage
 ) {
     for frame in output.chunks_mut(channels) {
         let sample = next_sample();
@@ -221,9 +200,7 @@ fn write_data<T: Sample>(
         let right: T = Sample::from::<f32>(&(sample.1 as f32));
 
         for (channel, sample) in frame.iter_mut().enumerate() {
-            if stereo_usage.matches(channel) {
-                *sample = if channel & 1 == 0 { left } else { right };
-            }
+            *sample = if channel & 1 == 0 { left } else { right };
         }
     }
 }

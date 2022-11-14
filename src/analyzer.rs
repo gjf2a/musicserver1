@@ -598,9 +598,13 @@ impl MelodyMaker {
                             let figure = figure_list.choose(&mut rng).unwrap();
                             let mut pitches = figure.make_pitches(melody[i].pitch, &scale);
                             pitches.pop_back();
-                            result.add(Note::new(pitches.pop_front().unwrap(), lead_duration.into_inner(), melody[i].velocity));
+                            let p = pitches.pop_front().unwrap();
+                            result.add(Note::new(p, lead_duration.into_inner(), melody[i].velocity));
+                            result.add(Note::new(p, 0.0, 0));
                             while !pitches.is_empty() {
-                                result.add(Note::new(pitches.pop_front().unwrap(), ornament_duration.into_inner(), melody[i].velocity));
+                                let p = pitches.pop_front().unwrap();
+                                result.add(Note::new(p, ornament_duration.into_inner(), melody[i].velocity));
+                                result.add(Note::new(p, 0.0, 0));
                             }
                             ornamented = true;
                             i += 1;
