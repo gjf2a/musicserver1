@@ -2,8 +2,8 @@ use crossbeam_queue::SegQueue;
 use midi_msg::MidiMsg;
 use midir::{MidiInput, MidiInputConnection, MidiInputPort};
 use std::sync::Arc;
+use crate::runtime::SHOW_MIDI_MSG;
 
-use crate::SHOW_MIDI_MSG;
 
 pub fn start_input_thread(
     input2ai: Arc<SegQueue<MidiMsg>>,

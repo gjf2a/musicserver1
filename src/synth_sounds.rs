@@ -1,4 +1,3 @@
-use crate::{adsr_live, arc_vec, convert_midi, ChooserTable, SoundMsg, SynthFuncType, SynthTable};
 use crossbeam_utils::atomic::AtomicCell;
 use fundsp::combinator::An;
 use fundsp::envelope::Envelope;
@@ -6,6 +5,10 @@ use fundsp::hacker::{envelope, lerp11, pulse, sin_hz, triangle, FrameMulScalar, 
 use fundsp::prelude::{AudioUnit64, PulseWave};
 use std::sync::Arc;
 use typenum::{UInt, UTerm};
+use crate::adsr::{adsr_live, SoundMsg};
+use crate::arc_vec;
+use crate::runtime::ChooserTable;
+use crate::synth_output::{convert_midi, SynthFuncType, SynthTable};
 
 // Moog envelope adapted from fundsp/examples/beep.rs
 // I'm using a macro because I could not figure out how to write down the type for $an, which is

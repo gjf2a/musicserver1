@@ -1,5 +1,4 @@
 use crate::adsr::SoundMsg;
-use crate::{velocity2volume, ChooserTable, SynthChoice, SHOW_MIDI_MSG};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, Sample, SampleFormat, StreamConfig};
 use crossbeam_queue::SegQueue;
@@ -9,6 +8,8 @@ use fundsp::prelude::AudioUnit64;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use std::collections::vec_deque::VecDeque;
 use std::sync::{Arc, Mutex};
+use crate::analyzer::velocity2volume;
+use crate::runtime::{ChooserTable, SHOW_MIDI_MSG, SynthChoice};
 
 // Invaluable help with the function type: https://stackoverflow.com/a/59442384/906268
 pub type SynthFuncType =

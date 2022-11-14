@@ -1,10 +1,14 @@
 use std::str::FromStr;
-use crate::{arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue, SynthChoice, FromAiMsg, send_recorded_melody, analyzer, VariationControlSliders, SynthOutputMsg, StereoUsage};
 use crossbeam_queue::SegQueue;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use std::sync::{Arc, Mutex};
 use crossbeam_utils::atomic::AtomicCell;
 use eframe::emath::Numeric;
+use crate::analyzer::{Melody, MelodyMaker, PendingNote};
+use crate::{analyzer, arc_vec};
+use crate::database::FromAiMsg;
+use crate::runtime::{ChooserTable, send_recorded_melody, SliderValue, SynthChoice, VariationControlSliders};
+use crate::synth_output::{StereoUsage, SynthOutputMsg};
 
 pub type AIFuncType = dyn Fn(&MelodyMaker, &Melody, f64) -> Melody + Send + Sync;
 pub type AITable = ChooserTable<Arc<AIFuncType>>;

@@ -4,7 +4,6 @@ use eframe::egui::{Color32, Sense, Vec2, Visuals, Ui, Stroke, Pos2, Align2, Font
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
-use musicserver1::{make_ai_table, make_synth_table, replay_slider, start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue, SynthTable, Preference, MelodyInfo, Database, start_database_thread, SynthChoice, send_recorded_melody, GuiDatabaseUpdate, Melody, MidiByte, MusicMode, KeySignature, Accidental, VariationControlSliders, SynthOutputMsg, StereoUsage};
 use std::{mem, thread};
 use std::cmp::{min, max};
 use std::ops::RangeInclusive;
@@ -12,6 +11,13 @@ use std::sync::{Arc, Mutex};
 use enum_iterator::all;
 use bare_metal_modulo::*;
 use std::str::FromStr;
+use musicserver1::ai_variation::{start_ai_thread, AITable, make_ai_table};
+use musicserver1::analyzer::{Accidental, MusicMode, KeySignature, Melody, MidiByte};
+use musicserver1::database::{start_database_thread, Database, GuiDatabaseUpdate, MelodyInfo, Preference};
+use musicserver1::runtime::{ChooserTable, replay_slider, send_recorded_melody, SliderValue, SynthChoice, VariationControlSliders};
+use musicserver1::synth_output::{start_output_thread, StereoUsage, SynthOutputMsg, SynthTable};
+use musicserver1::synth_sounds::make_synth_table;
+use musicserver1::midi_input::start_input_thread;
 
 fn main() -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions::default();

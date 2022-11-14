@@ -7,10 +7,10 @@ use fundsp::hacker::{envelope, midi_hz, triangle};
 use fundsp::prelude::AudioUnit64;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use midir::{Ignore, MidiInput, MidiInputPort};
-use musicserver1::{adsr_live, SoundMsg};
 use read_input::prelude::*;
 use std::collections::VecDeque;
 use std::sync::Arc;
+use musicserver1::adsr::{adsr_live, SoundMsg};
 
 fn main() -> anyhow::Result<()> {
     let mut midi_in = MidiInput::new("midir reading input")?;
@@ -97,12 +97,12 @@ fn run_synth<T: Sample>(
                             }
                         }
                         ChannelVoiceMsg::NoteOn { note, velocity } => {
-                            loop {
+                            /*loop {
                                 match sound_thread_messages.pop_front() {
                                     None => break,
                                     Some(m) => m.store(SoundMsg::Finished),
                                 }
-                            }
+                            }*/
                             let note_m = Arc::new(AtomicCell::new(SoundMsg::Play));
                             sound_thread_messages.push_back(note_m.clone());
                             start_sound::<T>(

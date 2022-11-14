@@ -1,12 +1,12 @@
 use std::{fmt::{Display, Formatter}, sync::Arc};
 use enum_iterator::Sequence;
-use crate::{MidiByte,Melody,Note};
 use sqlite::{State,Connection};
 use anyhow::bail;
 use chrono::{Utc, NaiveDate, NaiveTime, Local, TimeZone};
 use std::str::FromStr;
 use std::collections::BTreeMap;
 use crossbeam_queue::SegQueue;
+use crate::analyzer::{Melody, MidiByte, Note};
 
 #[derive(Clone, Debug)]
 pub struct FromAiMsg {

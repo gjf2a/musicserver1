@@ -3,10 +3,11 @@ use read_input::InputBuild;
 use std::collections::btree_map::BTreeMap;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
-use crate::{Melody, StereoUsage, SynthOutputMsg};
 use std::time::Duration;
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
+use crate::analyzer::Melody;
+use crate::synth_output::{StereoUsage, SynthOutputMsg};
 
 pub const SHOW_MIDI_MSG: bool = false;
 

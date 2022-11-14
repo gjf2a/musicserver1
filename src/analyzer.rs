@@ -12,7 +12,7 @@ use std::iter::Sum;
 use std::ops::{AddAssign, Neg};
 use std::time::Instant;
 use distribution_select::Distribution;
-use crate::{find_maximal_repeated_subs, Subsequences};
+use crate::subsequence_finder::{find_maximal_repeated_subs, Subsequences};
 
 pub type MidiByte = i16;
 
@@ -1482,8 +1482,7 @@ impl MelodicFigureShape {
 
 #[cfg(test)]
 mod tests {
-    use crate::analyzer::{FigureDirection, FigurePolarity, MelodicFigure, MelodicFigureShape, Melody, MelodyMaker, MusicMode, DIATONIC_SCALE_SIZE, major_sharps_for, major_flats_for, sharps_for, flats_for};
-    use crate::{MidiByte, Note, Accidental, NoteLetter, DiatonicInterval, MelodySection};
+    use crate::analyzer::{MidiByte, Note, Accidental, NoteLetter, DiatonicInterval, MelodySection, FigureDirection, FigurePolarity, MelodicFigure, MelodicFigureShape, Melody, MelodyMaker, MusicMode, DIATONIC_SCALE_SIZE, major_sharps_for, major_flats_for, sharps_for, flats_for};
     use bare_metal_modulo::ModNumC;
     use ordered_float::OrderedFloat;
     use std::cmp::{max, min};

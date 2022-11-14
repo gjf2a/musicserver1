@@ -1,4 +1,4 @@
-use musicserver1::{Database, MelodyInfo};
+use musicserver1::database::{Database, MelodyInfo};
 
 fn main() {
     let mut database = Database::new();
