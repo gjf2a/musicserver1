@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use enum_iterator::all;
 use bare_metal_modulo::*;
 use std::str::FromStr;
-use musicserver1::ai_variation::{start_ai_thread, AITable, make_ai_table};
+use musicserver1::ai_variation::{start_ai_thread, AITable, make_ai_table, NO_AI_NAME, DEFAULT_AI_NAME};
 use musicserver1::analyzer::{Accidental, MusicMode, KeySignature, Melody, MidiByte};
 use musicserver1::database::{start_database_thread, Database, GuiDatabaseUpdate, MelodyInfo, Preference};
 use musicserver1::runtime::{ChooserTable, MELODY_TAG, replay_slider, send_recorded_melody, SliderValue, SynthChoice, VARIATION_TAG, VariationControlSliders};
@@ -313,6 +313,13 @@ impl ReplayerApp {
         });
 
         if ui.button("Create New Variation").clicked() {
+            {
+                let mut ai_table = self.ai_table.lock().unwrap();
+                if ai_table.current_name() == NO_AI_NAME {
+                    ai_table.choose(DEFAULT_AI_NAME);
+                    self.ai_name = String::from(DEFAULT_AI_NAME);
+                }
+            }
             self.gui2ai.push(melody_info.melody().clone());
         }
 

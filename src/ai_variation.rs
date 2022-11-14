@@ -12,11 +12,13 @@ use crate::synth_output::SynthOutputMsg;
 
 pub type AIFuncType = dyn Fn(&MelodyMaker, &Melody, f64) -> Melody + Send + Sync;
 pub type AITable = ChooserTable<Arc<AIFuncType>>;
+pub const NO_AI_NAME: &str = "Bypass";
+pub const DEFAULT_AI_NAME: &str = "Motive Mapper";
 
 pub fn make_ai_table() -> AITable {
     let ai_funcs: Vec<(&str, Arc<AIFuncType>)> = arc_vec![
-        ("Bypass", |_, _, _| Melody::new()),
-        ("Motive Mapper", MelodyMaker::create_motive_variation)
+        (NO_AI_NAME, |_, _, _| Melody::new()),
+        (DEFAULT_AI_NAME, MelodyMaker::create_motive_variation)
     ];
     ChooserTable::from(&ai_funcs)
 }
