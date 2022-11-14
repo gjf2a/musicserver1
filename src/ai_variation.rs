@@ -1,5 +1,5 @@
 use std::str::FromStr;
-use crate::{arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue, SynthChoice, FromAiMsg, send_recorded_melody, analyzer, VariationControlSliders};
+use crate::{arc_vec, ChooserTable, Melody, MelodyMaker, PendingNote, SliderValue, SynthChoice, FromAiMsg, send_recorded_melody, analyzer, VariationControlSliders, SynthOutputMsg, StereoUsage};
 use crossbeam_queue::SegQueue;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use std::sync::{Arc, Mutex};
@@ -21,7 +21,7 @@ pub fn start_ai_thread(
     ai_table: Arc<Mutex<AITable>>,
     input2ai: Arc<SegQueue<MidiMsg>>,
     gui2ai: Arc<SegQueue<Melody>>,
-    ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
+    ai2output: Arc<SegQueue<SynthOutputMsg>>,
     ai2dbase: Arc<SegQueue<FromAiMsg>>,
     variation_controls: VariationControlSliders,
     replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
@@ -45,7 +45,7 @@ pub fn start_ai_thread(
                 print_debug(&variation, "variation");
                 if long_enough(&variation, min_melody_pitches, replay_delay_slider.load().current()) {
                     ai2dbase.push(FromAiMsg { melody, variation: variation.clone() });
-                    send_recorded_melody(&variation, SynthChoice::Ai, ai2output.clone());
+                    send_recorded_melody(&variation, SynthChoice::Ai, ai2output.clone(), StereoUsage::Both);
                 }
             }
         }
@@ -64,7 +64,7 @@ fn long_enough(melody: &Melody, min_melody_pitches: usize, min_duration: f64) ->
 struct PlayerRecorder {
     input2ai: Arc<SegQueue<MidiMsg>>,
     gui2ai: Arc<SegQueue<Melody>>,
-    ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
+    ai2output: Arc<SegQueue<SynthOutputMsg>>,
     replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
     waiting: Option<PendingNote>,
     player_melody: Melody,
@@ -74,7 +74,7 @@ impl PlayerRecorder {
     fn new(
         input2ai: Arc<SegQueue<MidiMsg>>,
         gui2ai: Arc<SegQueue<Melody>>,
-        ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
+        ai2output: Arc<SegQueue<SynthOutputMsg>>,
         replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
     ) -> Self {
         PlayerRecorder {
@@ -121,7 +121,7 @@ impl PlayerRecorder {
                 _ => {}
             }
         }
-        self.ai2output.push((SynthChoice::Human, msg));
+        self.ai2output.push(SynthOutputMsg{synth: SynthChoice::Human, midi: msg, stereo_usage: StereoUsage::Both});
     }
 
     fn check_if_finished(&mut self, pending_note: PendingNote) -> bool {

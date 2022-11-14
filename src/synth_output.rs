@@ -15,12 +15,33 @@ pub type SynthFuncType =
     dyn Fn(u8, u8, Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> + Send + Sync;
 pub type SynthTable = ChooserTable<Arc<SynthFuncType>>;
 
+pub struct SynthOutputMsg {
+    pub synth: SynthChoice,
+    pub midi: MidiMsg,
+    pub stereo_usage: StereoUsage
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum StereoUsage {
+    Left, Right, Both
+}
+
+impl StereoUsage {
+    fn matches(&self, channel: usize) -> bool {
+        match self {
+            StereoUsage::Left => channel & 1 == 0,
+            StereoUsage::Right => channel & 1 == 1,
+            StereoUsage::Both => true
+        }
+    }
+}
+
 pub fn convert_midi(note: u8, velocity: u8) -> (f64, f64) {
     (midi_hz(note as f64), (velocity2volume(velocity.into())))
 }
 
 pub fn start_output_thread(
-    ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
+    ai2output: Arc<SegQueue<SynthOutputMsg>>,
     human_synth_table: Arc<Mutex<SynthTable>>,
     ai_synth_table: Arc<Mutex<SynthTable>>,
 ) {
@@ -55,7 +76,7 @@ pub fn start_output_thread(
 }
 
 fn run_synth<T: Sample>(
-    ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
+    ai2output: Arc<SegQueue<SynthOutputMsg>>,
     device: Device,
     config: StreamConfig,
     human_synth_table: Arc<Mutex<SynthTable>>,
@@ -84,7 +105,7 @@ struct RunInstance {
     ai_synth_table: Arc<Mutex<SynthTable>>,
     sample_rate: f64,
     channels: usize,
-    ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>,
+    ai2output: Arc<SegQueue<SynthOutputMsg>>,
     device: Arc<Device>,
     config: Arc<StreamConfig>,
     sound_thread_messages: VecDeque<Arc<AtomicCell<SoundMsg>>>,
@@ -94,7 +115,7 @@ struct RunInstance {
 impl RunInstance {
     fn listen_play_loop<T: Sample>(&mut self) {
         loop {
-            if let Some((choice, midi)) = self.ai2output.pop() {
+            if let Some(SynthOutputMsg {synth, midi, stereo_usage}) = self.ai2output.pop() {
                 if SHOW_MIDI_MSG {
                     println!("synth_output: {midi:?}");
                 }
@@ -104,7 +125,7 @@ impl RunInstance {
                             self.note_off(note);
                         }
                         ChannelVoiceMsg::NoteOn { note, velocity } => {
-                            self.note_on::<T>(note, velocity, choice);
+                            self.note_on::<T>(note, velocity, synth, stereo_usage);
                         }
                         _ => {}
                     }
@@ -113,7 +134,7 @@ impl RunInstance {
         }
     }
 
-    fn note_on<T: Sample>(&mut self, note: u8, velocity: u8, choice: SynthChoice) {
+    fn note_on<T: Sample>(&mut self, note: u8, velocity: u8, choice: SynthChoice, stereo_usage: StereoUsage) {
         self.stop_all_other_notes();
         let note_m = Arc::new(AtomicCell::new(SoundMsg::Play));
         self.sound_thread_messages.push_back(note_m.clone());
@@ -126,7 +147,7 @@ impl RunInstance {
         };
         sound.reset(Some(self.sample_rate));
         self.live_note = Some(note);
-        self.play_sound::<T>(sound, note_m);
+        self.play_sound::<T>(sound, note_m, stereo_usage);
     }
 
     fn stop_all_other_notes(&mut self) {
@@ -153,6 +174,7 @@ impl RunInstance {
         &self,
         mut sound: Box<dyn AudioUnit64>,
         note_m: Arc<AtomicCell<SoundMsg>>,
+        stereo_usage: StereoUsage,
     ) {
         let mut next_value = move || sound.get_stereo();
         let device = self.device.clone();
@@ -164,7 +186,7 @@ impl RunInstance {
                 .build_output_stream(
                     &config,
                     move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
-                        write_data(data, channels, &mut next_value)
+                        write_data(data, channels, &mut next_value, stereo_usage)
                     },
                     err_fn,
                 )
@@ -190,6 +212,7 @@ fn write_data<T: Sample>(
     output: &mut [T],
     channels: usize,
     next_sample: &mut dyn FnMut() -> (f64, f64),
+    stereo_usage: StereoUsage
 ) {
     for frame in output.chunks_mut(channels) {
         let sample = next_sample();
@@ -197,7 +220,9 @@ fn write_data<T: Sample>(
         let right: T = Sample::from::<f32>(&(sample.1 as f32));
 
         for (channel, sample) in frame.iter_mut().enumerate() {
-            *sample = if channel & 1 == 0 { left } else { right };
+            if stereo_usage.matches(channel) {
+                *sample = if channel & 1 == 0 { left } else { right };
+            }
         }
     }
 }

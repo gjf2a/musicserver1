@@ -4,7 +4,7 @@ use eframe::egui::{Color32, Sense, Vec2, Visuals, Ui, Stroke, Pos2, Align2, Font
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
-use musicserver1::{make_ai_table, make_synth_table, replay_slider, start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue, SynthTable, Preference, MelodyInfo, Database, start_database_thread, SynthChoice, send_recorded_melody, GuiDatabaseUpdate, Melody, MidiByte, MusicMode, KeySignature, Accidental, VariationControlSliders};
+use musicserver1::{make_ai_table, make_synth_table, replay_slider, start_ai_thread, start_input_thread, start_output_thread, AITable, ChooserTable, SliderValue, SynthTable, Preference, MelodyInfo, Database, start_database_thread, SynthChoice, send_recorded_melody, GuiDatabaseUpdate, Melody, MidiByte, MusicMode, KeySignature, Accidental, VariationControlSliders, SynthOutputMsg, StereoUsage};
 use std::{mem, thread};
 use std::cmp::{min, max};
 use std::ops::RangeInclusive;
@@ -12,7 +12,6 @@ use std::sync::{Arc, Mutex};
 use enum_iterator::all;
 use bare_metal_modulo::*;
 use std::str::FromStr;
-use midi_msg::MidiMsg;
 
 fn main() -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions::default();
@@ -122,7 +121,7 @@ struct ReplayerApp {
     dbase2gui: Arc<SegQueue<(MelodyInfo,MelodyInfo)>>,
     gui2dbase: Arc<SegQueue<GuiDatabaseUpdate>>,
     gui2ai: Arc<SegQueue<Melody>>,
-    ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>
+    ai2output: Arc<SegQueue<SynthOutputMsg>>
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -298,9 +297,13 @@ impl ReplayerApp {
             }
         });
 
+        if ui.button("Play Both").clicked() {
+            Self::play_melody_thread(self.ai2output.clone(), melody_info.melody().clone(), SynthChoice::Human, StereoUsage::Left);
+            Self::play_melody_thread(self.ai2output.clone(), variation_info.melody().clone(), SynthChoice::Ai, StereoUsage::Right);
+        }
         ui.vertical(|ui| {
-            Self::melody_buttons(self.ai2output.clone(), ui, &melody_info, SynthChoice::Human);
-            Self::melody_buttons(self.ai2output.clone(), ui, &variation_info, SynthChoice::Ai);
+            Self::melody_buttons(self.ai2output.clone(), ui, &melody_info, SynthChoice::Human, StereoUsage::Both);
+            Self::melody_buttons(self.ai2output.clone(), ui, &variation_info, SynthChoice::Ai, StereoUsage::Both);
         });
 
         if ui.button("Create New Variation").clicked() {
@@ -315,19 +318,19 @@ impl ReplayerApp {
         FontId {size, family: FontFamily::Proportional}
     }
 
-    fn melody_buttons(ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>, ui: &mut Ui, info: &MelodyInfo, synth: SynthChoice) {
+    fn melody_buttons(ai2output: Arc<SegQueue<SynthOutputMsg>>, ui: &mut Ui, info: &MelodyInfo, synth: SynthChoice, stereo_usage: StereoUsage) {
         ui.horizontal(|ui| {
             ui.label(info.date_time_stamp());
             ui.label(info.get_scale_name());
             if ui.button("Play").clicked() {
-                Self::play_melody_thread(ai2output,info.melody().clone(), synth);
+                Self::play_melody_thread(ai2output,info.melody().clone(), synth, stereo_usage);
             }
         });
     }
 
-    fn play_melody_thread(ai2output: Arc<SegQueue<(SynthChoice, MidiMsg)>>, melody: Melody, synth: SynthChoice) {
+    fn play_melody_thread(ai2output: Arc<SegQueue<SynthOutputMsg>>, melody: Melody, synth: SynthChoice, stereo_usage: StereoUsage) {
         thread::spawn(move || {
-            send_recorded_melody(&melody, synth, ai2output);
+            send_recorded_melody(&melody, synth, ai2output, stereo_usage);
         });
     }
 
