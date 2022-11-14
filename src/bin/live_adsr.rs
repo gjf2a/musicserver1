@@ -100,11 +100,9 @@ fn run_synth<T: Sample>(
                             }
                         }
                         ChannelVoiceMsg::NoteOn { note, velocity } => {
-                            println!("recent_messages: {}", recent_messages.len());
                             while recent_messages.len() >= MAX_SOUNDS {
                                 if let Some(m) = recent_messages.pop_front() {
                                     m.store(SoundMsg::Finished);
-                                    println!("releasing...");
                                 }
                             }
                             if let Some(m) = note2msg.remove(&note) {
