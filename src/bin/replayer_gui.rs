@@ -528,8 +528,8 @@ impl MelodyRenderer {
         *self.x_range.start()
     }
 
-    fn total_x(&self) -> f32 {
-        *self.x_range.end() - self.min_x()
+    fn total_note_x(&self) -> f32 {
+        *self.x_range.end() - self.note_offset_x()
     }
 
     fn note_offset_x(&self) -> f32 {
@@ -563,7 +563,7 @@ impl MelodyRenderer {
     fn draw_melody(&self, painter: &Painter, melody: &Melody, color: Color32) {
         let mut total_duration = 0.0;
         for note in melody.iter() {
-            let x = self.note_offset_x() + self.total_x() * total_duration / melody.duration() as f32;
+            let x = self.note_offset_x() + self.total_note_x() * total_duration / melody.duration() as f32;
             total_duration += note.duration() as f32;
             if !note.is_rest() {
                 let (staff_offset, auxiliary_symbol) = self.scale.staff_position(note.pitch());
