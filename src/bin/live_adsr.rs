@@ -8,9 +8,11 @@ use fundsp::prelude::AudioUnit64;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use midir::{Ignore, MidiInput, MidiInputPort};
 use read_input::prelude::*;
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 use musicserver1::adsr::{adsr_live, SoundMsg};
+
+const MAX_SOUNDS: usize = 5;
 
 fn main() -> anyhow::Result<()> {
     let mut midi_in = MidiInput::new("midir reading input")?;
@@ -82,29 +84,35 @@ fn run_synth<T: Sample>(
     let device = Arc::new(device);
     let config = Arc::new(config);
     std::thread::spawn(move || {
-        let mut sound_thread_messages: VecDeque<Arc<AtomicCell<SoundMsg>>> = VecDeque::new();
+        let mut note2msg: BTreeMap<u8,Arc<AtomicCell<SoundMsg>>> = BTreeMap::new();
+        let mut recent_messages: VecDeque<Arc<AtomicCell<SoundMsg>>> = VecDeque::new();
         loop {
             if let Some(m) = incoming_midi.pop() {
                 if let MidiMsg::ChannelVoice { channel: _, msg } = m {
                     println!("Received {msg:?}");
                     match msg {
                         ChannelVoiceMsg::NoteOff {
-                            note: _,
+                            note,
                             velocity: _,
                         } => {
-                            if let Some(m) = sound_thread_messages.back() {
+                            if let Some(m) = note2msg.remove(&note) {
                                 m.store(SoundMsg::Release);
                             }
                         }
                         ChannelVoiceMsg::NoteOn { note, velocity } => {
-                            /*loop {
-                                match sound_thread_messages.pop_front() {
-                                    None => break,
-                                    Some(m) => m.store(SoundMsg::Finished),
+                            println!("recent_messages: {}", recent_messages.len());
+                            while recent_messages.len() >= MAX_SOUNDS {
+                                if let Some(m) = recent_messages.pop_front() {
+                                    m.store(SoundMsg::Finished);
+                                    println!("releasing...");
                                 }
-                            }*/
+                            }
+                            if let Some(m) = note2msg.remove(&note) {
+                                m.store(SoundMsg::Release);
+                            }
                             let note_m = Arc::new(AtomicCell::new(SoundMsg::Play));
-                            sound_thread_messages.push_back(note_m.clone());
+                            note2msg.insert(note, note_m.clone());
+                            recent_messages.push_back(note_m.clone());
                             start_sound::<T>(
                                 note,
                                 velocity,
