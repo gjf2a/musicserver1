@@ -1,7 +1,7 @@
 use crossbeam_utils::atomic::AtomicCell;
 use fundsp::combinator::An;
 use fundsp::envelope::Envelope;
-use fundsp::hacker::{envelope, lerp11, pulse, sin_hz, triangle, FrameMulScalar, Pipe, Unop, WaveSynth, moog_q, xerp11};
+use fundsp::hacker::{envelope, lerp11, pulse, sin_hz, triangle, FrameMulScalar, Pipe, Unop, WaveSynth, moog_q, xerp11, constant, Constant};
 use fundsp::prelude::{AudioUnit64, PulseWave};
 use std::sync::Arc;
 use typenum::{UInt, UTerm};
@@ -23,6 +23,7 @@ pub fn make_synth_table() -> SynthTable {
         ("Pulse", pulse_synth),
         ("Pulse Moog", pulse_moog),
         ("Triangle", triangle_synth),
+        ("Triangle 2", triangle_synth_2),
         ("Triangle Moog", triangle_moog)
     ];
     ChooserTable::from(&synth_funcs)
@@ -43,11 +44,11 @@ fn env_triangle(
 ) -> An<
     Pipe<
         f64,
-        Envelope<f64, f64, impl Fn(f64) -> f64 + Sized, f64>,
+        Constant<UInt<UTerm, typenum::bit::B1>, f64>,
         WaveSynth<'static, f64, UInt<UTerm, typenum::B1>>,
     >,
 > {
-    envelope(move |_t| pitch) >> triangle()
+    constant(pitch) >> triangle()
 }
 
 // Pulse envelope copied from fundsp/examples/beep.rs
@@ -67,6 +68,15 @@ pub fn triangle_synth(
     Box::new(env_triangle(pitch) * adsr_1(note_m) * volume)
 }
 
+pub fn triangle_synth_2(
+    pitch: u8,
+    volume: u8,
+    note_m: Arc<AtomicCell<SoundMsg>>,
+) -> Box<dyn AudioUnit64> {
+    let (pitch, volume) = convert_midi(pitch, volume);
+    Box::new(env_triangle(pitch) * adsr_2(note_m) * volume)
+}
+
 pub fn pulse_synth(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
     let (pitch, volume) = convert_midi(pitch, volume);
     Box::new(env_pulse_sin(pitch) * adsr_1(note_m) * volume)
@@ -82,4 +92,16 @@ fn adsr_1(
     >,
 > {
     2.0 * adsr_live(0.1, 0.8, 0.2, 0.0, note_m)
+}
+
+fn adsr_2(
+    note_m: Arc<AtomicCell<SoundMsg>>,
+) -> An<
+    Unop<
+        f64,
+        Envelope<f64, f64, impl Fn(f64) -> f64 + Sized, f64>,
+        FrameMulScalar<UInt<UTerm, typenum::B1>, f64>,
+    >,
+> {
+    2.0 * adsr_live(0.2, 0.2, 0.4, 0.2, note_m)
 }

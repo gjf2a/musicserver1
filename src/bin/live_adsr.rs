@@ -3,7 +3,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, Sample, SampleFormat, StreamConfig};
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
-use fundsp::hacker::{envelope, midi_hz, triangle};
+use fundsp::hacker::{constant, envelope, midi_hz, triangle};
 use fundsp::prelude::AudioUnit64;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use midir::{Ignore, MidiInput, MidiInputPort};
@@ -166,7 +166,7 @@ fn create_sound(note: u8, velocity: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Bo
     let pitch = midi_hz(note as f64);
     let volume = velocity as f64 / 127.0;
     Box::new(
-        envelope(move |_t| pitch) >> triangle() * adsr_live(0.2, 0.2, 0.4, 0.2, note_m) * volume,
+        constant(pitch) >> triangle() * adsr_live(0.2, 0.2, 0.4, 0.2, note_m) * volume,
     )
 }
 
