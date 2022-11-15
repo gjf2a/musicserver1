@@ -594,7 +594,7 @@ impl MelodyMaker {
             if let Some(gap) = Self::next_diatonic_gap(&scale, melody, i).and_then(|g| g.pure_degree()) {
                 if let Some((figure_length, lead_duration)) = Self::ornament_figure_length(ornament_duration, melody, i) {
                     if let Some(figure_list) = self.figure_tables.get(&figure_length).unwrap().get(&gap) {
-                        if rand::random::<f64>() < p_ornament {
+                        if Self::any_notes_after(melody, i) && rand::random::<f64>() < p_ornament {
                             let figure = figure_list.choose(&mut rng).unwrap();
                             let mut pitches = figure.make_pitches(melody[i].pitch, &scale);
                             pitches.pop_back();
@@ -632,6 +632,10 @@ impl MelodyMaker {
             }
         }
         None
+    }
+
+    fn any_notes_after(melody: &Melody, start: usize) -> bool {
+        (start..melody.len()).any(|i| !melody[i].is_rest())
     }
 
     fn next_diatonic_gap(scale: &MusicMode, melody: &Melody, i: usize) -> Option<DiatonicInterval> {
@@ -723,6 +727,8 @@ impl MelodyMaker {
         result
     }
 }
+
+
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MelodySection {
