@@ -20,23 +20,22 @@ macro_rules! moogify {
 
 pub fn make_synth_table() -> SynthTable {
     let synth_funcs: Vec<(&str, Arc<SynthFuncType>)> = arc_vec![
-        ("Pulse", pulse_synth),
-        ("Pulse Moog", pulse_moog),
         ("Triangle", triangle_synth),
-        ("Triangle 2", triangle_synth_2),
-        ("Triangle Moog", triangle_moog)
+        ("Triangle Moog", triangle_moog),
+        ("Pulse", pulse_synth),
+        ("Pulse Moog", pulse_moog)
     ];
     ChooserTable::from(&synth_funcs)
 }
 
 pub fn pulse_moog(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
     let (pitch, volume) = convert_midi(pitch, volume);
-    Box::new(moogify!(env_pulse_sin(pitch)) * adsr_1(note_m) * volume)
+    Box::new(moogify!(env_pulse_sin(pitch)) * adsr_2(note_m) * volume)
 }
 
 pub fn triangle_moog(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
     let (pitch, volume) = convert_midi(pitch, volume);
-    Box::new(moogify!(env_triangle(pitch)) * adsr_1(note_m) * volume)
+    Box::new(moogify!(env_triangle(pitch)) * adsr_2(note_m) * volume)
 }
 
 fn env_triangle(
@@ -65,21 +64,12 @@ pub fn triangle_synth(
     note_m: Arc<AtomicCell<SoundMsg>>,
 ) -> Box<dyn AudioUnit64> {
     let (pitch, volume) = convert_midi(pitch, volume);
-    Box::new(env_triangle(pitch) * adsr_1(note_m) * volume)
-}
-
-pub fn triangle_synth_2(
-    pitch: u8,
-    volume: u8,
-    note_m: Arc<AtomicCell<SoundMsg>>,
-) -> Box<dyn AudioUnit64> {
-    let (pitch, volume) = convert_midi(pitch, volume);
     Box::new(env_triangle(pitch) * adsr_2(note_m) * volume)
 }
 
 pub fn pulse_synth(pitch: u8, volume: u8, note_m: Arc<AtomicCell<SoundMsg>>) -> Box<dyn AudioUnit64> {
     let (pitch, volume) = convert_midi(pitch, volume);
-    Box::new(env_pulse_sin(pitch) * adsr_1(note_m) * volume)
+    Box::new(env_pulse_sin(pitch) * adsr_2(note_m) * volume)
 }
 
 fn adsr_1(
@@ -91,7 +81,7 @@ fn adsr_1(
         FrameMulScalar<UInt<UTerm, typenum::B1>, f64>,
     >,
 > {
-    2.0 * adsr_live(0.1, 0.8, 0.2, 0.0, note_m)
+    2.0 * adsr_live(0.1, 0.8, 0.2, 0.2, note_m)
 }
 
 fn adsr_2(
