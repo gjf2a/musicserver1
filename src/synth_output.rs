@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use crate::analyzer::velocity2volume;
 use crate::runtime::{ChooserTable, SHOW_MIDI_MSG, SynthChoice};
 
-const MAX_SOUNDS: usize = 2;
+const MAX_SOUNDS: usize = 3;
 
 // Invaluable help with the function type: https://stackoverflow.com/a/59442384/906268
 pub type SynthFuncType =
