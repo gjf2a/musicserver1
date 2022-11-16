@@ -53,7 +53,7 @@ fn env_triangle(
 // Pulse envelope copied from fundsp/examples/beep.rs
 fn env_pulse_sin(
     pitch: f64,
-) -> An<Pipe<f64, Envelope<f64, f64, impl Fn(f64) -> (f64, f64) + Sized, (f64, f64)>, PulseWave<f64>>>
+) -> An<Pipe<f64, Envelope<f64, f64, impl Fn(f64) -> (f64, f64) + Sized + Clone, (f64, f64)>, PulseWave<f64>>>
 {
     envelope(move |t| (pitch, lerp11(0.01, 0.99, sin_hz(0.05, t)))) >> pulse()
 }
@@ -77,7 +77,7 @@ fn adsr_1(
 ) -> An<
     Unop<
         f64,
-        Envelope<f64, f64, impl Fn(f64) -> f64 + Sized, f64>,
+        Envelope<f64, f64, impl Fn(f64) -> f64 + Sized + Clone, f64>,
         FrameMulScalar<UInt<UTerm, typenum::B1>, f64>,
     >,
 > {
@@ -89,7 +89,7 @@ fn adsr_2(
 ) -> An<
     Unop<
         f64,
-        Envelope<f64, f64, impl Fn(f64) -> f64 + Sized, f64>,
+        Envelope<f64, f64, impl Fn(f64) -> f64 + Sized + Clone, f64>,
         FrameMulScalar<UInt<UTerm, typenum::B1>, f64>,
     >,
 > {
