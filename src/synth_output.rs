@@ -18,8 +18,7 @@ pub type SynthTable = ChooserTable<Arc<SynthFuncType>>;
 
 pub struct SynthOutputMsg {
     pub synth: SynthChoice,
-    pub midi: MidiMsg,
-    pub tag: usize
+    pub midi: MidiMsg
 }
 
 pub fn convert_midi(note: u8, velocity: u8) -> (f64, f64) {
@@ -81,7 +80,7 @@ fn run_synth<T: Sample>(
         stream.play().unwrap();
 
         loop {
-            if let Some(SynthOutputMsg {synth, midi, tag}) = ai2output.pop() {
+            if let Some(SynthOutputMsg {synth, midi}) = ai2output.pop() {
                 if SHOW_MIDI_MSG {
                     println!("synth_output: {midi:?}");
                 }

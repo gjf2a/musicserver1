@@ -1,0 +1,175 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in library 'musicserver1'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=musicserver1"
+                ],
+                "filter": {
+                    "name": "musicserver1",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'database_queries'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=database_queries",
+                    "--package=musicserver1"
+                ],
+                "filter": {
+                    "name": "database_queries",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'database_queries'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=database_queries",
+                    "--package=musicserver1"
+                ],
+                "filter": {
+                    "name": "database_queries",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'live_adsr'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=live_adsr",
+                    "--package=musicserver1"
+                ],
+                "filter": {
+                    "name": "live_adsr",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'live_adsr'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=live_adsr",
+                    "--package=musicserver1"
+                ],
+                "filter": {
+                    "name": "live_adsr",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'multinote'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=multinote",
+                    "--package=musicserver1"
+                ],
+                "filter": {
+                    "name": "multinote",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'multinote'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=multinote",
+                    "--package=musicserver1"
+                ],
+                "filter": {
+                    "name": "multinote",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'replayer_gui'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=replayer_gui",
+                    "--package=musicserver1"
+                ],
+                "filter": {
+                    "name": "replayer_gui",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'replayer_gui'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=replayer_gui",
+                    "--package=musicserver1"
+                ],
+                "filter": {
+                    "name": "replayer_gui",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
