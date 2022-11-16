@@ -12,6 +12,7 @@ macro_rules! moogify {
     ($an:expr) => (($an | envelope(|t| xerp11(110.0, 11000.0, sin_hz(0.60, t)))) >> moog_q(0.6))
 }
 
+/// All sounds should have one input (the pitch) and one output (the sound wave).
 pub fn make_synth_table() -> SynthTable {
     let synth_funcs: Vec<(&str, Box<dyn AudioUnit64>)> = vec![
         ("Triangle", Box::new(triangle())),
@@ -25,5 +26,3 @@ pub fn make_synth_table() -> SynthTable {
 fn sin_pulse() -> An<Pipe<f64, Envelope2<f64, f64, impl Fn(f64,f64) -> (f64, f64) + Sized + Clone, (f64, f64)>, PulseWave<f64>>> {
     envelope2(move |t, p| (p, lerp11(0.01, 0.99, sin_hz(0.05, t)))) >> pulse()
 }
-
-
