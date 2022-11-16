@@ -113,9 +113,9 @@ struct ReplayerApp {
     midi_in: Arc<Mutex<Option<MidiInput>>>,
     ai_name: String,
     ai_table: Arc<Mutex<AITable>>,
-    human_synth_name: String,
+    //human_synth_name: String,
     human_synth_table: Arc<Mutex<SynthTable>>,
-    ai_synth_name: String,
+    //ai_synth_name: String,
     ai_synth_table: Arc<Mutex<SynthTable>>,
     variation_controls: VariationControlSliders,
     replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
@@ -209,8 +209,8 @@ impl ReplayerApp {
         let human_synth_table = make_synth_table();
         let ai_synth_table = make_synth_table();
         let ai_name = ai_table.current_name().to_string();
-        let human_synth_name = human_synth_table.current_name().to_string();
-        let ai_synth_name = ai_synth_table.current_name().to_string();
+        //let human_synth_name = human_synth_table.current_name().to_string();
+        //let ai_synth_name = ai_synth_table.current_name().to_string();
         let ai_table = Arc::new(Mutex::new(ai_table));
         let human_synth_table = Arc::new(Mutex::new(human_synth_table));
         let ai_synth_table = Arc::new(Mutex::new(ai_synth_table));
@@ -233,10 +233,10 @@ impl ReplayerApp {
             replay_delay_slider,
             ai_table,
             human_synth_table,
-            ai_synth_name,
+            //ai_synth_name,
             ai_synth_table,
             ai_name,
-            human_synth_name,
+            //human_synth_name,
             in_port: None,
             in_port_name: None,
             variation_pref,
@@ -255,13 +255,13 @@ impl ReplayerApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading(format!("Replayer ({})", self.in_port_name.as_ref().unwrap()));
             ui.horizontal(|ui| {
-                Self::radio_choice(ui,"Human Synthesizer",self.human_synth_table.clone(),&mut self.human_synth_name);
-                Self::radio_choice(ui,"Variation Synthesizer",self.ai_synth_table.clone(),&mut self.ai_synth_name);
+                //Self::radio_choice(ui,"Human Synthesizer",self.human_synth_table.clone(),&mut self.human_synth_name);
+                //Self::radio_choice(ui,"Variation Synthesizer",self.ai_synth_table.clone(),&mut self.ai_synth_name);
                 Self::radio_choice(ui,"Variation Algorithm",self.ai_table.clone(),&mut self.ai_name);
             });
             Self::update_table_choice(self.ai_table.clone(), self.ai_name.as_str());
-            Self::update_table_choice(self.human_synth_table.clone(),self.human_synth_name.as_str());
-            Self::update_table_choice(self.ai_synth_table.clone(), self.ai_synth_name.as_str());
+            //Self::update_table_choice(self.human_synth_table.clone(),self.human_synth_name.as_str());
+            //Self::update_table_choice(self.ai_synth_table.clone(), self.ai_synth_name.as_str());
 
             Self::insert_slider(ui, self.variation_controls.whimsification_slider.clone(), "Portion of Suffix to Whimsify");
             Self::insert_slider(ui,self.variation_controls.p_random_slider.clone(),"Probability of Randomization");
