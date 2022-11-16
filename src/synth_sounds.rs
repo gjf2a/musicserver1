@@ -1,12 +1,10 @@
 use fundsp::combinator::An;
 use fundsp::envelope::Envelope;
-use fundsp::hacker::{envelope, lerp11, pulse, sin_hz, triangle, Pipe, WaveSynth, moog_q, xerp11, constant, Constant};
+use fundsp::hacker::{envelope, envelope2, lerp11, pulse, sin_hz, triangle, Pipe, WaveSynth, moog_q, xerp11, constant, Constant};
 use fundsp::prelude::{AudioUnit64, PulseWave};
-use std::sync::Arc;
 use typenum::{UInt, UTerm};
-use crate::arc_vec;
 use crate::runtime::ChooserTable;
-use crate::synth_output::{convert_midi, SynthFuncType, SynthTable};
+use crate::synth_output::{convert_midi, SynthTable};
 
 // Moog envelope adapted from fundsp/examples/beep.rs
 // I'm using a macro because I could not figure out how to write down the type for $an, which is
@@ -17,11 +15,9 @@ macro_rules! moogify {
 }
 
 pub fn make_synth_table() -> SynthTable {
-    let synth_funcs: Vec<(&str, Arc<SynthFuncType>)> = arc_vec![
-        ("Triangle", triangle_synth),
-        ("Triangle Moog", triangle_moog),
-        ("Pulse", pulse_synth),
-        ("Pulse Moog", pulse_moog)
+    let synth_funcs: Vec<(&str, Box<dyn AudioUnit64>)> = vec![
+        ("Triangle", Box::new(triangle())),
+        ("Pulse", Box::new(envelope2(move |t, p| (p, lerp11(0.01, 0.99, sin_hz(0.05, t)))) >> pulse()))
     ];
     ChooserTable::from(&synth_funcs)
 }

@@ -54,6 +54,10 @@ impl<T: Clone> ChooserTable<T> {
             .clone()
     }
 
+    pub fn current_index(&self) -> usize {
+        self.names.iter().enumerate().find(|(_,n)| **n == self.current_name).map(|(i,_)| i).unwrap()
+    }
+
     pub fn name_vec(&self) -> Vec<String> {
         self.names.clone()
     }
