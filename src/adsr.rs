@@ -17,7 +17,7 @@ pub fn adsr_live(
     sustain: f64,
     release: f64,
     note_m: Arc<AtomicCell<SoundMsg>>,
-) -> An<Envelope<f64, f64, impl Fn(f64) -> f64 + Sized, f64>> {
+) -> An<Envelope<f64, f64, impl Fn(f64) -> f64 + Sized + Clone, f64>> {
     adsr(attack, decay, sustain, release, None, note_m)
 }
 
@@ -28,7 +28,7 @@ pub fn adsr_fixed(
     sustain_level: f64,
     release: f64,
     note_m: Arc<AtomicCell<SoundMsg>>,
-) -> An<Envelope<f64, f64, impl Fn(f64) -> f64 + Sized, f64>> {
+) -> An<Envelope<f64, f64, impl Fn(f64) -> f64 + Sized + Clone, f64>> {
     adsr(
         attack,
         decay,
@@ -46,7 +46,7 @@ fn adsr(
     release: f64,
     release_start: Option<f64>,
     note_m: Arc<AtomicCell<SoundMsg>>,
-) -> An<Envelope<f64, f64, impl Fn(f64) -> f64 + Sized, f64>> {
+) -> An<Envelope<f64, f64, impl Fn(f64) -> f64 + Sized + Clone, f64>> {
     let adsr = AtomicCell::new(Adsr {
         attack,
         decay,

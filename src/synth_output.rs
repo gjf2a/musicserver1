@@ -4,13 +4,14 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, Sample, SampleFormat, StreamConfig};
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
-use fundsp::hacker::midi_hz;
+use fundsp::hacker::*;
 use fundsp::prelude::AudioUnit64;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use std::collections::vec_deque::VecDeque;
 use std::sync::{Arc, Mutex};
 use crate::analyzer::velocity2volume;
 use crate::runtime::{ChooserTable, SHOW_MIDI_MSG, SynthChoice};
+use bare_metal_modulo::*;
 
 const MAX_SOUNDS: usize = 3;
 
@@ -86,6 +87,58 @@ fn run_synth<T: Sample>(
     std::thread::spawn(move || {
         run_inst.listen_play_loop::<T>();
     });
+}
+
+#[derive(Clone)]
+struct Vars<const N: usize> {
+    pitches: [An<Var<f64>>; N],
+    velocities: [An<Var<f64>>; N],
+    next: ModNumC<usize, N>,
+    pitch2var: BTreeMap<u8,usize>,
+    recent_pitches: [Option<u8>; N]
+}
+
+impl <const N: usize> Vars<N> {
+    pub fn new() -> Self {
+        Self {
+            pitches: [(); N].map(|_| var(0, 0.0)),
+            velocities: [(); N].map(|_| var(1, 0.0)),
+            next: ModNumC::new(0),
+            pitch2var: BTreeMap::new(),
+            recent_pitches: [None; N]
+        }
+    }
+
+    pub fn sound_at(&self, i: usize) -> Box<dyn AudioUnit64> {
+        let pitch = self.pitches[i].clone();
+        let velocity = self.velocities[i].clone();
+        Box::new(envelope(move |_| midi_hz(pitch.value())) >> triangle() * (envelope(move |_| velocity.value() / 127.0)))
+    }
+
+    pub fn sound(&self) -> Net64 {
+        let mut sound = Net64::wrap(self.sound_at(0));
+        for i in 1..N {
+            sound = Net64::bin_op(sound, Net64::wrap(self.sound_at(i)), FrameAdd::new());
+        }
+        sound
+    }
+
+    pub fn on(&mut self, pitch: u8, velocity: u8) {
+        self.pitches[self.next.a()].clone().set_value(pitch as f64);
+        self.velocities[self.next.a()].clone().set_value(velocity as f64);
+        self.pitch2var.insert(pitch, self.next.a());
+        self.recent_pitches[self.next.a()] = Some(pitch);
+        self.next += 1;
+    }
+
+    pub fn off(&mut self, pitch: u8) {
+        if let Some(i) = self.pitch2var.remove(&pitch) {
+            if self.recent_pitches[i] == Some(pitch) {
+                self.recent_pitches[i] = None;
+                self.velocities[i].clone().set_value(0.0);
+            }
+        }
+    }
 }
 
 #[derive(Clone)]
