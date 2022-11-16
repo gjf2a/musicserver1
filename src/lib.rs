@@ -1,4 +1,3 @@
-pub mod adsr;
 pub mod ai_variation;
 pub mod analyzer;
 pub mod midi_input;
