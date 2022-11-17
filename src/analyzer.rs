@@ -1,4 +1,6 @@
+use crate::subsequence_finder::{find_maximal_repeated_subs, Subsequences};
 use bare_metal_modulo::{MNum, ModNumC, OffsetNumC};
+use distribution_select::Distribution;
 use enum_iterator::{all, Sequence};
 use float_cmp::{ApproxEq, F64Margin};
 use histogram_macros::*;
@@ -11,8 +13,6 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter::Sum;
 use std::ops::{AddAssign, Neg};
 use std::time::Instant;
-use distribution_select::Distribution;
-use crate::subsequence_finder::{find_maximal_repeated_subs, Subsequences};
 
 pub type MidiByte = i16;
 
@@ -21,7 +21,15 @@ const NOTES_PER_OCTAVE: MidiByte = 12;
 const USIZE_NOTES_PER_OCTAVE: usize = NOTES_PER_OCTAVE as usize;
 const DIATONIC_SCALE_SIZE: usize = 7;
 const DIATONIC_SCALE_HOPS: [MidiByte; DIATONIC_SCALE_SIZE] = [2, 2, 1, 2, 2, 2, 1];
-const DIATONIC_NOTE_LETTERS: [NoteLetter; DIATONIC_SCALE_SIZE] = [NoteLetter::C, NoteLetter::D, NoteLetter::E, NoteLetter::F, NoteLetter::G, NoteLetter::A, NoteLetter::B];
+const DIATONIC_NOTE_LETTERS: [NoteLetter; DIATONIC_SCALE_SIZE] = [
+    NoteLetter::C,
+    NoteLetter::D,
+    NoteLetter::E,
+    NoteLetter::F,
+    NoteLetter::G,
+    NoteLetter::A,
+    NoteLetter::B,
+];
 const SHARP_START: usize = 3;
 const FLAT_START: usize = 6;
 
@@ -37,7 +45,7 @@ const NOTE_IDS: [(NoteLetter, Accidental); USIZE_NOTES_PER_OCTAVE] = [
     (NoteLetter::G, Accidental::Sharp),
     (NoteLetter::A, Accidental::Natural),
     (NoteLetter::A, Accidental::Sharp),
-    (NoteLetter::B, Accidental::Natural)
+    (NoteLetter::B, Accidental::Natural),
 ];
 
 const MODE_NAMES: [&str; DIATONIC_SCALE_SIZE] = [
@@ -61,7 +69,8 @@ fn major_sharps_for(note_index: usize) -> usize {
 }
 
 fn major_flats_for(note_index: usize) -> usize {
-    (NOTES_PER_OCTAVE as usize + (if note_index % 2 == 0 {0} else {6}) - note_index) % NOTES_PER_OCTAVE as usize
+    (NOTES_PER_OCTAVE as usize + (if note_index % 2 == 0 { 0 } else { 6 }) - note_index)
+        % NOTES_PER_OCTAVE as usize
 }
 
 fn adjusted_note_index(note_index: usize, mode_index: usize) -> usize {
@@ -98,13 +107,20 @@ impl ApproxEq for Note {
         let margin = margin.into();
         self.pitch == other.pitch
             && self.velocity == other.velocity
-            && self.duration.into_inner().approx_eq(other.duration.into_inner(), margin)
+            && self
+                .duration
+                .into_inner()
+                .approx_eq(other.duration.into_inner(), margin)
     }
 }
 
 impl Note {
     pub fn new(pitch: MidiByte, duration: f64, velocity: MidiByte) -> Self {
-        Note {pitch, duration: OrderedFloat(duration), velocity}
+        Note {
+            pitch,
+            duration: OrderedFloat(duration),
+            velocity,
+        }
     }
 
     pub fn to_midi(&self) -> (MidiMsg, f64) {
@@ -127,9 +143,13 @@ impl Note {
         self.pitch
     }
 
-    pub fn duration(&self) -> f64 {self.duration.into_inner()}
+    pub fn duration(&self) -> f64 {
+        self.duration.into_inner()
+    }
 
-    pub fn velocity(&self) -> MidiByte {self.velocity}
+    pub fn velocity(&self) -> MidiByte {
+        self.velocity
+    }
 
     pub fn is_rest(&self) -> bool {
         self.velocity == 0
@@ -234,7 +254,12 @@ impl Melody {
     /// representation than the `Debug` version.
     pub fn tuple_print(&self) {
         for n in self.notes.iter() {
-            print!("({}, {}, {}), ", n.pitch, n.duration.into_inner(), n.velocity);
+            print!(
+                "({}, {}, {}), ",
+                n.pitch,
+                n.duration.into_inner(),
+                n.velocity
+            );
         }
         println!();
     }
@@ -265,7 +290,7 @@ impl Melody {
         for i in start..(start + length) {
             notes.push(self[i]);
         }
-        Melody {notes}
+        Melody { notes }
     }
 
     pub fn pitch_subsequence_at(&self, start: usize, length: usize) -> Option<Vec<MidiByte>> {
@@ -280,7 +305,11 @@ impl Melody {
                 }
             }
         }
-        if result.len() == length {Some(result)} else {None}
+        if result.len() == length {
+            Some(result)
+        } else {
+            None
+        }
     }
 
     pub fn duration_with_rest(&self, i: usize) -> OrderedFloat<f64> {
@@ -477,7 +506,11 @@ impl Melody {
             seq_len += 1;
             i += 1;
         }
-        if num_distinct_found < num_distinct_pitches {None} else {Some(seq_len)}
+        if num_distinct_found < num_distinct_pitches {
+            None
+        } else {
+            Some(seq_len)
+        }
     }
 
     pub fn min_max_pitches(&self) -> (MidiByte, MidiByte) {
@@ -494,7 +527,9 @@ impl Melody {
         let mut result = Melody::new();
         let min_duration = OrderedFloat(min_duration);
         for note in self.iter() {
-            if note.duration >= min_duration || note.velocity == 0 && result.len() > 0 && result.last_note().pitch == note.pitch {
+            if note.duration >= min_duration
+                || note.velocity == 0 && result.len() > 0 && result.last_note().pitch == note.pitch
+            {
                 result.add(*note);
             }
         }
@@ -517,7 +552,7 @@ impl std::ops::Index<usize> for Melody {
 }
 
 pub struct MelodyMaker {
-    figure_tables: BTreeMap<usize, BTreeMap<MidiByte, Vec<MelodicFigure>>>
+    figure_tables: BTreeMap<usize, BTreeMap<MidiByte, Vec<MelodicFigure>>>,
 }
 
 impl MelodyMaker {
@@ -560,7 +595,10 @@ impl MelodyMaker {
         let scale = melody.best_scale_for();
         for length in FIGURE_LENGTHS.iter() {
             if let Some(pitches) = melody.pitch_subsequence_at(start, *length) {
-                if let Some(step_gap) = scale.diatonic_steps_between(*pitches.first().unwrap(), *pitches.last().unwrap()).pure_degree() {
+                if let Some(step_gap) = scale
+                    .diatonic_steps_between(*pitches.first().unwrap(), *pitches.last().unwrap())
+                    .pure_degree()
+                {
                     if let Some(candidates) = self.figure_candidates(*length, step_gap) {
                         for candidate in candidates.iter() {
                             if let Some(match_len) = candidate.match_length(melody, &scale, start) {
@@ -574,8 +612,15 @@ impl MelodyMaker {
         None
     }
 
-    pub fn figure_candidates(&self, figure_length: usize, step_gap: MidiByte) -> Option<&Vec<MelodicFigure>> {
-        self.figure_tables.get(&figure_length).unwrap().get(&step_gap)
+    pub fn figure_candidates(
+        &self,
+        figure_length: usize,
+        step_gap: MidiByte,
+    ) -> Option<&Vec<MelodicFigure>> {
+        self.figure_tables
+            .get(&figure_length)
+            .unwrap()
+            .get(&step_gap)
     }
 
     pub fn ornamented(&self, melody: &Melody, p_ornament: f64) -> Melody {
@@ -585,15 +630,21 @@ impl MelodyMaker {
         let mut rng = rand::thread_rng();
         let scale = melody.best_scale_for();
         let consolidated = melody.get_consolidated_notes();
-        let ornament_duration = consolidated.iter().map(|(_,n)| n.duration).min().unwrap();
+        let ornament_duration = consolidated.iter().map(|(_, n)| n.duration).min().unwrap();
 
         let mut result = Melody::new();
         let mut i = 0;
         while i < melody.len() {
             let mut ornamented = false;
-            if let Some(gap) = Self::next_diatonic_gap(&scale, melody, i).and_then(|g| g.pure_degree()) {
-                if let Some((figure_length, lead_duration)) = Self::ornament_figure_length(ornament_duration, melody, i) {
-                    if let Some(figure_list) = self.figure_tables.get(&figure_length).unwrap().get(&gap) {
+            if let Some(gap) =
+                Self::next_diatonic_gap(&scale, melody, i).and_then(|g| g.pure_degree())
+            {
+                if let Some((figure_length, lead_duration)) =
+                    Self::ornament_figure_length(ornament_duration, melody, i)
+                {
+                    if let Some(figure_list) =
+                        self.figure_tables.get(&figure_length).unwrap().get(&gap)
+                    {
                         if Self::any_notes_after(melody, i) && rand::random::<f64>() < p_ornament {
                             let figure = figure_list.choose(&mut rng).unwrap();
                             let mut pitches = figure.make_pitches(melody[i].pitch, &scale);
@@ -601,7 +652,11 @@ impl MelodyMaker {
                             let mut duration = vec![lead_duration.into_inner()];
                             while !pitches.is_empty() {
                                 let p = pitches.pop_front().unwrap();
-                                result.add(Note::new(p, duration.pop().unwrap_or(ornament_duration.into_inner()), melody[i].velocity));
+                                result.add(Note::new(
+                                    p,
+                                    duration.pop().unwrap_or(ornament_duration.into_inner()),
+                                    melody[i].velocity,
+                                ));
                                 result.add(Note::new(p, 0.0, 0));
                             }
                             ornamented = true;
@@ -621,13 +676,17 @@ impl MelodyMaker {
         result
     }
 
-    fn ornament_figure_length(ornament_duration: OrderedFloat<f64>, melody: &Melody, i: usize) -> Option<(usize,OrderedFloat<f64>)> {
+    fn ornament_figure_length(
+        ornament_duration: OrderedFloat<f64>,
+        melody: &Melody,
+        i: usize,
+    ) -> Option<(usize, OrderedFloat<f64>)> {
         if !melody[i].is_rest() {
             let duration = melody.duration_with_rest(i);
             for len in FIGURE_LENGTHS {
                 let leftover = duration - ornament_duration * (OrderedFloat(len as f64) - 2.0);
                 if leftover >= OrderedFloat(0.0) {
-                    return Some((len, leftover))
+                    return Some((len, leftover));
                 }
             }
         }
@@ -655,7 +714,13 @@ impl MelodyMaker {
             .collect()
     }
 
-    fn append_pitches_to(notes: &mut Melody, pitches: &VecDeque<MidiByte>, i: usize, match_len: usize, original: &Melody) {
+    fn append_pitches_to(
+        notes: &mut Melody,
+        pitches: &VecDeque<MidiByte>,
+        i: usize,
+        match_len: usize,
+        original: &Melody,
+    ) {
         let mut pitch = 0;
         for m in 1..match_len {
             if original[i + m].pitch != original[i + m - 1].pitch {
@@ -690,7 +755,7 @@ impl MelodyMaker {
         let scale = original.best_scale_for();
         let mut sections = self.get_melody_sections(original);
         for section in sections.iter_mut() {
-            section.vary(&scale,p_remap, self);
+            section.vary(&scale, p_remap, self);
         }
         let mut variation = original.clone();
         for section in sections.iter() {
@@ -701,14 +766,23 @@ impl MelodyMaker {
 
     pub fn get_melody_sections(&self, melody: &Melody) -> Vec<MelodySection> {
         let consolidated = melody.get_consolidated_notes();
-        let consolidated_melody = Melody {notes: consolidated.iter().map(|(_,n)| *n).collect()};
+        let consolidated_melody = Melody {
+            notes: consolidated.iter().map(|(_, n)| *n).collect(),
+        };
         let intervals = consolidated_melody.diatonic_intervals();
-        let subs = find_maximal_repeated_subs(&intervals, Self::MIN_MOTIVE_REPETITIONS, Self::MIN_MOTIVE_LEN);
+        let subs = find_maximal_repeated_subs(
+            &intervals,
+            Self::MIN_MOTIVE_REPETITIONS,
+            Self::MIN_MOTIVE_LEN,
+        );
         MelodySection::from(&subs, &intervals, &consolidated)
     }
 
     pub fn suffix_whimsified_melody(&self, original: &Melody, portion_to_replace: f64) -> Melody {
-        let prefix_size = max(1, ((1.0 - portion_to_replace) * original.len() as f64) as usize);
+        let prefix_size = max(
+            1,
+            ((1.0 - portion_to_replace) * original.len() as f64) as usize,
+        );
         let mut result = original.fragment(0, prefix_size);
         let start = result.len() - 1;
         let scale = original.best_scale_for();
@@ -728,16 +802,18 @@ impl MelodyMaker {
     }
 }
 
-
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MelodySection {
     intervals: Vec<DiatonicInterval>,
-    starts: Vec<usize>
+    starts: Vec<usize>,
 }
 
 impl MelodySection {
-    pub fn from(subs: &Vec<Subsequences>, intervals: &Vec<DiatonicInterval>, consolidated: &Vec<(usize, Note)>) -> Vec<Self> {
+    pub fn from(
+        subs: &Vec<Subsequences>,
+        intervals: &Vec<DiatonicInterval>,
+        consolidated: &Vec<(usize, Note)>,
+    ) -> Vec<Self> {
         let mut result = vec![];
         for sub in subs.iter() {
             result.push(Self::sub2section(sub, intervals, consolidated));
@@ -746,23 +822,39 @@ impl MelodySection {
         result
     }
 
-    fn sub2section(sub: &Subsequences, intervals: &Vec<DiatonicInterval>, consolidated: &Vec<(usize, Note)>) -> Self {
+    fn sub2section(
+        sub: &Subsequences,
+        intervals: &Vec<DiatonicInterval>,
+        consolidated: &Vec<(usize, Note)>,
+    ) -> Self {
         let starts = sub.starts().iter().map(|s| consolidated[*s].0).collect();
         let start = sub.starts().iter().next().copied().unwrap();
         let intervals = (0..(sub.sub_len())).map(|i| intervals[i + start]).collect();
-        MelodySection { intervals, starts}
+        MelodySection { intervals, starts }
     }
 
-    fn intersperse_missing_sections(sections: &mut Vec<Self>, intervals: &Vec<DiatonicInterval>, consolidated: &Vec<(usize, Note)>) {
+    fn intersperse_missing_sections(
+        sections: &mut Vec<Self>,
+        intervals: &Vec<DiatonicInterval>,
+        consolidated: &Vec<(usize, Note)>,
+    ) {
         let uncovered = Self::find_uncovered_indices(sections, consolidated);
         Self::intersperse_uncovered(sections, intervals, &uncovered, consolidated);
     }
 
-    fn find_uncovered_indices(sections: &Vec<Self>, consolidated: &Vec<(usize, Note)>) -> BTreeSet<usize> {
+    fn find_uncovered_indices(
+        sections: &Vec<Self>,
+        consolidated: &Vec<(usize, Note)>,
+    ) -> BTreeSet<usize> {
         let mut uncovered = (0..consolidated.len() - 1).collect::<BTreeSet<usize>>();
         for section in sections.iter() {
             for start in section.starts.iter() {
-                let covered = consolidated.iter().enumerate().find(|(_,(i,_))| i == start).unwrap().0;
+                let covered = consolidated
+                    .iter()
+                    .enumerate()
+                    .find(|(_, (i, _))| i == start)
+                    .unwrap()
+                    .0;
                 for i in 0..section.intervals.len() {
                     uncovered.remove(&(covered + i));
                 }
@@ -771,15 +863,26 @@ impl MelodySection {
         uncovered
     }
 
-    fn intersperse_uncovered(sections: &mut Vec<Self>, intervals: &Vec<DiatonicInterval>, uncovered: &BTreeSet<usize>, consolidated: &Vec<(usize, Note)>) {
+    fn intersperse_uncovered(
+        sections: &mut Vec<Self>,
+        intervals: &Vec<DiatonicInterval>,
+        uncovered: &BTreeSet<usize>,
+        consolidated: &Vec<(usize, Note)>,
+    ) {
         let mut uncoverer = uncovered.iter();
         if let Some(mut prev) = uncoverer.next().copied() {
-            let mut current = Self {intervals: vec![intervals[prev]], starts: vec![consolidated[prev].0]};
+            let mut current = Self {
+                intervals: vec![intervals[prev]],
+                starts: vec![consolidated[prev].0],
+            };
             for i in uncoverer.copied() {
                 if i == prev + 1 {
                     current.intervals.push(intervals[i]);
                 } else {
-                    let mut adding = Self {intervals: vec![intervals[i]], starts: vec![consolidated[i].0]};
+                    let mut adding = Self {
+                        intervals: vec![intervals[i]],
+                        starts: vec![consolidated[i].0],
+                    };
                     std::mem::swap(&mut adding, &mut current);
                     if adding.intervals.len() >= MelodyMaker::MIN_MOTIVE_LEN {
                         sections.push(adding);
@@ -792,7 +895,11 @@ impl MelodySection {
     }
 
     pub fn overall_interval_change(&self, scale: &MusicMode) -> DiatonicInterval {
-        self.intervals.iter().copied().sum::<DiatonicInterval>().normalized(scale)
+        self.intervals
+            .iter()
+            .copied()
+            .sum::<DiatonicInterval>()
+            .normalized(scale)
     }
 
     pub fn vary(&mut self, scale: &MusicMode, replace_prob: f64, maker: &MelodyMaker) {
@@ -811,13 +918,32 @@ impl MelodySection {
         }
     }
 
-    fn figure_replace(&mut self, maker: &MelodyMaker, i: &mut usize, scale: &MusicMode, figure_length: usize, figure_end: usize) {
+    fn figure_replace(
+        &mut self,
+        maker: &MelodyMaker,
+        i: &mut usize,
+        scale: &MusicMode,
+        figure_length: usize,
+        figure_end: usize,
+    ) {
         let mut rng = rand::thread_rng();
         let current_intervals = &self.intervals[*i..=figure_end];
-        if let Some(step_gap) = current_intervals.iter().copied().sum::<DiatonicInterval>().normalized(scale).pure_degree() {
+        if let Some(step_gap) = current_intervals
+            .iter()
+            .copied()
+            .sum::<DiatonicInterval>()
+            .normalized(scale)
+            .pure_degree()
+        {
             if let Some(figure_candidates) = maker.figure_candidates(figure_length, step_gap) {
-                let current_diatonic = current_intervals.iter().map(|i| i.degree).collect::<Vec<_>>();
-                let figure_candidates = figure_candidates.iter().filter(|f| f.pattern() != current_diatonic).collect::<Vec<_>>();
+                let current_diatonic = current_intervals
+                    .iter()
+                    .map(|i| i.degree)
+                    .collect::<Vec<_>>();
+                let figure_candidates = figure_candidates
+                    .iter()
+                    .filter(|f| f.pattern() != current_diatonic)
+                    .collect::<Vec<_>>();
                 if let Some(replacement) = figure_candidates.choose(&mut rng).copied() {
                     for (j, interval) in replacement.pattern().iter().enumerate() {
                         self.intervals[*i + j] = DiatonicInterval::pure(*interval);
@@ -860,20 +986,23 @@ impl MelodySection {
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct DiatonicInterval {
     degree: MidiByte,
-    chroma: MidiByte
+    chroma: MidiByte,
 }
 
 impl DiatonicInterval {
     pub fn new() -> Self {
-        DiatonicInterval {degree: 0, chroma: 0}
+        DiatonicInterval {
+            degree: 0,
+            chroma: 0,
+        }
     }
 
     pub fn pure(degree: MidiByte) -> Self {
-        DiatonicInterval {degree, chroma: 0}
+        DiatonicInterval { degree, chroma: 0 }
     }
 
     pub fn chromatic(degree: MidiByte, chroma: MidiByte) -> Self {
-        DiatonicInterval {degree, chroma}
+        DiatonicInterval { degree, chroma }
     }
 
     pub fn normalized(&self, scale: &MusicMode) -> Self {
@@ -881,7 +1010,11 @@ impl DiatonicInterval {
     }
 
     pub fn pure_degree(&self) -> Option<MidiByte> {
-        if self.chroma == 0 {Some(self.degree)} else {None}
+        if self.chroma == 0 {
+            Some(self.degree)
+        } else {
+            None
+        }
     }
 }
 
@@ -893,7 +1026,7 @@ impl AddAssign for DiatonicInterval {
 }
 
 impl Sum for DiatonicInterval {
-    fn sum<I: Iterator<Item=Self>>(iter: I) -> Self {
+    fn sum<I: Iterator<Item = Self>>(iter: I) -> Self {
         let mut result = DiatonicInterval::new();
         for item in iter {
             result += item;
@@ -906,13 +1039,22 @@ impl Neg for DiatonicInterval {
     type Output = DiatonicInterval;
 
     fn neg(self) -> Self::Output {
-        Self {degree: -self.degree, chroma: -self.chroma}
+        Self {
+            degree: -self.degree,
+            chroma: -self.chroma,
+        }
     }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Sequence)]
 pub enum NoteLetter {
-    A, B, C, D, E, F, G
+    A,
+    B,
+    C,
+    D,
+    E,
+    F,
+    G,
 }
 
 impl NoteLetter {
@@ -941,7 +1083,7 @@ impl NoteLetter {
 pub struct MusicMode {
     root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>,
     octave_notes: [ModNumC<MidiByte, USIZE_NOTES_PER_OCTAVE>; DIATONIC_SCALE_SIZE],
-    intervals: [MidiByte; DIATONIC_SCALE_SIZE]
+    intervals: [MidiByte; DIATONIC_SCALE_SIZE],
 }
 
 impl MusicMode {
@@ -982,11 +1124,19 @@ impl MusicMode {
 
     pub fn name(&self) -> String {
         let (note, acc) = self.root_name();
-        format!("{} {}", Self::format_note(note, acc), MODE_NAMES[self.root_pos.a()])
+        format!(
+            "{} {}",
+            Self::format_note(note, acc),
+            MODE_NAMES[self.root_pos.a()]
+        )
     }
 
     pub fn format_note(note: NoteLetter, acc: Accidental) -> String {
-        let symbol = if acc == Accidental::Natural {"".to_string()} else {acc.symbol().to_string()};
+        let symbol = if acc == Accidental::Natural {
+            "".to_string()
+        } else {
+            acc.symbol().to_string()
+        };
         format!("{note:?}{}", symbol)
     }
 
@@ -1004,18 +1154,25 @@ impl MusicMode {
         MusicMode {
             root_pos,
             octave_notes,
-            intervals
+            intervals,
         }
     }
 
     pub fn c_value(&self) -> MidiByte {
         match sharps_for(self.root() as usize, self.root_pos.a()) {
-            6 => 59, 2..=5 => 61, _ => 60
+            6 => 59,
+            2..=5 => 61,
+            _ => 60,
         }
     }
 
     pub fn diatonic_steps_between_round_up(&self, pitch1: MidiByte, pitch2: MidiByte) -> MidiByte {
-        self.diatonic_steps_between(self.closest_pitch_below(pitch1), self.closest_pitch_above(pitch2)).pure_degree().unwrap()
+        self.diatonic_steps_between(
+            self.closest_pitch_below(pitch1),
+            self.closest_pitch_above(pitch2),
+        )
+        .pure_degree()
+        .unwrap()
     }
 
     pub fn diatonic_steps_between(&self, pitch1: MidiByte, pitch2: MidiByte) -> DiatonicInterval {
@@ -1031,7 +1188,10 @@ impl MusicMode {
                 count += 1;
             }
             let steps_after = self.half_steps_up_to_scale(pitch2);
-            DiatonicInterval {degree: count, chroma: steps_before + steps_after}
+            DiatonicInterval {
+                degree: count,
+                chroma: steps_before + steps_after,
+            }
         }
     }
 
@@ -1042,9 +1202,14 @@ impl MusicMode {
     ///   it resets the `chroma` to zero in `scale_steps_away`.
     /// * Next, if that adjustment fails, it rounds the adjusted `reference_pitch` up to
     ///   the next pitch that is within the scale.
-    pub fn next_pitch(&self, reference_pitch: MidiByte, scale_steps_away: DiatonicInterval) -> MidiByte {
+    pub fn next_pitch(
+        &self,
+        reference_pitch: MidiByte,
+        scale_steps_away: DiatonicInterval,
+    ) -> MidiByte {
         assert!(reference_pitch < MidiByte::MAX);
-        let (reference_pitch, scale_steps_away) = self.reference_on_scale(reference_pitch, scale_steps_away);
+        let (reference_pitch, scale_steps_away) =
+            self.reference_on_scale(reference_pitch, scale_steps_away);
         let mut octaves_up = num::integer::div_floor(reference_pitch, NOTES_PER_OCTAVE);
         let i = self.closest_position_for(reference_pitch);
         let ref_octave_basis = self.octave_notes[i].a();
@@ -1060,20 +1225,25 @@ impl MusicMode {
         scale_steps_away.chroma + next_octave_basis + octaves_up * NOTES_PER_OCTAVE
     }
 
-    fn reference_on_scale(&self, reference_pitch: MidiByte, scale_steps_away: DiatonicInterval) -> (MidiByte, DiatonicInterval) {
+    fn reference_on_scale(
+        &self,
+        reference_pitch: MidiByte,
+        scale_steps_away: DiatonicInterval,
+    ) -> (MidiByte, DiatonicInterval) {
         if self.contains(reference_pitch) {
             (reference_pitch, scale_steps_away)
         } else {
-            (reference_pitch + scale_steps_away.chroma, DiatonicInterval::pure(scale_steps_away.degree))
+            (
+                reference_pitch + scale_steps_away.chroma,
+                DiatonicInterval::pure(scale_steps_away.degree),
+            )
         }
     }
 
     pub fn closest_position_for(&self, reference_pitch: MidiByte) -> usize {
         let mut reference_pitch = reference_pitch;
         loop {
-            if let Some(position) = self.octave_notes
-                .iter()
-                .position(|p| *p == reference_pitch) {
+            if let Some(position) = self.octave_notes.iter().position(|p| *p == reference_pitch) {
                 return position;
             } else {
                 reference_pitch += 1;
@@ -1149,11 +1319,13 @@ impl MusicMode {
     /// flat, sharp, or natural note in the scale. If it does not belong,
     /// returns `None`.
     pub fn accidental_for(&self, pitch: MidiByte) -> Option<Accidental> {
-        self.diatonic_note_name(pitch).map(|(_,acc)| acc)
+        self.diatonic_note_name(pitch).map(|(_, acc)| acc)
     }
 
     pub fn diatonic_note_name(&self, pitch: MidiByte) -> Option<(NoteLetter, Accidental)> {
-        self.diatonic_degree(pitch).pure_degree().map(|degree| self.note_names()[(degree - 1) as usize])
+        self.diatonic_degree(pitch)
+            .pure_degree()
+            .map(|degree| self.note_names()[(degree - 1) as usize])
     }
 
     pub fn note_name(&self, pitch: MidiByte) -> (NoteLetter, Accidental) {
@@ -1170,7 +1342,8 @@ impl MusicMode {
 
     fn closest_scale_match(&self, pitch: MidiByte) -> (MidiByte, NoteLetter, Accidental) {
         let mut diatonic_pitch = self.closest_pitch_below(pitch);
-        let (mut diatonic_name, diatonic_accidental) = self.diatonic_note_name(diatonic_pitch).unwrap();
+        let (mut diatonic_name, diatonic_accidental) =
+            self.diatonic_note_name(diatonic_pitch).unwrap();
         let pitch_accidental = match diatonic_accidental {
             Accidental::Natural => Accidental::Sharp,
             Accidental::Flat => Accidental::Natural,
@@ -1180,7 +1353,7 @@ impl MusicMode {
                 diatonic_name = diatonic.0;
                 match diatonic.1 {
                     Accidental::Sharp => Accidental::Natural,
-                    _ => panic!("We are in a sharp key! This can't happen")
+                    _ => panic!("We are in a sharp key! This can't happen"),
                 }
             }
         };
@@ -1197,20 +1370,38 @@ impl MusicMode {
             let closest = self.closest_scale_match(pitch);
             (closest.0, Some(closest.2))
         };
-        (self.diatonic_steps_between(self.c_value(), pitch).pure_degree().unwrap(), acc)
+        (
+            self.diatonic_steps_between(self.c_value(), pitch)
+                .pure_degree()
+                .unwrap(),
+            acc,
+        )
     }
 
     pub fn key_signature(&self) -> KeySignature {
         if self.is_sharp_key() {
-            KeySignature { notes: Self::traverse_fifths(SHARP_START, |note| *note += 4, self.num_sharps()), accidental: Accidental::Sharp}
+            KeySignature {
+                notes: Self::traverse_fifths(SHARP_START, |note| *note += 4, self.num_sharps()),
+                accidental: Accidental::Sharp,
+            }
         } else if self.is_flat_key() {
-            KeySignature { notes: Self::traverse_fifths(FLAT_START, |note| *note -= 4, self.num_flats()), accidental: Accidental::Flat}
+            KeySignature {
+                notes: Self::traverse_fifths(FLAT_START, |note| *note -= 4, self.num_flats()),
+                accidental: Accidental::Flat,
+            }
         } else {
-            KeySignature { notes: vec![], accidental: Accidental::Natural}
+            KeySignature {
+                notes: vec![],
+                accidental: Accidental::Natural,
+            }
         }
     }
 
-    fn traverse_fifths<U: FnMut(&mut ModNumC<usize, DIATONIC_SCALE_SIZE>)>(start: usize, mut update: U, goal: usize) -> Vec<NoteLetter> {
+    fn traverse_fifths<U: FnMut(&mut ModNumC<usize, DIATONIC_SCALE_SIZE>)>(
+        start: usize,
+        mut update: U,
+        goal: usize,
+    ) -> Vec<NoteLetter> {
         let mut notes = vec![];
         let mut note: ModNumC<usize, DIATONIC_SCALE_SIZE> = ModNumC::new(start);
         for _ in 0..goal {
@@ -1224,7 +1415,7 @@ impl MusicMode {
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct KeySignature {
     notes: Vec<NoteLetter>,
-    accidental: Accidental
+    accidental: Accidental,
 }
 
 const NUM_NOTES_ON_STAFF: usize = 11;
@@ -1264,11 +1455,16 @@ impl KeySignature {
         let (offset, direction) = match self.accidental {
             Accidental::Sharp => (-TREBLE_INITIAL_OFFSET, 1),
             Accidental::Flat => (TREBLE_INITIAL_OFFSET, -1),
-            Accidental::Natural => return vec![]
+            Accidental::Natural => return vec![],
         };
         let c_major = Self::c_major();
         let middle_c = c_major.c_value();
-        let start1 = Self::constrain_up(c_major.diatonic_steps_between(middle_c, middle_c + self.notes[0].natural_pitch()).pure_degree().unwrap());
+        let start1 = Self::constrain_up(
+            c_major
+                .diatonic_steps_between(middle_c, middle_c + self.notes[0].natural_pitch())
+                .pure_degree()
+                .unwrap(),
+        );
         let mut frontier = [start1, Self::constrain_up(start1 + offset)];
         let mut result = vec![];
         for (i, _) in self.notes.iter().enumerate() {
@@ -1279,13 +1475,18 @@ impl KeySignature {
     }
 
     pub fn bass_clef(&self) -> Vec<MidiByte> {
-        self.treble_clef().drain(..).map(|p| p + TREBLE_TO_BASS_OFFSET).collect()
+        self.treble_clef()
+            .drain(..)
+            .map(|p| p + TREBLE_TO_BASS_OFFSET)
+            .collect()
     }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Accidental {
-    Flat, Natural, Sharp
+    Flat,
+    Natural,
+    Sharp,
 }
 
 impl Accidental {
@@ -1293,7 +1494,7 @@ impl Accidental {
         match self {
             Accidental::Flat => '\u{266d}',
             Accidental::Natural => '\u{266e}',
-            Accidental::Sharp => '\u{266f}'
+            Accidental::Sharp => '\u{266f}',
         }
     }
 
@@ -1355,7 +1556,10 @@ impl MelodicFigure {
         let mut m = start;
         while p < self.pattern().len() && m + 1 < melody.len() {
             if melody[m].pitch != melody[m + 1].pitch {
-                match scale.diatonic_steps_between(melody[m].pitch, melody[m + 1].pitch).pure_degree() {
+                match scale
+                    .diatonic_steps_between(melody[m].pitch, melody[m + 1].pitch)
+                    .pure_degree()
+                {
                     None => return None,
                     Some(actual) => {
                         if actual != self.pattern()[p] {
@@ -1375,7 +1579,9 @@ impl MelodicFigure {
     pub fn make_pitches(&self, start_pitch: MidiByte, scale: &MusicMode) -> VecDeque<MidiByte> {
         let mut result = VecDeque::from([start_pitch]);
         for interval in self.pattern() {
-            result.push_back(scale.next_pitch(*result.back().unwrap(), DiatonicInterval::pure(interval)));
+            result.push_back(
+                scale.next_pitch(*result.back().unwrap(), DiatonicInterval::pure(interval)),
+            );
         }
         result
     }
@@ -1490,12 +1696,16 @@ impl MelodicFigureShape {
 
 #[cfg(test)]
 mod tests {
-    use crate::analyzer::{MidiByte, Note, Accidental, NoteLetter, DiatonicInterval, MelodySection, FigureDirection, FigurePolarity, MelodicFigure, MelodicFigureShape, Melody, MelodyMaker, MusicMode, DIATONIC_SCALE_SIZE, major_sharps_for, major_flats_for, sharps_for, flats_for};
+    use crate::analyzer::{
+        flats_for, major_flats_for, major_sharps_for, sharps_for, Accidental, DiatonicInterval,
+        FigureDirection, FigurePolarity, MelodicFigure, MelodicFigureShape, Melody, MelodyMaker,
+        MelodySection, MidiByte, MusicMode, Note, NoteLetter, DIATONIC_SCALE_SIZE,
+    };
     use bare_metal_modulo::ModNumC;
+    use float_cmp::assert_approx_eq;
     use ordered_float::OrderedFloat;
     use std::cmp::{max, min};
     use std::collections::{BTreeSet, VecDeque};
-    use float_cmp::assert_approx_eq;
 
     const EXAMPLE_MELODY: &str = "55,0.39,0.91,55,0.04,0.0,59,0.33,0.73,60,0.06,0.44,62,0.02,0.87,59,0.05,0.0,60,0.16,0.0,62,0.2,0.0,55,0.39,0.61,55,0.01,0.0,57,0.34,0.98,57,0.05,0.0,55,0.39,0.78,54,0.02,0.98,55,0.19,0.0,54,0.12,0.0,52,0.11,0.74,52,0.0,0.0,54,0.12,0.46,54,0.03,0.0,50,0.1,0.84,50,0.27,0.0,55,0.27,0.74,55,0.1,0.0,59,0.27,0.44,60,0.07,0.54,62,0.04,0.91,59,0.09,0.0,60,0.11,0.0,62,0.19,0.0,55,0.29,0.67,55,0.07,0.0,57,0.32,0.76,57,0.06,0.0,55,0.23,0.7,55,0.05,0.0,54,0.12,0.93,54,0.07,0.0,50,0.37,0.8,50,0.5,0.0,55,0.36,0.76,55,0.05,0.0,59,0.28,0.76,60,0.05,0.7,62,0.01,0.91,59,0.07,0.0,60,0.15,0.0,62,0.2,0.0,55,0.33,0.67,55,0.02,0.0,57,0.29,0.8,57,0.1,0.0,55,0.29,0.9,55,0.08,0.0,54,0.16,1.0,54,0.12,0.0,52,0.12,0.72,54,0.01,0.71,52,0.14,0.0,54,0.07,0.0,50,0.1,0.76,50,0.23,0.0,55,0.22,0.65,55,0.13,0.0,57,0.29,0.64,57,0.08,0.0,55,0.23,0.76,55,0.07,0.0,54,0.12,0.99,54,0.04,0.0,52,0.24,0.95,52,0.19,0.0,54,0.13,1.0,54,0.15,0.0,52,0.12,0.72,52,0.03,0.0,54,0.19,0.83,54,0.13,0.0,50,0.06,0.69,50,0.15,0.0,55,0.01,0.73,57,0.07,0.66,57,0.55,0.0,55,1.5,0.0";
     const COUNTDOWN_MELODY: &str = "66,0.42,1.0,66,0.55,0.0,73,0.17,1.0,73,0.01,0.0,71,0.13,0.77,71,0.0,0.0,73,0.45,0.41,73,0.13,0.0,66,0.85,0.8,66,0.32,0.0,74,0.16,1.0,74,0.0,0.0,74,0.37,0.87,74,0.03,0.0,73,0.2,1.0,73,0.03,0.0,71,0.03,0.06,71,0.04,0.0,71,0.93,1.0,71,0.27,0.0,74,0.16,1.0,74,0.03,0.0,73,0.13,1.0,73,0.03,0.0,74,0.45,1.0,74,0.12,0.0,66,0.58,0.8,66,0.5,0.0,71,0.15,0.75,71,0.02,0.0,71,0.13,0.81,71,0.03,0.0,71,0.21,1.0,71,0.08,0.0,69,0.24,0.94,69,0.08,0.0,68,0.22,0.65,68,0.07,0.0,71,0.24,1.0,71,0.06,0.0,69,0.68,1.0,69,0.15,0.0,73,0.16,1.0,73,0.03,0.0,71,0.14,0.91,71,0.03,0.0,73,0.29,1.0,73,0.22,0.0,66,0.61,0.64,66,0.45,0.0,74,0.15,0.87,74,0.04,0.0,74,0.14,0.83,74,0.02,0.0,74,0.2,1.0,74,0.13,0.0,73,0.29,0.96,73,0.0,0.0,72,0.04,0.49,72,0.03,0.0,71,1.01,1.0,71,0.41,0.0,74,0.14,0.94,74,0.04,0.0,73,0.13,0.8,73,0.03,0.0,74,0.49,1.0,74,0.12,0.0,66,0.93,0.54,66,0.19,0.0,71,0.16,0.81,71,0.02,0.0,71,0.13,0.79,71,0.03,0.0,71,0.21,0.87,71,0.11,0.0,69,0.24,0.86,69,0.08,0.0,68,0.24,0.67,68,0.07,0.0,71,0.24,1.0,71,0.11,0.0,69,0.75,0.86,69,0.05,0.0,68,0.18,0.71,68,0.02,0.0,69,0.16,0.89,69,0.04,0.0,71,0.02,0.99,71,0.0,0.0,83,0.01,1.0,83,0.0,0.0,71,0.56,0.98,71,0.16,0.0,69,0.19,1.0,69,0.04,0.0,71,0.2,1.0,71,0.05,0.0,73,0.24,1.0,73,0.0,0.0,72,0.03,0.62,72,0.07,0.0,71,0.2,0.91,71,0.03,0.0,69,0.01,0.06,69,0.06,0.0,69,0.18,0.73,69,0.11,0.0,68,0.19,0.46,68,0.18,0.0,66,0.51,0.76,66,0.17,0.0,74,0.56,1.0,74,0.01,0.0,73,1.09,0.79,73,0.07,0.0,75,0.16,0.9,75,0.03,0.0,73,0.16,0.84,73,0.03,0.0,71,0.18,0.57,71,0.03,0.0,73,0.78,0.64,73,0.06,0.0,73,0.14,0.91,73,0.04,0.0,73,0.14,0.87,73,0.04,0.0,73,0.26,0.81,73,0.1,0.0,71,0.23,0.91,71,0.07,0.0,69,0.19,0.98,69,0.1,0.0,68,0.23,0.59,68,0.15,0.0,66,1.22,0.68,66,2.0,0.0";
@@ -1597,7 +1807,7 @@ mod tests {
                 ModNumC::new(4),
                 ModNumC::new(6),
             ],
-            intervals: [2, 2, 1, 2, 2, 2, 1]
+            intervals: [2, 2, 1, 2, 2, 2, 1],
         };
         let steps = mode.diatonic_steps_between(54, 57);
         assert_eq!(steps, DiatonicInterval::pure(2));
@@ -1616,7 +1826,7 @@ mod tests {
                 ModNumC::new(4),
                 ModNumC::new(6),
             ],
-            intervals: [2, 2, 1, 2, 2, 2, 1]
+            intervals: [2, 2, 1, 2, 2, 2, 1],
         };
         println!("mode: {}", mode.name());
         println!("{:?}", mode);
@@ -1778,11 +1988,20 @@ mod tests {
             assert_eq!(melody.len(), variation.len());
             for i in 0..melody.len() {
                 if melody.notes[i] != variation.notes[i] {
-                    let pre_m = melody.notes[..i+3].iter().map(|n| n.pitch()).collect::<Vec<_>>();
-                    let pre_v = variation.notes[..i+3].iter().map(|n| n.pitch()).collect::<Vec<_>>();
+                    let pre_m = melody.notes[..i + 3]
+                        .iter()
+                        .map(|n| n.pitch())
+                        .collect::<Vec<_>>();
+                    let pre_v = variation.notes[..i + 3]
+                        .iter()
+                        .map(|n| n.pitch())
+                        .collect::<Vec<_>>();
                     println!("{pre_m:?}");
                     println!("{pre_v:?}");
-                    panic!("Died at {i}: {:?} vs {:?}", melody.notes[i], variation.notes[i]);
+                    panic!(
+                        "Died at {i}: {:?} vs {:?}",
+                        melody.notes[i], variation.notes[i]
+                    );
                 }
             }
             assert_eq!(variation, melody);
@@ -1791,12 +2010,147 @@ mod tests {
 
     #[test]
     fn remelodize_countdown_bug() {
-        let melody = Melody { notes: vec![Note { pitch: 74, duration: OrderedFloat(0.56), velocity: 127 }, Note { pitch: 74, duration: OrderedFloat(0.01), velocity: 0 }, Note { pitch: 73, duration: OrderedFloat(1.09), velocity: 100 }, Note { pitch: 73, duration: OrderedFloat(0.07), velocity: 0 }, Note { pitch: 75, duration: OrderedFloat(0.16), velocity: 114 }, Note { pitch: 75, duration: OrderedFloat(0.03), velocity: 0 }, Note { pitch: 73, duration: OrderedFloat(0.16), velocity: 106 }, Note { pitch: 73, duration: OrderedFloat(0.03), velocity: 0 }, Note { pitch: 71, duration: OrderedFloat(0.18), velocity: 72 }, Note { pitch: 71, duration: OrderedFloat(0.03), velocity: 0 }, Note { pitch: 73, duration: OrderedFloat(0.78), velocity: 81 }, Note { pitch: 73, duration: OrderedFloat(0.06), velocity: 0 }, Note { pitch: 73, duration: OrderedFloat(0.14), velocity: 115 }, Note { pitch: 73, duration: OrderedFloat(0.04), velocity: 0 }, Note { pitch: 73, duration: OrderedFloat(0.14), velocity: 110 }, Note { pitch: 73, duration: OrderedFloat(0.04), velocity: 0 }, Note { pitch: 73, duration: OrderedFloat(0.26), velocity: 102 }, Note { pitch: 73, duration: OrderedFloat(0.1), velocity: 0 }, Note { pitch: 71, duration: OrderedFloat(0.23), velocity: 115 }, Note { pitch: 71, duration: OrderedFloat(0.07), velocity: 0 }, Note { pitch: 69, duration: OrderedFloat(0.19), velocity: 124 }, Note { pitch: 69, duration: OrderedFloat(0.1), velocity: 0 }, Note { pitch: 68, duration: OrderedFloat(0.23), velocity: 74 }, Note { pitch: 68, duration: OrderedFloat(0.15), velocity: 0 }, Note { pitch: 66, duration: OrderedFloat(1.22), velocity: 86 }, Note { pitch: 66, duration: OrderedFloat(2.0), velocity: 0 }] };
+        let melody = Melody {
+            notes: vec![
+                Note {
+                    pitch: 74,
+                    duration: OrderedFloat(0.56),
+                    velocity: 127,
+                },
+                Note {
+                    pitch: 74,
+                    duration: OrderedFloat(0.01),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 73,
+                    duration: OrderedFloat(1.09),
+                    velocity: 100,
+                },
+                Note {
+                    pitch: 73,
+                    duration: OrderedFloat(0.07),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 75,
+                    duration: OrderedFloat(0.16),
+                    velocity: 114,
+                },
+                Note {
+                    pitch: 75,
+                    duration: OrderedFloat(0.03),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 73,
+                    duration: OrderedFloat(0.16),
+                    velocity: 106,
+                },
+                Note {
+                    pitch: 73,
+                    duration: OrderedFloat(0.03),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 71,
+                    duration: OrderedFloat(0.18),
+                    velocity: 72,
+                },
+                Note {
+                    pitch: 71,
+                    duration: OrderedFloat(0.03),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 73,
+                    duration: OrderedFloat(0.78),
+                    velocity: 81,
+                },
+                Note {
+                    pitch: 73,
+                    duration: OrderedFloat(0.06),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 73,
+                    duration: OrderedFloat(0.14),
+                    velocity: 115,
+                },
+                Note {
+                    pitch: 73,
+                    duration: OrderedFloat(0.04),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 73,
+                    duration: OrderedFloat(0.14),
+                    velocity: 110,
+                },
+                Note {
+                    pitch: 73,
+                    duration: OrderedFloat(0.04),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 73,
+                    duration: OrderedFloat(0.26),
+                    velocity: 102,
+                },
+                Note {
+                    pitch: 73,
+                    duration: OrderedFloat(0.1),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 71,
+                    duration: OrderedFloat(0.23),
+                    velocity: 115,
+                },
+                Note {
+                    pitch: 71,
+                    duration: OrderedFloat(0.07),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 69,
+                    duration: OrderedFloat(0.19),
+                    velocity: 124,
+                },
+                Note {
+                    pitch: 69,
+                    duration: OrderedFloat(0.1),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 68,
+                    duration: OrderedFloat(0.23),
+                    velocity: 74,
+                },
+                Note {
+                    pitch: 68,
+                    duration: OrderedFloat(0.15),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 66,
+                    duration: OrderedFloat(1.22),
+                    velocity: 86,
+                },
+                Note {
+                    pitch: 66,
+                    duration: OrderedFloat(2.0),
+                    velocity: 0,
+                },
+            ],
+        };
         let scale = melody.best_scale_for();
         println!("{} {}", scale.name(), scale.root());
         melody.tuple_print();
         let consolidated = melody.get_consolidated_notes();
-        let consolidated_melody = Melody {notes: consolidated.iter().map(|(_,n)| *n).collect()};
+        let consolidated_melody = Melody {
+            notes: consolidated.iter().map(|(_, n)| *n).collect(),
+        };
         println!("{consolidated_melody:?}");
         let intervals = consolidated_melody.diatonic_intervals();
         println!("{intervals:?}");
@@ -1809,25 +2163,42 @@ mod tests {
             assert_eq!(melody.len(), variation.len());
             for i in 0..melody.len() {
                 if melody.notes[i] != variation.notes[i] {
-                    let pre_m = melody.notes[..i+3].iter().map(|n| n.pitch()).collect::<Vec<_>>();
-                    let pre_v = variation.notes[..i+3].iter().map(|n| n.pitch()).collect::<Vec<_>>();
+                    let pre_m = melody.notes[..i + 3]
+                        .iter()
+                        .map(|n| n.pitch())
+                        .collect::<Vec<_>>();
+                    let pre_v = variation.notes[..i + 3]
+                        .iter()
+                        .map(|n| n.pitch())
+                        .collect::<Vec<_>>();
                     println!("{pre_m:?}");
                     println!("{pre_v:?}");
-                    panic!("Died at {i}: {:?} vs {:?}", melody.notes[i], variation.notes[i]);
+                    panic!(
+                        "Died at {i}: {:?} vs {:?}",
+                        melody.notes[i], variation.notes[i]
+                    );
                 }
             }
             assert_eq!(variation, melody);
         }
-
     }
 
     #[test]
     fn chromatic_bug_1() {
         let scale = MusicMode::new(ModNumC::new(5), 6);
         assert_eq!(scale.name(), "F♯ Aeolian");
-        for (p, d, c) in [(73, 0, 0), (74, 1, 0), (75, 1, 1), (76, 2, 0), (77, 2, 1), (78, 3, 0)] {
-            assert_eq!(scale.diatonic_steps_between(73, p), DiatonicInterval::chromatic(d, c));
-
+        for (p, d, c) in [
+            (73, 0, 0),
+            (74, 1, 0),
+            (75, 1, 1),
+            (76, 2, 0),
+            (77, 2, 1),
+            (78, 3, 0),
+        ] {
+            assert_eq!(
+                scale.diatonic_steps_between(73, p),
+                DiatonicInterval::chromatic(d, c)
+            );
         }
     }
 
@@ -1914,12 +2285,31 @@ mod tests {
 
     #[test]
     fn test_sharp_flat() {
-        for (chrom, sharp, flat) in [(0, 0, 0), (2, 2, 10), (4, 4, 8), (5, 11, 1), (7, 1, 11), (9, 3, 9)].iter() {
+        for (chrom, sharp, flat) in [
+            (0, 0, 0),
+            (2, 2, 10),
+            (4, 4, 8),
+            (5, 11, 1),
+            (7, 1, 11),
+            (9, 3, 9),
+        ]
+        .iter()
+        {
             assert_eq!(major_sharps_for(*chrom), *sharp);
             assert_eq!(major_flats_for(*chrom), *flat);
         }
 
-        for (d_mode, sharp, flat) in [(0, 2, 10), (1, 0, 0), (2, 10, 2), (3, 3, 9), (4, 1, 11), (5, 11, 1), (6, 9, 3)].iter() {
+        for (d_mode, sharp, flat) in [
+            (0, 2, 10),
+            (1, 0, 0),
+            (2, 10, 2),
+            (3, 3, 9),
+            (4, 1, 11),
+            (5, 11, 1),
+            (6, 9, 3),
+        ]
+        .iter()
+        {
             assert_eq!(sharps_for(2, *d_mode), *sharp);
             assert_eq!(flats_for(2, *d_mode), *flat);
         }
@@ -1935,9 +2325,18 @@ mod tests {
     #[test]
     fn test_c_index() {
         for (root, c_value) in [
-            (36, 60), (37, 60), (38, 61), (39, 60),
-            (40, 61), (41, 60), (42, 59), (43, 60),
-            (44, 60), (45, 61), (46, 60), (47, 61)
+            (36, 60),
+            (37, 60),
+            (38, 61),
+            (39, 60),
+            (40, 61),
+            (41, 60),
+            (42, 59),
+            (43, 60),
+            (44, 60),
+            (45, 61),
+            (46, 60),
+            (47, 61),
         ] {
             let scale = MusicMode::new(ModNumC::new(0), root);
             assert_eq!(scale.c_value(), c_value);
@@ -1974,7 +2373,7 @@ mod tests {
             (74, 8, Some(Accidental::Natural)),
             (75, 9, None),
             (76, 9, Some(Accidental::Natural)),
-            (77, 10, None)
+            (77, 10, None),
         ] {
             assert_eq!(scale.staff_position(pitch), (position, modifier));
         }
@@ -2010,7 +2409,7 @@ mod tests {
             (74, 8, Some(Accidental::Natural)),
             (75, 8, None),
             (76, 9, None),
-            (77, 9, Some(Accidental::Sharp))
+            (77, 9, Some(Accidental::Sharp)),
         ] {
             assert_eq!(scale.staff_position(pitch), (position, modifier));
         }
@@ -2046,7 +2445,7 @@ mod tests {
             (70, 6, None),
             (71, 6, Some(Accidental::Natural)),
             (72, 7, None),
-            (73, 8, None)
+            (73, 8, None),
         ] {
             assert_eq!(scale.staff_position(pitch), (position, modifier));
         }
@@ -2080,7 +2479,7 @@ mod tests {
             (68, 5, None),
             (69, 5, Some(Accidental::Natural)),
             (70, 6, None),
-            (71, 7, None)
+            (71, 7, None),
         ] {
             assert_eq!(scale.staff_position(pitch), (position, modifier));
         }
@@ -2122,7 +2521,10 @@ mod tests {
     fn test_key_signature() {
         let scale = MusicMode::new(ModNumC::new(1), 61);
         assert_eq!(scale.name(), "C♯ Dorian");
-        assert_eq!(format!("{:?}", scale.key_signature()), "KeySignature { notes: [F, C, G, D, A], accidental: Sharp }");
+        assert_eq!(
+            format!("{:?}", scale.key_signature()),
+            "KeySignature { notes: [F, C, G, D, A], accidental: Sharp }"
+        );
     }
 
     #[test]
@@ -2137,14 +2539,16 @@ mod tests {
         let scale = MusicMode::new(ModNumC::new(1), 61);
         assert_eq!(scale.name(), "C♯ Dorian");
         assert_eq!(scale.key_signature().bass_clef(), vec![-4, -7, -3, -6, -9]);
-
     }
 
     #[test]
     fn test_key_signature_2() {
         let scale = MusicMode::new(ModNumC::new(0), 66);
         assert_eq!(scale.name(), "G♭ Ionian");
-        assert_eq!(format!("{:?}", scale.key_signature()), "KeySignature { notes: [B, E, A, D, G, C], accidental: Flat }");
+        assert_eq!(
+            format!("{:?}", scale.key_signature()),
+            "KeySignature { notes: [B, E, A, D, G, C], accidental: Flat }"
+        );
     }
 
     #[test]
@@ -2158,28 +2562,40 @@ mod tests {
     fn test_bass_clef_2() {
         let scale = MusicMode::new(ModNumC::new(0), 66);
         assert_eq!(scale.name(), "G♭ Ionian");
-        assert_eq!(scale.key_signature().bass_clef(), vec![-8, -5, -9, -6, -10, -7]);
+        assert_eq!(
+            scale.key_signature().bass_clef(),
+            vec![-8, -5, -9, -6, -10, -7]
+        );
     }
 
     #[test]
     fn test_key_signature_3() {
         let scale = MusicMode::new(ModNumC::new(0), 60);
         assert_eq!(scale.name(), "C Ionian");
-        assert_eq!(format!("{:?}", scale.key_signature()), "KeySignature { notes: [], accidental: Natural }");
+        assert_eq!(
+            format!("{:?}", scale.key_signature()),
+            "KeySignature { notes: [], accidental: Natural }"
+        );
     }
 
     #[test]
     fn test_key_signature_4() {
         let scale = MusicMode::new(ModNumC::new(5), 64);
         assert_eq!(scale.name(), "E Aeolian");
-        assert_eq!(format!("{:?}", scale.key_signature()), "KeySignature { notes: [F], accidental: Sharp }");
+        assert_eq!(
+            format!("{:?}", scale.key_signature()),
+            "KeySignature { notes: [F], accidental: Sharp }"
+        );
     }
 
     #[test]
     fn test_key_signature_5() {
         let scale = MusicMode::new(ModNumC::new(5), 62);
         assert_eq!(scale.name(), "D Aeolian");
-        assert_eq!(format!("{:?}", scale.key_signature()), "KeySignature { notes: [B], accidental: Flat }");
+        assert_eq!(
+            format!("{:?}", scale.key_signature()),
+            "KeySignature { notes: [B], accidental: Flat }"
+        );
     }
 
     #[test]
@@ -2187,11 +2603,51 @@ mod tests {
         let root = 60;
         let scale = MusicMode::new(ModNumC::new(0), root);
         assert_eq!(scale.name(), "C Ionian");
-        for (i, (degree, chroma)) in [(0, 0), (0, 1), (1, 0), (1, 1), (2, 0), (3, 0), (3, 1), (4, 0), (4, 1), (5, 0), (5, 1), (6, 0), (7, 0)].iter().enumerate() {
-            assert_eq!(root + i as MidiByte, scale.next_pitch(root, DiatonicInterval::chromatic(*degree, *chroma)));
+        for (i, (degree, chroma)) in [
+            (0, 0),
+            (0, 1),
+            (1, 0),
+            (1, 1),
+            (2, 0),
+            (3, 0),
+            (3, 1),
+            (4, 0),
+            (4, 1),
+            (5, 0),
+            (5, 1),
+            (6, 0),
+            (7, 0),
+        ]
+        .iter()
+        .enumerate()
+        {
+            assert_eq!(
+                root + i as MidiByte,
+                scale.next_pitch(root, DiatonicInterval::chromatic(*degree, *chroma))
+            );
         }
-        for (i, (degree, chroma)) in [(0, 0), (-1, 0), (-1, -1), (-2, 0), (-2, -1), (-3, 0), (-3, -1), (-4, 0), (-5, 0), (-5, -1), (-6, 0), (-6, -1), (-7, 0)].iter().enumerate() {
-            assert_eq!(root - i as MidiByte, scale.next_pitch(root, DiatonicInterval::chromatic(*degree, *chroma)));
+        for (i, (degree, chroma)) in [
+            (0, 0),
+            (-1, 0),
+            (-1, -1),
+            (-2, 0),
+            (-2, -1),
+            (-3, 0),
+            (-3, -1),
+            (-4, 0),
+            (-5, 0),
+            (-5, -1),
+            (-6, 0),
+            (-6, -1),
+            (-7, 0),
+        ]
+        .iter()
+        .enumerate()
+        {
+            assert_eq!(
+                root - i as MidiByte,
+                scale.next_pitch(root, DiatonicInterval::chromatic(*degree, *chroma))
+            );
         }
     }
 
@@ -2204,7 +2660,7 @@ mod tests {
             (61, (0, 1), 62),
             (61, (1, 0), 64),
             (61, (1, 1), 64),
-            (63, (1, -1), 64)
+            (63, (1, -1), 64),
         ] {
             let n = scale.next_pitch(start, DiatonicInterval::chromatic(degree, chroma));
             println!("{n}: {start} ({degree} {chroma}) {expected}");
@@ -2212,7 +2668,70 @@ mod tests {
         }
     }
 
-    const LEAN_ON_ME: [(MidiByte, f64, MidiByte); 62] = [(60, 0.487445772, 92), (60, 0.377421752, 0), (60, 0.289316858, 93), (60, 0.005971111, 0), (62, 0.248933836, 102), (62, 0.05767016, 0), (64, 0.25962179, 113), (64, 0.229479448, 0), (65, 0.317320844, 4), (65, 0.042830378, 0), (65, 0.582655121, 70), (65, 0.50379576, 0), (65, 0.250825755, 106), (65, 0.017210736, 0), (64, 0.272029135, 100), (64, 0.027428442, 0), (62, 1.126041184, 99), (64, 0.548192689, 99), (62, 0.273066185, 99), (60, 0.60045823, 117), (60, 0.450277594, 0), (60, 0.269494265, 85), (60, 0.003552609, 0), (62, 0.267746147, 96), (62, 0.016828202, 0), (64, 0.382390025, 123), (64, 0.128571533, 0), (64, 0.699718069, 113), (64, 0.126759354, 0), (62, 0.867493649, 117), (62, 0.46433006, 0), (64, 0.268483555, 106), (60, 1.323782698, 106), (60, 0.247095603, 100), (60, 0.026361804, 0), (62, 0.312539865, 30), (62, 0.008570104, 0), (64, 0.267542603, 100), (64, 0.05672056, 0), (65, 0.60457732, 110), (65, 0.537155291, 0), (65, 0.271879248, 113), (65, 0.06866826, 0), (64, 0.253815119, 88), (64, 0.10896619, 0), (65, 1.4822801190000001, 78), (64, 0.362781309, 78), (62, 0.202632925, 78), (64, 0.651313167, 118), (64, 0.412422427, 0), (64, 0.315570477, 86), (64, 0.032453773, 0), (57, 1.254315847, 92), (65, 0.321109969, 92), (64, 0.64096164, 117), (64, 0.485079544, 0), (55, 0.530547672, 94), (55, 0.017645017, 0), (62, 0.263664442, 125), (62, 0.009401743, 0), (60, 0.670999911, 111), (60, 1.5000003039999998, 0)];
+    const LEAN_ON_ME: [(MidiByte, f64, MidiByte); 62] = [
+        (60, 0.487445772, 92),
+        (60, 0.377421752, 0),
+        (60, 0.289316858, 93),
+        (60, 0.005971111, 0),
+        (62, 0.248933836, 102),
+        (62, 0.05767016, 0),
+        (64, 0.25962179, 113),
+        (64, 0.229479448, 0),
+        (65, 0.317320844, 4),
+        (65, 0.042830378, 0),
+        (65, 0.582655121, 70),
+        (65, 0.50379576, 0),
+        (65, 0.250825755, 106),
+        (65, 0.017210736, 0),
+        (64, 0.272029135, 100),
+        (64, 0.027428442, 0),
+        (62, 1.126041184, 99),
+        (64, 0.548192689, 99),
+        (62, 0.273066185, 99),
+        (60, 0.60045823, 117),
+        (60, 0.450277594, 0),
+        (60, 0.269494265, 85),
+        (60, 0.003552609, 0),
+        (62, 0.267746147, 96),
+        (62, 0.016828202, 0),
+        (64, 0.382390025, 123),
+        (64, 0.128571533, 0),
+        (64, 0.699718069, 113),
+        (64, 0.126759354, 0),
+        (62, 0.867493649, 117),
+        (62, 0.46433006, 0),
+        (64, 0.268483555, 106),
+        (60, 1.323782698, 106),
+        (60, 0.247095603, 100),
+        (60, 0.026361804, 0),
+        (62, 0.312539865, 30),
+        (62, 0.008570104, 0),
+        (64, 0.267542603, 100),
+        (64, 0.05672056, 0),
+        (65, 0.60457732, 110),
+        (65, 0.537155291, 0),
+        (65, 0.271879248, 113),
+        (65, 0.06866826, 0),
+        (64, 0.253815119, 88),
+        (64, 0.10896619, 0),
+        (65, 1.4822801190000001, 78),
+        (64, 0.362781309, 78),
+        (62, 0.202632925, 78),
+        (64, 0.651313167, 118),
+        (64, 0.412422427, 0),
+        (64, 0.315570477, 86),
+        (64, 0.032453773, 0),
+        (57, 1.254315847, 92),
+        (65, 0.321109969, 92),
+        (64, 0.64096164, 117),
+        (64, 0.485079544, 0),
+        (55, 0.530547672, 94),
+        (55, 0.017645017, 0),
+        (62, 0.263664442, 125),
+        (62, 0.009401743, 0),
+        (60, 0.670999911, 111),
+        (60, 1.5000003039999998, 0),
+    ];
 
     #[test]
     fn test_melody_sections() {
@@ -2225,7 +2744,100 @@ mod tests {
         let sections = maker.get_melody_sections(&melody);
         println!("{sections:?}");
         assert_eq!(4, sections.len());
-        let expected = vec![MelodySection { intervals: vec![DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }], starts: vec![14, 39] }, MelodySection { intervals: vec![DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }], starts: vec![0, 32] }, MelodySection { intervals: vec![DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: -2, chroma: 0 }], starts: vec![23] }, MelodySection { intervals: vec![DiatonicInterval { degree: -4, chroma: 0 }, DiatonicInterval { degree: 5, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: -5, chroma: 0 }, DiatonicInterval { degree: 4, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }], starts: vec![48] }];
+        let expected = vec![
+            MelodySection {
+                intervals: vec![
+                    DiatonicInterval {
+                        degree: -1,
+                        chroma: 0,
+                    },
+                    DiatonicInterval {
+                        degree: 1,
+                        chroma: 0,
+                    },
+                    DiatonicInterval {
+                        degree: -1,
+                        chroma: 0,
+                    },
+                    DiatonicInterval {
+                        degree: -1,
+                        chroma: 0,
+                    },
+                    DiatonicInterval {
+                        degree: 1,
+                        chroma: 0,
+                    },
+                ],
+                starts: vec![14, 39],
+            },
+            MelodySection {
+                intervals: vec![
+                    DiatonicInterval {
+                        degree: 1,
+                        chroma: 0,
+                    },
+                    DiatonicInterval {
+                        degree: 1,
+                        chroma: 0,
+                    },
+                    DiatonicInterval {
+                        degree: 1,
+                        chroma: 0,
+                    },
+                ],
+                starts: vec![0, 32],
+            },
+            MelodySection {
+                intervals: vec![
+                    DiatonicInterval {
+                        degree: 1,
+                        chroma: 0,
+                    },
+                    DiatonicInterval {
+                        degree: -1,
+                        chroma: 0,
+                    },
+                    DiatonicInterval {
+                        degree: 1,
+                        chroma: 0,
+                    },
+                    DiatonicInterval {
+                        degree: -2,
+                        chroma: 0,
+                    },
+                ],
+                starts: vec![23],
+            },
+            MelodySection {
+                intervals: vec![
+                    DiatonicInterval {
+                        degree: -4,
+                        chroma: 0,
+                    },
+                    DiatonicInterval {
+                        degree: 5,
+                        chroma: 0,
+                    },
+                    DiatonicInterval {
+                        degree: -1,
+                        chroma: 0,
+                    },
+                    DiatonicInterval {
+                        degree: -5,
+                        chroma: 0,
+                    },
+                    DiatonicInterval {
+                        degree: 4,
+                        chroma: 0,
+                    },
+                    DiatonicInterval {
+                        degree: -1,
+                        chroma: 0,
+                    },
+                ],
+                starts: vec![48],
+            },
+        ];
         assert_eq!(sections, expected);
     }
 
@@ -2263,18 +2875,376 @@ mod tests {
         for (pitch, duration, velocity) in LEAN_ON_ME.iter().copied() {
             melody.add(Note::new(pitch, duration, velocity));
         }
-        let new_sections = vec![MelodySection { intervals: vec![DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: 1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }], starts: vec![14, 39] }, MelodySection { intervals: vec![DiatonicInterval { degree: 2, chroma: 0 }, DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: 2, chroma: 0 }], starts: vec![0, 32] }];
+        let new_sections = vec![
+            MelodySection {
+                intervals: vec![
+                    DiatonicInterval {
+                        degree: 1,
+                        chroma: 0,
+                    },
+                    DiatonicInterval {
+                        degree: -1,
+                        chroma: 0,
+                    },
+                    DiatonicInterval {
+                        degree: 1,
+                        chroma: 0,
+                    },
+                    DiatonicInterval {
+                        degree: -1,
+                        chroma: 0,
+                    },
+                    DiatonicInterval {
+                        degree: -1,
+                        chroma: 0,
+                    },
+                ],
+                starts: vec![14, 39],
+            },
+            MelodySection {
+                intervals: vec![
+                    DiatonicInterval {
+                        degree: 2,
+                        chroma: 0,
+                    },
+                    DiatonicInterval {
+                        degree: -1,
+                        chroma: 0,
+                    },
+                    DiatonicInterval {
+                        degree: 2,
+                        chroma: 0,
+                    },
+                ],
+                starts: vec![0, 32],
+            },
+        ];
         for section in new_sections {
             section.remelodize(&mut melody);
         }
-        let expected = Melody { notes: vec![Note { pitch: 60, duration: OrderedFloat(0.487445772), velocity: 92 }, Note { pitch: 60, duration: OrderedFloat(0.377421752), velocity: 0 }, Note { pitch: 60, duration: OrderedFloat(0.289316858), velocity: 93 }, Note { pitch: 60, duration: OrderedFloat(0.005971111), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.248933836), velocity: 102 }, Note { pitch: 64, duration: OrderedFloat(0.05767016), velocity: 0 }, Note { pitch: 62, duration: OrderedFloat(0.25962179), velocity: 113 }, Note { pitch: 62, duration: OrderedFloat(0.229479448), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(0.317320844), velocity: 4 }, Note { pitch: 65, duration: OrderedFloat(0.042830378), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(0.582655121), velocity: 70 }, Note { pitch: 65, duration: OrderedFloat(0.50379576), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(0.250825755), velocity: 106 }, Note { pitch: 65, duration: OrderedFloat(0.017210736), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.272029135), velocity: 100 }, Note { pitch: 64, duration: OrderedFloat(0.027428442), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(1.126041184), velocity: 99 }, Note { pitch: 64, duration: OrderedFloat(0.548192689), velocity: 99 }, Note { pitch: 65, duration: OrderedFloat(0.273066185), velocity: 99 }, Note { pitch: 64, duration: OrderedFloat(0.60045823), velocity: 117 }, Note { pitch: 64, duration: OrderedFloat(0.450277594), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.269494265), velocity: 85 }, Note { pitch: 64, duration: OrderedFloat(0.003552609), velocity: 0 }, Note { pitch: 62, duration: OrderedFloat(0.267746147), velocity: 96 }, Note { pitch: 62, duration: OrderedFloat(0.016828202), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.382390025), velocity: 123 }, Note { pitch: 64, duration: OrderedFloat(0.128571533), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.699718069), velocity: 113 }, Note { pitch: 64, duration: OrderedFloat(0.126759354), velocity: 0 }, Note { pitch: 62, duration: OrderedFloat(0.867493649), velocity: 117 }, Note { pitch: 62, duration: OrderedFloat(0.46433006), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.268483555), velocity: 106 }, Note { pitch: 60, duration: OrderedFloat(1.323782698), velocity: 106 }, Note { pitch: 60, duration: OrderedFloat(0.247095603), velocity: 100 }, Note { pitch: 60, duration: OrderedFloat(0.026361804), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.312539865), velocity: 30 }, Note { pitch: 64, duration: OrderedFloat(0.008570104), velocity: 0 }, Note { pitch: 62, duration: OrderedFloat(0.267542603), velocity: 100 }, Note { pitch: 62, duration: OrderedFloat(0.05672056), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(0.60457732), velocity: 110 }, Note { pitch: 65, duration: OrderedFloat(0.537155291), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(0.271879248), velocity: 113 }, Note { pitch: 65, duration: OrderedFloat(0.06866826), velocity: 0 }, Note { pitch: 67, duration: OrderedFloat(0.253815119), velocity: 88 }, Note { pitch: 67, duration: OrderedFloat(0.10896619), velocity: 0 }, Note { pitch: 65, duration: OrderedFloat(1.4822801190000001), velocity: 78 }, Note { pitch: 67, duration: OrderedFloat(0.362781309), velocity: 78 }, Note { pitch: 65, duration: OrderedFloat(0.202632925), velocity: 78 }, Note { pitch: 64, duration: OrderedFloat(0.651313167), velocity: 118 }, Note { pitch: 64, duration: OrderedFloat(0.412422427), velocity: 0 }, Note { pitch: 64, duration: OrderedFloat(0.315570477), velocity: 86 }, Note { pitch: 64, duration: OrderedFloat(0.032453773), velocity: 0 }, Note { pitch: 57, duration: OrderedFloat(1.254315847), velocity: 92 }, Note { pitch: 65, duration: OrderedFloat(0.321109969), velocity: 92 }, Note { pitch: 64, duration: OrderedFloat(0.64096164), velocity: 117 }, Note { pitch: 64, duration: OrderedFloat(0.485079544), velocity: 0 }, Note { pitch: 55, duration: OrderedFloat(0.530547672), velocity: 94 }, Note { pitch: 55, duration: OrderedFloat(0.017645017), velocity: 0 }, Note { pitch: 62, duration: OrderedFloat(0.263664442), velocity: 125 }, Note { pitch: 62, duration: OrderedFloat(0.009401743), velocity: 0 }, Note { pitch: 60, duration: OrderedFloat(0.670999911), velocity: 111 }, Note { pitch: 60, duration: OrderedFloat(1.5000003039999998), velocity: 0 }] };
+        let expected = Melody {
+            notes: vec![
+                Note {
+                    pitch: 60,
+                    duration: OrderedFloat(0.487445772),
+                    velocity: 92,
+                },
+                Note {
+                    pitch: 60,
+                    duration: OrderedFloat(0.377421752),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 60,
+                    duration: OrderedFloat(0.289316858),
+                    velocity: 93,
+                },
+                Note {
+                    pitch: 60,
+                    duration: OrderedFloat(0.005971111),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.248933836),
+                    velocity: 102,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.05767016),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 62,
+                    duration: OrderedFloat(0.25962179),
+                    velocity: 113,
+                },
+                Note {
+                    pitch: 62,
+                    duration: OrderedFloat(0.229479448),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 65,
+                    duration: OrderedFloat(0.317320844),
+                    velocity: 4,
+                },
+                Note {
+                    pitch: 65,
+                    duration: OrderedFloat(0.042830378),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 65,
+                    duration: OrderedFloat(0.582655121),
+                    velocity: 70,
+                },
+                Note {
+                    pitch: 65,
+                    duration: OrderedFloat(0.50379576),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 65,
+                    duration: OrderedFloat(0.250825755),
+                    velocity: 106,
+                },
+                Note {
+                    pitch: 65,
+                    duration: OrderedFloat(0.017210736),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.272029135),
+                    velocity: 100,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.027428442),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 65,
+                    duration: OrderedFloat(1.126041184),
+                    velocity: 99,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.548192689),
+                    velocity: 99,
+                },
+                Note {
+                    pitch: 65,
+                    duration: OrderedFloat(0.273066185),
+                    velocity: 99,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.60045823),
+                    velocity: 117,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.450277594),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.269494265),
+                    velocity: 85,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.003552609),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 62,
+                    duration: OrderedFloat(0.267746147),
+                    velocity: 96,
+                },
+                Note {
+                    pitch: 62,
+                    duration: OrderedFloat(0.016828202),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.382390025),
+                    velocity: 123,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.128571533),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.699718069),
+                    velocity: 113,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.126759354),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 62,
+                    duration: OrderedFloat(0.867493649),
+                    velocity: 117,
+                },
+                Note {
+                    pitch: 62,
+                    duration: OrderedFloat(0.46433006),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.268483555),
+                    velocity: 106,
+                },
+                Note {
+                    pitch: 60,
+                    duration: OrderedFloat(1.323782698),
+                    velocity: 106,
+                },
+                Note {
+                    pitch: 60,
+                    duration: OrderedFloat(0.247095603),
+                    velocity: 100,
+                },
+                Note {
+                    pitch: 60,
+                    duration: OrderedFloat(0.026361804),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.312539865),
+                    velocity: 30,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.008570104),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 62,
+                    duration: OrderedFloat(0.267542603),
+                    velocity: 100,
+                },
+                Note {
+                    pitch: 62,
+                    duration: OrderedFloat(0.05672056),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 65,
+                    duration: OrderedFloat(0.60457732),
+                    velocity: 110,
+                },
+                Note {
+                    pitch: 65,
+                    duration: OrderedFloat(0.537155291),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 65,
+                    duration: OrderedFloat(0.271879248),
+                    velocity: 113,
+                },
+                Note {
+                    pitch: 65,
+                    duration: OrderedFloat(0.06866826),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 67,
+                    duration: OrderedFloat(0.253815119),
+                    velocity: 88,
+                },
+                Note {
+                    pitch: 67,
+                    duration: OrderedFloat(0.10896619),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 65,
+                    duration: OrderedFloat(1.4822801190000001),
+                    velocity: 78,
+                },
+                Note {
+                    pitch: 67,
+                    duration: OrderedFloat(0.362781309),
+                    velocity: 78,
+                },
+                Note {
+                    pitch: 65,
+                    duration: OrderedFloat(0.202632925),
+                    velocity: 78,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.651313167),
+                    velocity: 118,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.412422427),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.315570477),
+                    velocity: 86,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.032453773),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 57,
+                    duration: OrderedFloat(1.254315847),
+                    velocity: 92,
+                },
+                Note {
+                    pitch: 65,
+                    duration: OrderedFloat(0.321109969),
+                    velocity: 92,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.64096164),
+                    velocity: 117,
+                },
+                Note {
+                    pitch: 64,
+                    duration: OrderedFloat(0.485079544),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 55,
+                    duration: OrderedFloat(0.530547672),
+                    velocity: 94,
+                },
+                Note {
+                    pitch: 55,
+                    duration: OrderedFloat(0.017645017),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 62,
+                    duration: OrderedFloat(0.263664442),
+                    velocity: 125,
+                },
+                Note {
+                    pitch: 62,
+                    duration: OrderedFloat(0.009401743),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 60,
+                    duration: OrderedFloat(0.670999911),
+                    velocity: 111,
+                },
+                Note {
+                    pitch: 60,
+                    duration: OrderedFloat(1.5000003039999998),
+                    velocity: 0,
+                },
+            ],
+        };
         assert_eq!(melody, expected);
     }
 
     #[test]
     fn test_next_pitch() {
         let scale = MusicMode::new(ModNumC::new(0), 0);
-        let cs = [-12, -10, -8, -7, -5, -3, -1, 0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23, 24];
+        let cs = [
+            -12, -10, -8, -7, -5, -3, -1, 0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23, 24,
+        ];
         for (i, p) in cs.iter().enumerate().skip(1) {
             assert_eq!(scale.next_pitch(cs[i - 1], DiatonicInterval::pure(1)), *p);
         }
@@ -2289,23 +3259,333 @@ mod tests {
         let scale = MusicMode::new(ModNumC::new(0), 0);
         assert_eq!(scale.half_steps_up_to_scale(-10), 0);
         assert_eq!(scale.half_steps_up_to_scale(0), 0);
-        assert_eq!(scale.diatonic_steps_between(-10, 0), DiatonicInterval::pure(6));
+        assert_eq!(
+            scale.diatonic_steps_between(-10, 0),
+            DiatonicInterval::pure(6)
+        );
     }
 
     #[test]
     fn test_normalize_interval() {
-        let intervals = vec![DiatonicInterval { degree: -1, chroma: 0 }, DiatonicInterval { degree: -5, chroma: 0 }];
+        let intervals = vec![
+            DiatonicInterval {
+                degree: -1,
+                chroma: 0,
+            },
+            DiatonicInterval {
+                degree: -5,
+                chroma: 0,
+            },
+        ];
         let sum = intervals.iter().copied().sum::<DiatonicInterval>();
-        assert_eq!(sum, DiatonicInterval {degree: -6, chroma: 0});
+        assert_eq!(
+            sum,
+            DiatonicInterval {
+                degree: -6,
+                chroma: 0
+            }
+        );
         let scale = MusicMode::new(ModNumC::new(0), 0);
         let normalized = sum.normalized(&scale);
-        assert_eq!(normalized, DiatonicInterval {degree: -6, chroma: 0});
+        assert_eq!(
+            normalized,
+            DiatonicInterval {
+                degree: -6,
+                chroma: 0
+            }
+        );
     }
 
     #[test]
     fn test_without_brief_notes() {
-        let melody = Melody { notes: vec![Note { pitch: 72, duration: OrderedFloat(0.369792827), velocity: 127 }, Note { pitch: 72, duration: OrderedFloat(0.061621093), velocity: 0 }, Note { pitch: 74, duration: OrderedFloat(0.329988672), velocity: 127 }, Note { pitch: 74, duration: OrderedFloat(0.127228427), velocity: 0 }, Note { pitch: 76, duration: OrderedFloat(0.3714564), velocity: 99 }, Note { pitch: 76, duration: OrderedFloat(0.085686124), velocity: 0 }, Note { pitch: 77, duration: OrderedFloat(0.330959396), velocity: 127 }, Note { pitch: 77, duration: OrderedFloat(0.159859305), velocity: 0 }, Note { pitch: 72, duration: OrderedFloat(0.314343867), velocity: 76 }, Note { pitch: 72, duration: OrderedFloat(0.026874508), velocity: 0 }, Note { pitch: 74, duration: OrderedFloat(0.037653197), velocity: 12 }, Note { pitch: 74, duration: OrderedFloat(0.044087338), velocity: 0 }, Note { pitch: 75, duration: OrderedFloat(0.024298299), velocity: 77 }, Note { pitch: 75, duration: OrderedFloat(2.524e-6), velocity: 0 }, Note { pitch: 74, duration: OrderedFloat(0.280279047), velocity: 80 }, Note { pitch: 74, duration: OrderedFloat(0.178904154), velocity: 0 }, Note { pitch: 76, duration: OrderedFloat(0.323056836), velocity: 89 }, Note { pitch: 76, duration: OrderedFloat(0.1009156), velocity: 0 }, Note { pitch: 77, duration: OrderedFloat(0.330098162), velocity: 127 }, Note { pitch: 77, duration: OrderedFloat(0.10557298), velocity: 0 }, Note { pitch: 72, duration: OrderedFloat(0.300934497), velocity: 80 }, Note { pitch: 72, duration: OrderedFloat(2.87e-6), velocity: 0 }, Note { pitch: 73, duration: OrderedFloat(0.022893581), velocity: 20 }, Note { pitch: 73, duration: OrderedFloat(0.044463414), velocity: 0 }, Note { pitch: 74, duration: OrderedFloat(0.394669786), velocity: 101 }, Note { pitch: 74, duration: OrderedFloat(0.078055973), velocity: 0 }, Note { pitch: 77, duration: OrderedFloat(0.025097277), velocity: 91 }, Note { pitch: 77, duration: OrderedFloat(2.56e-6), velocity: 0 }, Note { pitch: 76, duration: OrderedFloat(0.332283936), velocity: 92 }, Note { pitch: 76, duration: OrderedFloat(0.113469215), velocity: 0 }, Note { pitch: 77, duration: OrderedFloat(0.345122384), velocity: 127 }, Note { pitch: 77, duration: OrderedFloat(1.5000002829999999), velocity: 0 }] };
-        let expected = Melody { notes: vec![Note { pitch: 72, duration: OrderedFloat(0.369792827), velocity: 127 }, Note { pitch: 72, duration: OrderedFloat(0.061621093), velocity: 0 }, Note { pitch: 74, duration: OrderedFloat(0.329988672), velocity: 127 }, Note { pitch: 74, duration: OrderedFloat(0.127228427), velocity: 0 }, Note { pitch: 76, duration: OrderedFloat(0.3714564), velocity: 99 }, Note { pitch: 76, duration: OrderedFloat(0.085686124), velocity: 0 }, Note { pitch: 77, duration: OrderedFloat(0.330959396), velocity: 127 }, Note { pitch: 77, duration: OrderedFloat(0.159859305), velocity: 0 }, Note { pitch: 72, duration: OrderedFloat(0.314343867), velocity: 76 }, Note { pitch: 72, duration: OrderedFloat(0.026874508), velocity: 0 }, Note { pitch: 74, duration: OrderedFloat(0.280279047), velocity: 80 }, Note { pitch: 74, duration: OrderedFloat(0.178904154), velocity: 0 }, Note { pitch: 76, duration: OrderedFloat(0.323056836), velocity: 89 }, Note { pitch: 76, duration: OrderedFloat(0.1009156), velocity: 0 }, Note { pitch: 77, duration: OrderedFloat(0.330098162), velocity: 127 }, Note { pitch: 77, duration: OrderedFloat(0.10557298), velocity: 0 }, Note { pitch: 72, duration: OrderedFloat(0.300934497), velocity: 80 }, Note { pitch: 72, duration: OrderedFloat(2.87e-6), velocity: 0 }, Note { pitch: 74, duration: OrderedFloat(0.394669786), velocity: 101 }, Note { pitch: 74, duration: OrderedFloat(0.078055973), velocity: 0 }, Note { pitch: 76, duration: OrderedFloat(0.332283936), velocity: 92 }, Note { pitch: 76, duration: OrderedFloat(0.113469215), velocity: 0 }, Note { pitch: 77, duration: OrderedFloat(0.345122384), velocity: 127 }, Note { pitch: 77, duration: OrderedFloat(1.5000002829999999), velocity: 0 }] };
+        let melody = Melody {
+            notes: vec![
+                Note {
+                    pitch: 72,
+                    duration: OrderedFloat(0.369792827),
+                    velocity: 127,
+                },
+                Note {
+                    pitch: 72,
+                    duration: OrderedFloat(0.061621093),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 74,
+                    duration: OrderedFloat(0.329988672),
+                    velocity: 127,
+                },
+                Note {
+                    pitch: 74,
+                    duration: OrderedFloat(0.127228427),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 76,
+                    duration: OrderedFloat(0.3714564),
+                    velocity: 99,
+                },
+                Note {
+                    pitch: 76,
+                    duration: OrderedFloat(0.085686124),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 77,
+                    duration: OrderedFloat(0.330959396),
+                    velocity: 127,
+                },
+                Note {
+                    pitch: 77,
+                    duration: OrderedFloat(0.159859305),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 72,
+                    duration: OrderedFloat(0.314343867),
+                    velocity: 76,
+                },
+                Note {
+                    pitch: 72,
+                    duration: OrderedFloat(0.026874508),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 74,
+                    duration: OrderedFloat(0.037653197),
+                    velocity: 12,
+                },
+                Note {
+                    pitch: 74,
+                    duration: OrderedFloat(0.044087338),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 75,
+                    duration: OrderedFloat(0.024298299),
+                    velocity: 77,
+                },
+                Note {
+                    pitch: 75,
+                    duration: OrderedFloat(2.524e-6),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 74,
+                    duration: OrderedFloat(0.280279047),
+                    velocity: 80,
+                },
+                Note {
+                    pitch: 74,
+                    duration: OrderedFloat(0.178904154),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 76,
+                    duration: OrderedFloat(0.323056836),
+                    velocity: 89,
+                },
+                Note {
+                    pitch: 76,
+                    duration: OrderedFloat(0.1009156),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 77,
+                    duration: OrderedFloat(0.330098162),
+                    velocity: 127,
+                },
+                Note {
+                    pitch: 77,
+                    duration: OrderedFloat(0.10557298),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 72,
+                    duration: OrderedFloat(0.300934497),
+                    velocity: 80,
+                },
+                Note {
+                    pitch: 72,
+                    duration: OrderedFloat(2.87e-6),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 73,
+                    duration: OrderedFloat(0.022893581),
+                    velocity: 20,
+                },
+                Note {
+                    pitch: 73,
+                    duration: OrderedFloat(0.044463414),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 74,
+                    duration: OrderedFloat(0.394669786),
+                    velocity: 101,
+                },
+                Note {
+                    pitch: 74,
+                    duration: OrderedFloat(0.078055973),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 77,
+                    duration: OrderedFloat(0.025097277),
+                    velocity: 91,
+                },
+                Note {
+                    pitch: 77,
+                    duration: OrderedFloat(2.56e-6),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 76,
+                    duration: OrderedFloat(0.332283936),
+                    velocity: 92,
+                },
+                Note {
+                    pitch: 76,
+                    duration: OrderedFloat(0.113469215),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 77,
+                    duration: OrderedFloat(0.345122384),
+                    velocity: 127,
+                },
+                Note {
+                    pitch: 77,
+                    duration: OrderedFloat(1.5000002829999999),
+                    velocity: 0,
+                },
+            ],
+        };
+        let expected = Melody {
+            notes: vec![
+                Note {
+                    pitch: 72,
+                    duration: OrderedFloat(0.369792827),
+                    velocity: 127,
+                },
+                Note {
+                    pitch: 72,
+                    duration: OrderedFloat(0.061621093),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 74,
+                    duration: OrderedFloat(0.329988672),
+                    velocity: 127,
+                },
+                Note {
+                    pitch: 74,
+                    duration: OrderedFloat(0.127228427),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 76,
+                    duration: OrderedFloat(0.3714564),
+                    velocity: 99,
+                },
+                Note {
+                    pitch: 76,
+                    duration: OrderedFloat(0.085686124),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 77,
+                    duration: OrderedFloat(0.330959396),
+                    velocity: 127,
+                },
+                Note {
+                    pitch: 77,
+                    duration: OrderedFloat(0.159859305),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 72,
+                    duration: OrderedFloat(0.314343867),
+                    velocity: 76,
+                },
+                Note {
+                    pitch: 72,
+                    duration: OrderedFloat(0.026874508),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 74,
+                    duration: OrderedFloat(0.280279047),
+                    velocity: 80,
+                },
+                Note {
+                    pitch: 74,
+                    duration: OrderedFloat(0.178904154),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 76,
+                    duration: OrderedFloat(0.323056836),
+                    velocity: 89,
+                },
+                Note {
+                    pitch: 76,
+                    duration: OrderedFloat(0.1009156),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 77,
+                    duration: OrderedFloat(0.330098162),
+                    velocity: 127,
+                },
+                Note {
+                    pitch: 77,
+                    duration: OrderedFloat(0.10557298),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 72,
+                    duration: OrderedFloat(0.300934497),
+                    velocity: 80,
+                },
+                Note {
+                    pitch: 72,
+                    duration: OrderedFloat(2.87e-6),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 74,
+                    duration: OrderedFloat(0.394669786),
+                    velocity: 101,
+                },
+                Note {
+                    pitch: 74,
+                    duration: OrderedFloat(0.078055973),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 76,
+                    duration: OrderedFloat(0.332283936),
+                    velocity: 92,
+                },
+                Note {
+                    pitch: 76,
+                    duration: OrderedFloat(0.113469215),
+                    velocity: 0,
+                },
+                Note {
+                    pitch: 77,
+                    duration: OrderedFloat(0.345122384),
+                    velocity: 127,
+                },
+                Note {
+                    pitch: 77,
+                    duration: OrderedFloat(1.5000002829999999),
+                    velocity: 0,
+                },
+            ],
+        };
         assert_eq!(melody.without_brief_notes(0.1), expected);
     }
 

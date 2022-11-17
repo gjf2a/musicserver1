@@ -1,15 +1,15 @@
-use std::collections::BTreeMap;
+use crate::analyzer::velocity2volume;
+use crate::runtime::{ChooserTable, SynthChoice, SHOW_MIDI_MSG};
+use bare_metal_modulo::*;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, Sample, SampleFormat, StreamConfig};
 use crossbeam_queue::SegQueue;
+use crossbeam_utils::atomic::AtomicCell;
 use fundsp::hacker::*;
 use fundsp::prelude::AudioUnit64;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
+use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
-use crate::analyzer::velocity2volume;
-use crate::runtime::{ChooserTable, SHOW_MIDI_MSG, SynthChoice};
-use bare_metal_modulo::*;
-use crossbeam_utils::atomic::AtomicCell;
 
 const MAX_NOTES: usize = 1;
 
@@ -18,7 +18,7 @@ pub type SynthTable = ChooserTable<SynthType>;
 
 pub struct SynthOutputMsg {
     pub synth: SynthChoice,
-    pub midi: MidiMsg
+    pub midi: MidiMsg,
 }
 
 pub fn convert_midi(note: u8, velocity: u8) -> (f64, f64) {
@@ -27,7 +27,7 @@ pub fn convert_midi(note: u8, velocity: u8) -> (f64, f64) {
 
 pub fn start_output_thread(
     ai2output: Arc<SegQueue<SynthOutputMsg>>,
-    human_synth_table: Arc<Mutex<SynthTable>>, 
+    human_synth_table: Arc<Mutex<SynthTable>>,
     human_synth_id: Arc<AtomicCell<usize>>,
     ai_synth_table: Arc<Mutex<SynthTable>>,
     ai_synth_id: Arc<AtomicCell<usize>>,
@@ -72,7 +72,7 @@ fn run_synth<T: Sample>(
     ai2output: Arc<SegQueue<SynthOutputMsg>>,
     device: Device,
     config: StreamConfig,
-    human_synth_table: Arc<Mutex<SynthTable>>, 
+    human_synth_table: Arc<Mutex<SynthTable>>,
     human_synth_id: Arc<AtomicCell<usize>>,
     ai_synth_table: Arc<Mutex<SynthTable>>,
     ai_synth_id: Arc<AtomicCell<usize>>,
@@ -82,7 +82,7 @@ fn run_synth<T: Sample>(
         let sample_rate = config.sample_rate.0 as f64;
         let mut current_left_synth;
         let mut current_right_synth;
-    
+
         loop {
             current_left_synth = human_synth_id.load();
             let new_left_synth = {
@@ -113,14 +113,16 @@ fn run_synth<T: Sample>(
 
             stream.play().unwrap();
 
-            while current_left_synth == human_synth_id.load() && current_right_synth == ai_synth_id.load() {
-                if let Some(SynthOutputMsg {synth, midi}) = ai2output.pop() {
+            while current_left_synth == human_synth_id.load()
+                && current_right_synth == ai_synth_id.load()
+            {
+                if let Some(SynthOutputMsg { synth, midi }) = ai2output.pop() {
                     if SHOW_MIDI_MSG {
                         println!("synth_output: {midi:?}");
                     }
                     let side = match synth {
                         SynthChoice::Human => StereoSide::Left,
-                        SynthChoice::Ai => StereoSide::Right
+                        SynthChoice::Ai => StereoSide::Right,
                     };
                     if let MidiMsg::ChannelVoice { channel: _, msg } = midi {
                         match msg {
@@ -142,15 +144,21 @@ fn run_synth<T: Sample>(
 #[derive(Clone)]
 struct StereoSounds<const N: usize> {
     left: LiveSounds<N>,
-    right: LiveSounds<N>
+    right: LiveSounds<N>,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq)]
-pub enum StereoSide {Left, Right}
+pub enum StereoSide {
+    Left,
+    Right,
+}
 
-impl <const N: usize> StereoSounds<N> {
+impl<const N: usize> StereoSounds<N> {
     pub fn new() -> Self {
-        Self {left: LiveSounds::new(), right: LiveSounds::new()}
+        Self {
+            left: LiveSounds::new(),
+            right: LiveSounds::new(),
+        }
     }
 
     pub fn change_synths(&mut self, new_left_synth: SynthType, new_right_synth: SynthType) {
@@ -159,7 +167,10 @@ impl <const N: usize> StereoSounds<N> {
     }
 
     fn side(&mut self, side: StereoSide) -> &mut LiveSounds<N> {
-        match side {StereoSide::Left => &mut self.left, StereoSide::Right => &mut self.right}
+        match side {
+            StereoSide::Left => &mut self.left,
+            StereoSide::Right => &mut self.right,
+        }
     }
 
     pub fn note_on(&mut self, pitch: u8, velocity: u8, side: StereoSide) {
@@ -181,13 +192,13 @@ struct LiveSounds<const N: usize> {
     velocities: [An<Var<f64>>; N],
     controls: [An<Var<f64>>; N],
     next: ModNumC<usize, N>,
-    pitch2var: BTreeMap<u8,usize>,
+    pitch2var: BTreeMap<u8, usize>,
     recent_pitches: [Option<u8>; N],
     synth: Box<dyn AudioUnit64>,
-    adsr: (f64, f64, f64, f64)
+    adsr: (f64, f64, f64, f64),
 }
 
-impl <const N: usize> LiveSounds<N> {
+impl<const N: usize> LiveSounds<N> {
     pub fn new() -> Self {
         Self {
             pitches: [(); N].map(|_| var(0, 0.0)),
@@ -197,7 +208,7 @@ impl <const N: usize> LiveSounds<N> {
             pitch2var: BTreeMap::new(),
             recent_pitches: [None; N],
             synth: Box::new(triangle()),
-            adsr: (0.1, 0.1, 0.5, 0.1)
+            adsr: (0.1, 0.1, 0.5, 0.1),
         }
     }
 
@@ -210,8 +221,21 @@ impl <const N: usize> LiveSounds<N> {
         let pitch = Net64::wrap(Box::new(self.pitches[i].clone()));
         let velocity = Net64::wrap(Box::new(self.velocities[i].clone()));
         let control = Net64::wrap(Box::new(self.controls[i].clone()));
-        let adsr = Net64::wrap(Box::new(adsr_live(self.adsr.0, self.adsr.1, self.adsr.2, self.adsr.3)));
-        Box::new(Net64::bin_op(Net64::bin_op(Net64::pipe_op(pitch, Net64::wrap(self.synth.clone())), velocity, FrameMul::new()), Net64::pipe_op(control, adsr), FrameMul::new()))
+        let adsr = Net64::wrap(Box::new(adsr_live(
+            self.adsr.0,
+            self.adsr.1,
+            self.adsr.2,
+            self.adsr.3,
+        )));
+        Box::new(Net64::bin_op(
+            Net64::bin_op(
+                Net64::pipe_op(pitch, Net64::wrap(self.synth.clone())),
+                velocity,
+                FrameMul::new(),
+            ),
+            Net64::pipe_op(control, adsr),
+            FrameMul::new(),
+        ))
     }
 
     pub fn sound(&self) -> Net64 {

@@ -46,9 +46,13 @@ impl Subsequences {
         self.starts.len()
     }
 
-    pub fn sub_len(&self) -> usize {self.length}
+    pub fn sub_len(&self) -> usize {
+        self.length
+    }
 
-    pub fn starts(&self) -> &Vec<usize> {&self.starts}
+    pub fn starts(&self) -> &Vec<usize> {
+        &self.starts
+    }
 }
 
 fn find_subs_of_length<T: SeqItem>(items: &Vec<T>, length: usize) -> Vec<Subsequences> {
@@ -56,8 +60,18 @@ fn find_subs_of_length<T: SeqItem>(items: &Vec<T>, length: usize) -> Vec<Subsequ
     for i in 0..=items.len() - length {
         let sub: Vec<T> = items[i..i + length].iter().copied().collect();
         match value2seq.get_mut(&sub) {
-            None => {value2seq.insert(sub, Subsequences {length, starts: vec![i]});}
-            Some(subseq) => {subseq.starts.push(i);}
+            None => {
+                value2seq.insert(
+                    sub,
+                    Subsequences {
+                        length,
+                        starts: vec![i],
+                    },
+                );
+            }
+            Some(subseq) => {
+                subseq.starts.push(i);
+            }
         }
     }
     value2seq
@@ -67,7 +81,11 @@ fn find_subs_of_length<T: SeqItem>(items: &Vec<T>, length: usize) -> Vec<Subsequ
         .collect()
 }
 
-pub fn find_maximal_repeated_subs<T: SeqItem>(items: &Vec<T>, min_repeats: usize, min_length: usize) -> Vec<Subsequences> {
+pub fn find_maximal_repeated_subs<T: SeqItem>(
+    items: &Vec<T>,
+    min_repeats: usize,
+    min_length: usize,
+) -> Vec<Subsequences> {
     let mut result = vec![];
     for length in (min_length..=items.len()).rev() {
         for mut sub in find_subs_of_length(&items, length) {
@@ -85,8 +103,8 @@ pub fn find_maximal_repeated_subs<T: SeqItem>(items: &Vec<T>, min_repeats: usize
 
 #[cfg(test)]
 mod tests {
-    use std::ops::Range;
     use crate::subsequence_finder::{find_maximal_repeated_subs, Subsequences};
+    use std::ops::Range;
     use vecmap::VecSet;
 
     impl Subsequences {
@@ -136,7 +154,10 @@ mod tests {
 
     #[test]
     fn lean_on_test() {
-        let lean_on_intervals = vec![1, 1, 1, -1, -1, 1, -1, -1, 1, 1, -1, 1, -2, 1, 1, 1, -1, 1, -1, -1, 1, -4, 5, -1, -5, 4, -1];
+        let lean_on_intervals = vec![
+            1, 1, 1, -1, -1, 1, -1, -1, 1, 1, -1, 1, -2, 1, 1, 1, -1, 1, -1, -1, 1, -4, 5, -1, -5,
+            4, -1,
+        ];
         let subs = find_maximal_repeated_subs(&lean_on_intervals, 2, 2);
         assert_eq!(format!("{subs:?}"), "[Subsequences { length: 5, starts: [4, 16] }, Subsequences { length: 3, starts: [0, 13] }]");
         assert!(all_independent(&subs));

@@ -1,23 +1,33 @@
-use eframe::egui;
-use eframe::emath::Numeric;
-use eframe::egui::{Color32, Sense, Vec2, Visuals, Ui, Stroke, Pos2, Align2, FontId, FontFamily, Painter, FontDefinitions, FontData};
+use bare_metal_modulo::*;
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
-use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
-use std::{mem, thread};
-use std::cmp::{min, max};
-use std::ops::RangeInclusive;
-use std::sync::{Arc, Mutex};
+use eframe::egui;
+use eframe::egui::{
+    Align2, Color32, FontData, FontDefinitions, FontFamily, FontId, Painter, Pos2, Sense, Stroke,
+    Ui, Vec2, Visuals,
+};
+use eframe::emath::Numeric;
 use enum_iterator::all;
-use bare_metal_modulo::*;
-use std::str::FromStr;
-use musicserver1::ai_variation::{start_ai_thread, make_ai_table, NO_AI_NAME, DEFAULT_AI_NAME, AIFuncType};
-use musicserver1::analyzer::{Accidental, MusicMode, KeySignature, Melody, MidiByte};
-use musicserver1::database::{start_database_thread, Database, GuiDatabaseUpdate, MelodyInfo, Preference};
-use musicserver1::runtime::{ChooserTable, replay_slider, send_recorded_melody, SliderValue, SynthChoice, VariationControlSliders};
+use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
+use musicserver1::ai_variation::{
+    make_ai_table, start_ai_thread, AIFuncType, DEFAULT_AI_NAME, NO_AI_NAME,
+};
+use musicserver1::analyzer::{Accidental, KeySignature, Melody, MidiByte, MusicMode};
+use musicserver1::database::{
+    start_database_thread, Database, GuiDatabaseUpdate, MelodyInfo, Preference,
+};
+use musicserver1::midi_input::start_input_thread;
+use musicserver1::runtime::{
+    replay_slider, send_recorded_melody, ChooserTable, SliderValue, SynthChoice,
+    VariationControlSliders,
+};
 use musicserver1::synth_output::{start_output_thread, SynthOutputMsg, SynthType};
 use musicserver1::synth_sounds::make_synth_table;
-use musicserver1::midi_input::start_input_thread;
+use std::cmp::{max, min};
+use std::ops::RangeInclusive;
+use std::str::FromStr;
+use std::sync::{Arc, Mutex};
+use std::{mem, thread};
 
 fn main() -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions::default();
@@ -40,22 +50,29 @@ enum MidiScenario {
 #[derive(Clone, Debug)]
 pub struct VecTracker<T: Clone> {
     items: Vec<T>,
-    tracker: Option<ModNum<usize>>
+    tracker: Option<ModNum<usize>>,
 }
 
-impl <T:Clone> VecTracker<T> {
+impl<T: Clone> VecTracker<T> {
     pub fn new(items: Vec<T>) -> Self {
         if items.len() > 0 {
             let tracker = Some(ModNum::new(0, items.len()));
-            VecTracker {items, tracker}
+            VecTracker { items, tracker }
         } else {
-            VecTracker {items, tracker: None}
+            VecTracker {
+                items,
+                tracker: None,
+            }
         }
     }
 
-    pub fn len(&self) -> usize {self.items.len()}
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
 
-    pub fn is_empty(&self) -> bool {self.items.is_empty()}
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
 
     pub fn get(&self) -> Option<&T> {
         self.items.get(self.tracker.unwrap().a())
@@ -96,13 +113,13 @@ impl <T:Clone> VecTracker<T> {
     }
 
     pub fn go_left(&mut self) {
-        if !self.is_empty() && !self.at_start()  {
+        if !self.is_empty() && !self.at_start() {
             self.tracker = self.tracker.map(|t| t - 1);
         }
     }
 
     pub fn go_right(&mut self) {
-        if !self.is_empty() && !self.at_end()  {
+        if !self.is_empty() && !self.at_end() {
             self.tracker = self.tracker.map(|t| t + 1);
         }
     }
@@ -111,15 +128,15 @@ impl <T:Clone> VecTracker<T> {
 struct TableInfo<T: Clone> {
     name: String,
     table: Arc<Mutex<ChooserTable<T>>>,
-    index: Arc<AtomicCell<usize>>
+    index: Arc<AtomicCell<usize>>,
 }
 
-impl <T: Clone> TableInfo<T> {
+impl<T: Clone> TableInfo<T> {
     fn new(table: ChooserTable<T>) -> Self {
         let name = table.current_name().to_owned();
         let index = Arc::new(AtomicCell::new(table.current_index()));
         let table = Arc::new(Mutex::new(table));
-        Self {name, table, index}
+        Self { name, table, index }
     }
 
     fn update_choice(&mut self) {
@@ -142,12 +159,11 @@ struct ReplayerApp {
     variation_pref: Arc<AtomicCell<Preference>>,
     melody_var_info: Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo)>>>,
     database: Option<Database>,
-    dbase2gui: Arc<SegQueue<(MelodyInfo,MelodyInfo)>>,
+    dbase2gui: Arc<SegQueue<(MelodyInfo, MelodyInfo)>>,
     gui2dbase: Arc<SegQueue<GuiDatabaseUpdate>>,
     gui2ai: Arc<SegQueue<Melody>>,
-    ai2output: Arc<SegQueue<SynthOutputMsg>>
+    ai2output: Arc<SegQueue<SynthOutputMsg>>,
 }
-
 
 const MIDDLE_C: MidiByte = 60;
 const STAFF_PITCH_WIDTH: MidiByte = 19;
@@ -160,15 +176,26 @@ const ACCIDENTAL_SIZE_MULTIPLIER: f32 = 5.0;
 const KEY_SIGNATURE_OFFSET: f32 = 28.0;
 
 macro_rules! load_font {
-    ($fonts:ident, $filename:literal) => {
-        {
-            let name = $filename.split("/").last().unwrap().split(".").next().unwrap().to_owned();
-            println!("Loading font {name} from {}.", $filename);
-            $fonts.font_data.insert(name.clone(),
-                                   FontData::from_static(include_bytes!($filename)));
-            $fonts.families.get_mut(&FontFamily::Proportional).unwrap().push(name);
-        }
-    }
+    ($fonts:ident, $filename:literal) => {{
+        let name = $filename
+            .split("/")
+            .last()
+            .unwrap()
+            .split(".")
+            .next()
+            .unwrap()
+            .to_owned();
+        println!("Loading font {name} from {}.", $filename);
+        $fonts.font_data.insert(
+            name.clone(),
+            FontData::from_static(include_bytes!($filename)),
+        );
+        $fonts
+            .families
+            .get_mut(&FontFamily::Proportional)
+            .unwrap()
+            .push(name);
+    }};
 }
 
 impl ReplayerApp {
@@ -186,10 +213,13 @@ impl ReplayerApp {
         let (melody_var_info, variation_pref) = {
             let mut melody_var_info = VecTracker::new(database.get_melody_pairs().unwrap());
             melody_var_info.go_to_end();
-            let variation_pref = melody_var_info.get()
-                .map_or(Preference::Neutral,|(_, v)| v.rating());
-            (Arc::new(Mutex::new(melody_var_info)),
-             Arc::new(AtomicCell::new(variation_pref)))
+            let variation_pref = melody_var_info
+                .get()
+                .map_or(Preference::Neutral, |(_, v)| v.rating());
+            (
+                Arc::new(Mutex::new(melody_var_info)),
+                Arc::new(AtomicCell::new(variation_pref)),
+            )
         };
 
         let app = ReplayerApp {
@@ -208,7 +238,7 @@ impl ReplayerApp {
             dbase2gui: Arc::new(SegQueue::new()),
             gui2dbase: Arc::new(SegQueue::new()),
             gui2ai: Arc::new(SegQueue::new()),
-            ai2output: Arc::new(SegQueue::new())
+            ai2output: Arc::new(SegQueue::new()),
         };
         app.startup();
         Ok(app)
@@ -216,21 +246,59 @@ impl ReplayerApp {
 
     fn main_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading(format!("Replayer ({})", self.in_port_name.as_ref().unwrap()));
+            ui.heading(format!(
+                "Replayer ({})",
+                self.in_port_name.as_ref().unwrap()
+            ));
             ui.horizontal(|ui| {
-                Self::radio_choice(ui,"Human Synthesizer",self.human_synth.table.clone(),&mut self.human_synth.name);
-                Self::radio_choice(ui,"Variation Synthesizer",self.ai_synth.table.clone(),&mut self.ai_synth.name);
-                Self::radio_choice(ui,"Variation Algorithm",self.ai_algorithm.table.clone(),&mut self.ai_algorithm.name);
+                Self::radio_choice(
+                    ui,
+                    "Human Synthesizer",
+                    self.human_synth.table.clone(),
+                    &mut self.human_synth.name,
+                );
+                Self::radio_choice(
+                    ui,
+                    "Variation Synthesizer",
+                    self.ai_synth.table.clone(),
+                    &mut self.ai_synth.name,
+                );
+                Self::radio_choice(
+                    ui,
+                    "Variation Algorithm",
+                    self.ai_algorithm.table.clone(),
+                    &mut self.ai_algorithm.name,
+                );
             });
             self.ai_algorithm.update_choice();
             self.human_synth.update_choice();
             self.ai_synth.update_choice();
 
-            Self::insert_slider(ui, self.variation_controls.whimsification_slider.clone(), "Portion of Suffix to Whimsify");
-            Self::insert_slider(ui,self.variation_controls.p_random_slider.clone(),"Probability of Randomization");
-            Self::insert_slider(ui,self.variation_controls.p_ornament_slider.clone(),"Probability of Inserting Ornament");
-            Self::insert_slider(ui, self.replay_delay_slider.clone(), "Replay Delay (seconds)");
-            Self::insert_slider(ui, self.variation_controls.shortest_note_slider.clone(), "Shortest Playable Note (seconds)");
+            Self::insert_slider(
+                ui,
+                self.variation_controls.whimsification_slider.clone(),
+                "Portion of Suffix to Whimsify",
+            );
+            Self::insert_slider(
+                ui,
+                self.variation_controls.p_random_slider.clone(),
+                "Probability of Randomization",
+            );
+            Self::insert_slider(
+                ui,
+                self.variation_controls.p_ornament_slider.clone(),
+                "Probability of Inserting Ornament",
+            );
+            Self::insert_slider(
+                ui,
+                self.replay_delay_slider.clone(),
+                "Replay Delay (seconds)",
+            );
+            Self::insert_slider(
+                ui,
+                self.variation_controls.shortest_note_slider.clone(),
+                "Shortest Playable Note (seconds)",
+            );
             let empty = {
                 let melody_var_info = self.melody_var_info.lock().unwrap();
                 melody_var_info.is_empty()
@@ -260,15 +328,32 @@ impl ReplayerApp {
                 self.variation_pref.store(variation_info.rating());
             }
             if start_variation_pref != self.variation_pref.load() {
-                melody_var_info.get_mut().unwrap().0.set_rating(self.variation_pref.load());
-                melody_var_info.get_mut().unwrap().1.set_rating(self.variation_pref.load());
-                self.gui2dbase.push(melody_var_info.get().cloned().unwrap().1.get_update());
+                melody_var_info
+                    .get_mut()
+                    .unwrap()
+                    .0
+                    .set_rating(self.variation_pref.load());
+                melody_var_info
+                    .get_mut()
+                    .unwrap()
+                    .1
+                    .set_rating(self.variation_pref.load());
+                self.gui2dbase
+                    .push(melody_var_info.get().cloned().unwrap().1.get_update());
             }
         });
 
         if ui.button("Play Both").clicked() {
-            Self::play_melody_thread(self.ai2output.clone(), melody_info.melody().clone(), SynthChoice::Human);
-            Self::play_melody_thread(self.ai2output.clone(), variation_info.melody().clone(), SynthChoice::Ai);
+            Self::play_melody_thread(
+                self.ai2output.clone(),
+                melody_info.melody().clone(),
+                SynthChoice::Human,
+            );
+            Self::play_melody_thread(
+                self.ai2output.clone(),
+                variation_info.melody().clone(),
+                SynthChoice::Ai,
+            );
         }
         ui.vertical(|ui| {
             Self::melody_buttons(self.ai2output.clone(), ui, &melody_info, SynthChoice::Human);
@@ -286,15 +371,33 @@ impl ReplayerApp {
             self.gui2ai.push(melody_info.melody().clone());
         }
 
-        let size = Vec2::new(ui.available_width(), (ui.min_size().y - ui.available_height()) / 2.0);
-        MelodyRenderer::render(ui, size, &vec![(melody_info.melody(), Color32::BLACK), (variation_info.melody(), Color32::RED)]);
+        let size = Vec2::new(
+            ui.available_width(),
+            (ui.min_size().y - ui.available_height()) / 2.0,
+        );
+        MelodyRenderer::render(
+            ui,
+            size,
+            &vec![
+                (melody_info.melody(), Color32::BLACK),
+                (variation_info.melody(), Color32::RED),
+            ],
+        );
     }
 
     fn font_id(size: f32) -> FontId {
-        FontId {size, family: FontFamily::Proportional}
+        FontId {
+            size,
+            family: FontFamily::Proportional,
+        }
     }
 
-    fn melody_buttons(ai2output: Arc<SegQueue<SynthOutputMsg>>, ui: &mut Ui, info: &MelodyInfo, synth: SynthChoice) {
+    fn melody_buttons(
+        ai2output: Arc<SegQueue<SynthOutputMsg>>,
+        ui: &mut Ui,
+        info: &MelodyInfo,
+        synth: SynthChoice,
+    ) {
         ui.horizontal(|ui| {
             ui.label(info.date_time_stamp());
             ui.label(info.get_scale_name());
@@ -304,7 +407,11 @@ impl ReplayerApp {
         });
     }
 
-    fn play_melody_thread(ai2output: Arc<SegQueue<SynthOutputMsg>>, melody: Melody, synth: SynthChoice) {
+    fn play_melody_thread(
+        ai2output: Arc<SegQueue<SynthOutputMsg>>,
+        melody: Melody,
+        synth: SynthChoice,
+    ) {
         thread::spawn(move || {
             send_recorded_melody(&melody, synth, ai2output);
         });
@@ -320,8 +427,12 @@ impl ReplayerApp {
         pref.store(current_value);
     }
 
-    fn radio_choice<T: Clone>(ui: &mut Ui, header: &str, table: Arc<Mutex<ChooserTable<T>>>,
-                              tag: &mut String) {
+    fn radio_choice<T: Clone>(
+        ui: &mut Ui,
+        header: &str,
+        table: Arc<Mutex<ChooserTable<T>>>,
+        tag: &mut String,
+    ) {
         ui.vertical(|ui| {
             let table = table.lock().unwrap();
             ui.label(header);
@@ -331,7 +442,11 @@ impl ReplayerApp {
         });
     }
 
-    fn insert_slider<N:FromStr + Numeric>(ui: &mut Ui, slider: Arc<AtomicCell<SliderValue<N>>>, text: &str) {
+    fn insert_slider<N: FromStr + Numeric>(
+        ui: &mut Ui,
+        slider: Arc<AtomicCell<SliderValue<N>>>,
+        text: &str,
+    ) {
         let sv = slider.load();
         let mut value = sv.current();
         let range = sv.make_range();
@@ -378,7 +493,12 @@ impl ReplayerApp {
         });
     }
 
-    fn pick_midi_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame, in_ports: &MidiInputPorts) {
+    fn pick_midi_screen(
+        &mut self,
+        ctx: &egui::Context,
+        _frame: &mut eframe::Frame,
+        in_ports: &MidiInputPorts,
+    ) {
         if self.in_port.is_none() {
             self.in_port = Some(in_ports[0].clone());
         }
@@ -442,7 +562,12 @@ impl ReplayerApp {
             midi_in.unwrap(),
             self.in_port.as_ref().unwrap().clone(),
         );
-        start_database_thread(self.dbase2gui.clone(), self.gui2dbase.clone(), ai2dbase, database.unwrap());
+        start_database_thread(
+            self.dbase2gui.clone(),
+            self.gui2dbase.clone(),
+            ai2dbase,
+            database.unwrap(),
+        );
     }
 
     fn start_update_from_database_thread(&self, ctx: &egui::Context) {
@@ -450,15 +575,13 @@ impl ReplayerApp {
         let dbase2gui = self.dbase2gui.clone();
         let variation_pref = self.variation_pref.clone();
         let melody_var_info = self.melody_var_info.clone();
-        thread::spawn(move || {
-            loop {
-                if let Some((player_info, variation_info)) = dbase2gui.pop() {
-                    variation_pref.store(variation_info.rating());
-                    let mut melody_var_info = melody_var_info.lock().unwrap();
-                    melody_var_info.items.push((player_info, variation_info));
-                    melody_var_info.go_to_end();
-                    ctx.request_repaint();
-                }
+        thread::spawn(move || loop {
+            if let Some((player_info, variation_info)) = dbase2gui.pop() {
+                variation_pref.store(variation_info.rating());
+                let mut melody_var_info = melody_var_info.lock().unwrap();
+                melody_var_info.items.push((player_info, variation_info));
+                melody_var_info.go_to_end();
+                ctx.request_repaint();
             }
         });
     }
@@ -479,7 +602,7 @@ struct MelodyRenderer {
     x_range: RangeInclusive<f32>,
     y_per_pitch: f32,
     y_middle_c: f32,
-    hi: MidiByte
+    hi: MidiByte,
 }
 
 impl MelodyRenderer {
@@ -488,7 +611,9 @@ impl MelodyRenderer {
     }
 
     fn space_above_staff(&self) -> f32 {
-        1.0 + self.scale.diatonic_steps_between_round_up(HIGHEST_STAFF_PITCH, self.hi) as f32
+        1.0 + self
+            .scale
+            .diatonic_steps_between_round_up(HIGHEST_STAFF_PITCH, self.hi) as f32
     }
 
     fn min_x(&self) -> f32 {
@@ -503,13 +628,15 @@ impl MelodyRenderer {
         self.min_x() + X_OFFSET + KEY_SIGNATURE_OFFSET + self.y_per_pitch * self.sig.len() as f32
     }
 
-    fn render(ui: &mut Ui, size: Vec2, melodies: &Vec<(&Melody,Color32)>) {
+    fn render(ui: &mut Ui, size: Vec2, melodies: &Vec<(&Melody, Color32)>) {
         if melodies.len() > 0 {
             let (response, painter) = ui.allocate_painter(size, Sense::hover());
             let scale = melodies[0].0.best_scale_for();
             let (lo, hi) = Self::min_max_staff(&scale, melodies);
-            let num_diatonic_pitches = 1 + scale.diatonic_steps_between(lo, hi).pure_degree().unwrap();
-            let y_per_pitch = ((response.rect.max.y - response.rect.min.y) - BORDER_SIZE * 2.0) / num_diatonic_pitches as f32;
+            let num_diatonic_pitches =
+                1 + scale.diatonic_steps_between(lo, hi).pure_degree().unwrap();
+            let y_per_pitch = ((response.rect.max.y - response.rect.min.y) - BORDER_SIZE * 2.0)
+                / num_diatonic_pitches as f32;
             let y_border = Y_OFFSET + response.rect.min.y;
             let renderer = MelodyRenderer {
                 hi,
@@ -517,10 +644,19 @@ impl MelodyRenderer {
                 y_per_pitch,
                 x_range: response.rect.min.x + BORDER_SIZE..=response.rect.max.x - BORDER_SIZE,
                 sig: scale.key_signature(),
-                y_middle_c: y_border + y_per_pitch * scale.diatonic_steps_between_round_up(MIDDLE_C, hi) as f32,
+                y_middle_c: y_border
+                    + y_per_pitch * scale.diatonic_steps_between_round_up(MIDDLE_C, hi) as f32,
             };
-            renderer.draw_staff(&painter, Clef::Treble, y_border + y_per_pitch * renderer.space_above_staff());
-            renderer.draw_staff(&painter, Clef::Bass, renderer.y_middle_c + renderer.staff_line_space());
+            renderer.draw_staff(
+                &painter,
+                Clef::Treble,
+                y_border + y_per_pitch * renderer.space_above_staff(),
+            );
+            renderer.draw_staff(
+                &painter,
+                Clef::Bass,
+                renderer.y_middle_c + renderer.staff_line_space(),
+            );
             for (melody, color) in melodies.iter().rev() {
                 renderer.draw_melody(&painter, melody, *color);
             }
@@ -530,14 +666,20 @@ impl MelodyRenderer {
     fn draw_melody(&self, painter: &Painter, melody: &Melody, color: Color32) {
         let mut total_duration = 0.0;
         for note in melody.iter() {
-            let x = self.note_offset_x() + self.total_note_x() * total_duration / melody.duration() as f32;
+            let x = self.note_offset_x()
+                + self.total_note_x() * total_duration / melody.duration() as f32;
             total_duration += note.duration() as f32;
             if !note.is_rest() {
                 let (staff_offset, auxiliary_symbol) = self.scale.staff_position(note.pitch());
                 let y = self.y_middle_c - staff_offset as f32 * self.y_per_pitch;
-                painter.circle_filled(Pos2 {x, y}, self.y_per_pitch, color);
+                painter.circle_filled(Pos2 { x, y }, self.y_per_pitch, color);
                 if let Some(auxiliary_symbol) = auxiliary_symbol {
-                    self.draw_accidental(&painter, auxiliary_symbol, x + self.staff_line_space(), y);
+                    self.draw_accidental(
+                        &painter,
+                        auxiliary_symbol,
+                        x + self.staff_line_space(),
+                        y,
+                    );
                 }
             }
         }
@@ -547,22 +689,43 @@ impl MelodyRenderer {
         let mut y = start_y;
         clef.render(painter, self.min_x(), y, self.y_per_pitch);
         for _ in 0..5 {
-            painter.hline(self.x_range.clone(), y, Stroke { width: 1.0, color: Color32::BLACK });
+            painter.hline(
+                self.x_range.clone(),
+                y,
+                Stroke {
+                    width: 1.0,
+                    color: Color32::BLACK,
+                },
+            );
             y += self.staff_line_space();
         }
         for (i, position) in clef.key_signature_positions(&self.sig).iter().enumerate() {
-            self.draw_accidental(painter, self.sig.symbol(), self.min_x() + KEY_SIGNATURE_OFFSET + self.y_per_pitch * i as f32, self.y_middle_c - *position as f32 * self.y_per_pitch);
+            self.draw_accidental(
+                painter,
+                self.sig.symbol(),
+                self.min_x() + KEY_SIGNATURE_OFFSET + self.y_per_pitch * i as f32,
+                self.y_middle_c - *position as f32 * self.y_per_pitch,
+            );
         }
     }
 
     fn draw_accidental(&self, painter: &Painter, text: Accidental, x: f32, y: f32) {
-        painter.text(Pos2 {x, y}, Align2::CENTER_CENTER, text.symbol(), ReplayerApp::font_id(ACCIDENTAL_SIZE_MULTIPLIER * self.y_per_pitch), Color32::BLACK);
+        painter.text(
+            Pos2 { x, y },
+            Align2::CENTER_CENTER,
+            text.symbol(),
+            ReplayerApp::font_id(ACCIDENTAL_SIZE_MULTIPLIER * self.y_per_pitch),
+            Color32::BLACK,
+        );
     }
 
-    fn min_max_staff(scale: &MusicMode, melodies: &Vec<(&Melody,Color32)>) -> (MidiByte, MidiByte) {
+    fn min_max_staff(
+        scale: &MusicMode,
+        melodies: &Vec<(&Melody, Color32)>,
+    ) -> (MidiByte, MidiByte) {
         let mut lo = LOWEST_STAFF_PITCH;
         let mut hi = HIGHEST_STAFF_PITCH;
-        for (melody,_) in melodies.iter() {
+        for (melody, _) in melodies.iter() {
             let (mlo, mhi) = melody.min_max_pitches();
             lo = min(lo, mlo);
             hi = max(hi, mhi);
@@ -601,28 +764,29 @@ impl eframe::App for ReplayerApp {
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum Clef {
-    Treble, Bass
+    Treble,
+    Bass,
 }
 
 impl Clef {
     pub fn symbol(&self) -> char {
         match self {
             Self::Treble => '\u{1d11e}',
-            Self::Bass => '\u{1d122}'
+            Self::Bass => '\u{1d122}',
         }
     }
 
     pub fn key_signature_positions(&self, sig: &KeySignature) -> Vec<MidiByte> {
         match self {
             Self::Treble => sig.treble_clef(),
-            Self::Bass => sig.bass_clef()
+            Self::Bass => sig.bass_clef(),
         }
     }
 
     fn size(&self) -> f32 {
         match self {
             Self::Treble => 13.5,
-            Self::Bass => 8.0
+            Self::Bass => 8.0,
         }
     }
 
@@ -633,11 +797,20 @@ impl Clef {
     fn y_offset(&self) -> f32 {
         match self {
             Self::Treble => 5.0,
-            Self::Bass => -0.45
+            Self::Bass => -0.45,
         }
     }
 
     fn render(&self, painter: &Painter, x: f32, y: f32, y_per_pitch: f32) {
-        painter.text(Pos2 {x: x + self.x_offset(), y: y + self.y_offset() * y_per_pitch}, Align2::CENTER_CENTER, self.symbol(), ReplayerApp::font_id(self.size() * y_per_pitch), Color32::BLACK);
+        painter.text(
+            Pos2 {
+                x: x + self.x_offset(),
+                y: y + self.y_offset() * y_per_pitch,
+            },
+            Align2::CENTER_CENTER,
+            self.symbol(),
+            ReplayerApp::font_id(self.size() * y_per_pitch),
+            Color32::BLACK,
+        );
     }
 }

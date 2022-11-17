@@ -1,14 +1,16 @@
-use std::str::FromStr;
+use crate::analyzer::{Melody, MelodyMaker, PendingNote};
+use crate::database::FromAiMsg;
+use crate::runtime::{
+    send_recorded_melody, ChooserTable, SliderValue, SynthChoice, VariationControlSliders,
+};
+use crate::synth_output::SynthOutputMsg;
+use crate::{analyzer, arc_vec};
 use crossbeam_queue::SegQueue;
-use midi_msg::{ChannelVoiceMsg, MidiMsg};
-use std::sync::{Arc, Mutex};
 use crossbeam_utils::atomic::AtomicCell;
 use eframe::emath::Numeric;
-use crate::analyzer::{Melody, MelodyMaker, PendingNote};
-use crate::{analyzer, arc_vec};
-use crate::database::FromAiMsg;
-use crate::runtime::{ChooserTable, send_recorded_melody, SliderValue, SynthChoice, VariationControlSliders};
-use crate::synth_output::SynthOutputMsg;
+use midi_msg::{ChannelVoiceMsg, MidiMsg};
+use std::str::FromStr;
+use std::sync::{Arc, Mutex};
 
 pub type AIFuncType = dyn Fn(&MelodyMaker, &Melody, f64) -> Melody + Send + Sync;
 pub type AITable = ChooserTable<Arc<AIFuncType>>;
@@ -44,13 +46,25 @@ pub fn start_ai_thread(
 
         loop {
             let melody = recorder.record();
-            if long_enough(&melody, min_melody_pitches, replay_delay_slider.load().current()) {
+            if long_enough(
+                &melody,
+                min_melody_pitches,
+                replay_delay_slider.load().current(),
+            ) {
                 print_debug(&melody, "melody");
-                let melody = melody.without_brief_notes(variation_controls.shortest_note_slider.load().current());
+                let melody = melody
+                    .without_brief_notes(variation_controls.shortest_note_slider.load().current());
                 let variation = performer.create_variation(&melody);
                 print_debug(&variation, "variation");
-                if long_enough(&variation, min_melody_pitches, replay_delay_slider.load().current()) {
-                    ai2dbase.push(FromAiMsg { melody, variation: variation.clone() });
+                if long_enough(
+                    &variation,
+                    min_melody_pitches,
+                    replay_delay_slider.load().current(),
+                ) {
+                    ai2dbase.push(FromAiMsg {
+                        melody,
+                        variation: variation.clone(),
+                    });
                     send_recorded_melody(&variation, SynthChoice::Ai, ai2output.clone());
                 }
             }
@@ -127,7 +141,10 @@ impl PlayerRecorder {
                 _ => {}
             }
         }
-        self.ai2output.push(SynthOutputMsg {synth: SynthChoice::Human, midi: msg});
+        self.ai2output.push(SynthOutputMsg {
+            synth: SynthChoice::Human,
+            midi: msg,
+        });
     }
 
     fn check_if_finished(&mut self, pending_note: PendingNote) -> bool {
@@ -144,7 +161,7 @@ impl PlayerRecorder {
 struct Performer {
     maker: MelodyMaker,
     variation_controls: VariationControlSliders,
-    ai_table: Arc<Mutex<AITable>>
+    ai_table: Arc<Mutex<AITable>>,
 }
 
 impl Performer {
@@ -152,11 +169,11 @@ impl Performer {
         Performer {
             maker: MelodyMaker::new(),
             variation_controls,
-            ai_table
+            ai_table,
         }
     }
 
-    fn from_slider<N:FromStr + Numeric>(slider: &Arc<AtomicCell<SliderValue<N>>>) -> N {
+    fn from_slider<N: FromStr + Numeric>(slider: &Arc<AtomicCell<SliderValue<N>>>) -> N {
         slider.load().current()
     }
 
@@ -170,7 +187,9 @@ impl Performer {
         };
         let mut variation = var_func(&self.maker, &melody, p_random);
         if variation.len() > 0 && whimsification > 0.0 {
-            variation = self.maker.suffix_whimsified_melody(&variation, whimsification);
+            variation = self
+                .maker
+                .suffix_whimsified_melody(&variation, whimsification);
         }
         self.maker.ornamented(&variation, p_ornament)
     }

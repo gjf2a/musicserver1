@@ -1,7 +1,7 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{Device, Sample, SampleFormat, StreamConfig};
-use fundsp::hacker::{midi_hz, triangle, constant};
-use fundsp::prelude::{AudioUnit64};
+use fundsp::hacker::{constant, midi_hz, triangle};
+use fundsp::prelude::AudioUnit64;
 
 fn main() {
     let host = cpal::default_host();
@@ -16,19 +16,16 @@ fn main() {
     }
 }
 
-fn run_synth<T: Sample>(
-    device: Device,
-    config: StreamConfig,
-) {
+fn run_synth<T: Sample>(device: Device, config: StreamConfig) {
     let sample_rate = config.sample_rate.0 as f64;
-    let mut sound = (constant(midi_hz(60.0)) >> triangle()) +
-        (constant(midi_hz(64.0)) >> triangle()) +
-        (constant(midi_hz(67.0)) >> triangle()) +
-        (constant(midi_hz(71.0)) >> triangle()) +
-        (constant(midi_hz(72.0)) >> triangle()) +
-        (constant(midi_hz(74.0)) >> triangle()) +
-        (constant(midi_hz(78.0)) >> triangle()) +
-        (constant(midi_hz(81.0)) >> triangle());
+    let mut sound = (constant(midi_hz(60.0)) >> triangle())
+        + (constant(midi_hz(64.0)) >> triangle())
+        + (constant(midi_hz(67.0)) >> triangle())
+        + (constant(midi_hz(71.0)) >> triangle())
+        + (constant(midi_hz(72.0)) >> triangle())
+        + (constant(midi_hz(74.0)) >> triangle())
+        + (constant(midi_hz(78.0)) >> triangle())
+        + (constant(midi_hz(81.0)) >> triangle());
     sound.reset(Some(sample_rate));
     let mut next_value = move || sound.get_stereo();
     let channels = config.channels as usize;
