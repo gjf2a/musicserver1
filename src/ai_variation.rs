@@ -7,7 +7,7 @@ use eframe::emath::Numeric;
 use crate::analyzer::{Melody, MelodyMaker, PendingNote};
 use crate::{analyzer, arc_vec};
 use crate::database::FromAiMsg;
-use crate::runtime::{ChooserTable, LIVE_TAG, send_recorded_melody, SliderValue, SynthChoice, VARIATION_TAG, VariationControlSliders};
+use crate::runtime::{ChooserTable, send_recorded_melody, SliderValue, SynthChoice, VariationControlSliders};
 use crate::synth_output::SynthOutputMsg;
 
 pub type AIFuncType = dyn Fn(&MelodyMaker, &Melody, f64) -> Melody + Send + Sync;
@@ -51,7 +51,7 @@ pub fn start_ai_thread(
                 print_debug(&variation, "variation");
                 if long_enough(&variation, min_melody_pitches, replay_delay_slider.load().current()) {
                     ai2dbase.push(FromAiMsg { melody, variation: variation.clone() });
-                    send_recorded_melody(&variation, SynthChoice::Ai, ai2output.clone(), VARIATION_TAG);
+                    send_recorded_melody(&variation, SynthChoice::Ai, ai2output.clone());
                 }
             }
         }
@@ -127,7 +127,7 @@ impl PlayerRecorder {
                 _ => {}
             }
         }
-        self.ai2output.push(SynthOutputMsg {synth: SynthChoice::Human, midi: msg, tag: LIVE_TAG});
+        self.ai2output.push(SynthOutputMsg {synth: SynthChoice::Human, midi: msg});
     }
 
     fn check_if_finished(&mut self, pending_note: PendingNote) -> bool {

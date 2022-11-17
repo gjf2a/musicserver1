@@ -11,11 +11,12 @@ use std::sync::{Arc, Mutex};
 use enum_iterator::all;
 use bare_metal_modulo::*;
 use std::str::FromStr;
-use musicserver1::ai_variation::{start_ai_thread, AITable, make_ai_table, NO_AI_NAME, DEFAULT_AI_NAME};
+use fundsp::hacker::AudioUnit64;
+use musicserver1::ai_variation::{start_ai_thread, make_ai_table, NO_AI_NAME, DEFAULT_AI_NAME, AIFuncType};
 use musicserver1::analyzer::{Accidental, MusicMode, KeySignature, Melody, MidiByte};
 use musicserver1::database::{start_database_thread, Database, GuiDatabaseUpdate, MelodyInfo, Preference};
-use musicserver1::runtime::{ChooserTable, MELODY_TAG, replay_slider, send_recorded_melody, SliderValue, SynthChoice, VARIATION_TAG, VariationControlSliders};
-use musicserver1::synth_output::{start_output_thread, SynthOutputMsg, SynthTable};
+use musicserver1::runtime::{ChooserTable, replay_slider, send_recorded_melody, SliderValue, SynthChoice, VariationControlSliders};
+use musicserver1::synth_output::{start_output_thread, SynthOutputMsg};
 use musicserver1::synth_sounds::make_synth_table;
 use musicserver1::midi_input::start_input_thread;
 
@@ -108,15 +109,33 @@ impl <T:Clone> VecTracker<T> {
     }
 }
 
+struct TableInfo<T: Clone> {
+    name: String,
+    table: Arc<Mutex<ChooserTable<T>>>,
+    index: Arc<AtomicCell<usize>>
+}
+
+impl <T: Clone> TableInfo<T> {
+    fn new(table: ChooserTable<T>) -> Self {
+        let name = table.current_name().to_owned();
+        let index = Arc::new(AtomicCell::new(table.current_index()));
+        let table = Arc::new(Mutex::new(table));
+        Self {name, table, index}
+    }
+
+    fn update_choice(&mut self) {
+        let mut table = self.table.lock().unwrap();
+        table.choose(self.name.as_str());
+        self.index.store(table.current_index());
+    }
+}
+
 struct ReplayerApp {
     midi_scenario: Arc<Mutex<MidiScenario>>,
     midi_in: Arc<Mutex<Option<MidiInput>>>,
-    ai_name: String,
-    ai_table: Arc<Mutex<AITable>>,
-    human_synth_name: String,
-    human_synth_table: Arc<Mutex<SynthTable>>,
-    ai_synth_name: String,
-    ai_synth_table: Arc<Mutex<SynthTable>>,
+    ai_algorithm: TableInfo<Arc<AIFuncType>>,
+    human_synth: TableInfo<Box<dyn AudioUnit64>>,
+    ai_synth: TableInfo<Box<dyn AudioUnit64>>,
     variation_controls: VariationControlSliders,
     replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
     in_port: Option<MidiInputPort>,
@@ -130,48 +149,6 @@ struct ReplayerApp {
     ai2output: Arc<SegQueue<SynthOutputMsg>>
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub enum Clef {
-    Treble, Bass
-}
-
-impl Clef {
-    pub fn symbol(&self) -> char {
-        match self {
-            Self::Treble => '\u{1d11e}',
-            Self::Bass => '\u{1d122}'
-        }
-    }
-
-    pub fn key_signature_positions(&self, sig: &KeySignature) -> Vec<MidiByte> {
-        match self {
-            Self::Treble => sig.treble_clef(),
-            Self::Bass => sig.bass_clef()
-        }
-    }
-
-    fn size(&self) -> f32 {
-        match self {
-            Self::Treble => 13.5,
-            Self::Bass => 8.0
-        }
-    }
-
-    fn x_offset(&self) -> f32 {
-        10.0
-    }
-
-    fn y_offset(&self) -> f32 {
-        match self {
-            Self::Treble => 5.0,
-            Self::Bass => -0.45
-        }
-    }
-
-    fn render(&self, painter: &Painter, x: f32, y: f32, y_per_pitch: f32) {
-        painter.text(Pos2 {x: x + self.x_offset(), y: y + self.y_offset() * y_per_pitch}, Align2::CENTER_CENTER, self.symbol(), ReplayerApp::font_id(self.size() * y_per_pitch), Color32::BLACK);
-    }
-}
 
 const MIDDLE_C: MidiByte = 60;
 const STAFF_PITCH_WIDTH: MidiByte = 19;
@@ -197,23 +174,13 @@ macro_rules! load_font {
 
 impl ReplayerApp {
     fn new(cc: &eframe::CreationContext<'_>) -> anyhow::Result<Self> {
-        // Customize egui here with cc.egui_ctx.set_fonts and cc.egui_ctx.set_visuals.
-        // Restore app state using cc.storage (requires the "persistence" feature).
-        // Use the cc.gl (a glow::Context) to create graphics shaders and buffers that you can use
-        // for e.g. egui::PaintCallback.
         let mut fonts = FontDefinitions::default();
         load_font!(fonts, "../../bravura/BravuraText.otf");
         cc.egui_ctx.set_fonts(fonts);
 
-        let ai_table = make_ai_table();
-        let human_synth_table = make_synth_table();
-        let ai_synth_table = make_synth_table();
-        let ai_name = ai_table.current_name().to_string();
-        let human_synth_name = human_synth_table.current_name().to_string();
-        let ai_synth_name = ai_synth_table.current_name().to_string();
-        let ai_table = Arc::new(Mutex::new(ai_table));
-        let human_synth_table = Arc::new(Mutex::new(human_synth_table));
-        let ai_synth_table = Arc::new(Mutex::new(ai_synth_table));
+        let ai_algorithm = TableInfo::new(make_ai_table());
+        let human_synth = TableInfo::new(make_synth_table());
+        let ai_synth = TableInfo::new(make_synth_table());
         let variation_controls = VariationControlSliders::new();
         let replay_delay_slider = Arc::new(AtomicCell::new(replay_slider()));
         let mut database = Database::new();
@@ -231,12 +198,9 @@ impl ReplayerApp {
             midi_in: Arc::new(Mutex::new(None)),
             variation_controls,
             replay_delay_slider,
-            ai_table,
-            human_synth_table,
-            ai_synth_name,
-            ai_synth_table,
-            ai_name,
-            human_synth_name,
+            ai_algorithm,
+            human_synth,
+            ai_synth,
             in_port: None,
             in_port_name: None,
             variation_pref,
@@ -255,13 +219,13 @@ impl ReplayerApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading(format!("Replayer ({})", self.in_port_name.as_ref().unwrap()));
             ui.horizontal(|ui| {
-                Self::radio_choice(ui,"Human Synthesizer",self.human_synth_table.clone(),&mut self.human_synth_name);
-                Self::radio_choice(ui,"Variation Synthesizer",self.ai_synth_table.clone(),&mut self.ai_synth_name);
-                Self::radio_choice(ui,"Variation Algorithm",self.ai_table.clone(),&mut self.ai_name);
+                Self::radio_choice(ui,"Human Synthesizer",self.human_synth.table.clone(),&mut self.human_synth.name);
+                Self::radio_choice(ui,"Variation Synthesizer",self.ai_synth.table.clone(),&mut self.ai_synth.name);
+                Self::radio_choice(ui,"Variation Algorithm",self.ai_algorithm.table.clone(),&mut self.ai_algorithm.name);
             });
-            Self::update_table_choice(self.ai_table.clone(), self.ai_name.as_str());
-            Self::update_table_choice(self.human_synth_table.clone(),self.human_synth_name.as_str());
-            Self::update_table_choice(self.ai_synth_table.clone(), self.ai_synth_name.as_str());
+            self.ai_algorithm.update_choice();
+            self.human_synth.update_choice();
+            self.ai_synth.update_choice();
 
             Self::insert_slider(ui, self.variation_controls.whimsification_slider.clone(), "Portion of Suffix to Whimsify");
             Self::insert_slider(ui,self.variation_controls.p_random_slider.clone(),"Probability of Randomization");
@@ -304,20 +268,20 @@ impl ReplayerApp {
         });
 
         if ui.button("Play Both").clicked() {
-            Self::play_melody_thread(self.ai2output.clone(), melody_info.melody().clone(), SynthChoice::Human, MELODY_TAG);
-            Self::play_melody_thread(self.ai2output.clone(), variation_info.melody().clone(), SynthChoice::Ai, VARIATION_TAG);
+            Self::play_melody_thread(self.ai2output.clone(), melody_info.melody().clone(), SynthChoice::Human);
+            Self::play_melody_thread(self.ai2output.clone(), variation_info.melody().clone(), SynthChoice::Ai);
         }
         ui.vertical(|ui| {
-            Self::melody_buttons(self.ai2output.clone(), ui, &melody_info, SynthChoice::Human, MELODY_TAG);
-            Self::melody_buttons(self.ai2output.clone(), ui, &variation_info, SynthChoice::Ai, VARIATION_TAG);
+            Self::melody_buttons(self.ai2output.clone(), ui, &melody_info, SynthChoice::Human);
+            Self::melody_buttons(self.ai2output.clone(), ui, &variation_info, SynthChoice::Ai);
         });
 
         if ui.button("Create New Variation").clicked() {
             {
-                let mut ai_table = self.ai_table.lock().unwrap();
+                let mut ai_table = self.ai_algorithm.table.lock().unwrap();
                 if ai_table.current_name() == NO_AI_NAME {
                     ai_table.choose(DEFAULT_AI_NAME);
-                    self.ai_name = String::from(DEFAULT_AI_NAME);
+                    self.ai_algorithm.name = String::from(DEFAULT_AI_NAME);
                 }
             }
             self.gui2ai.push(melody_info.melody().clone());
@@ -331,19 +295,19 @@ impl ReplayerApp {
         FontId {size, family: FontFamily::Proportional}
     }
 
-    fn melody_buttons(ai2output: Arc<SegQueue<SynthOutputMsg>>, ui: &mut Ui, info: &MelodyInfo, synth: SynthChoice, tag: usize) {
+    fn melody_buttons(ai2output: Arc<SegQueue<SynthOutputMsg>>, ui: &mut Ui, info: &MelodyInfo, synth: SynthChoice) {
         ui.horizontal(|ui| {
             ui.label(info.date_time_stamp());
             ui.label(info.get_scale_name());
             if ui.button("Play").clicked() {
-                Self::play_melody_thread(ai2output, info.melody().clone(), synth, tag);
+                Self::play_melody_thread(ai2output, info.melody().clone(), synth);
             }
         });
     }
 
-    fn play_melody_thread(ai2output: Arc<SegQueue<SynthOutputMsg>>, melody: Melody, synth: SynthChoice, tag: usize) {
+    fn play_melody_thread(ai2output: Arc<SegQueue<SynthOutputMsg>>, melody: Melody, synth: SynthChoice) {
         thread::spawn(move || {
-            send_recorded_melody(&melody, synth, ai2output, tag);
+            send_recorded_melody(&melody, synth, ai2output);
         });
     }
 
@@ -366,11 +330,6 @@ impl ReplayerApp {
                 ui.radio_value(tag, item.clone(), item.clone());
             }
         });
-    }
-
-    fn update_table_choice<T: Clone>(table: Arc<Mutex<ChooserTable<T>>>, tag: &str) {
-        let mut table = table.lock().unwrap();
-        table.choose(tag);
     }
 
     fn insert_slider<N:FromStr + Numeric>(ui: &mut Ui, slider: Arc<AtomicCell<SliderValue<N>>>, text: &str) {
@@ -465,11 +424,13 @@ impl ReplayerApp {
 
         start_output_thread(
             self.ai2output.clone(),
-            self.human_synth_table.clone(),
-            self.ai_synth_table.clone(),
+            self.human_synth.table.clone(),
+            self.human_synth.index.clone(),
+            self.ai_synth.table.clone(),
+            self.ai_synth.index.clone(),
         );
         start_ai_thread(
-            self.ai_table.clone(),
+            self.ai_algorithm.table.clone(),
             input2ai.clone(),
             self.gui2ai.clone(),
             self.ai2output.clone(),
@@ -636,5 +597,48 @@ impl eframe::App for ReplayerApp {
                 self.pick_midi_screen(ctx, frame, &in_ports);
             }
         }
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum Clef {
+    Treble, Bass
+}
+
+impl Clef {
+    pub fn symbol(&self) -> char {
+        match self {
+            Self::Treble => '\u{1d11e}',
+            Self::Bass => '\u{1d122}'
+        }
+    }
+
+    pub fn key_signature_positions(&self, sig: &KeySignature) -> Vec<MidiByte> {
+        match self {
+            Self::Treble => sig.treble_clef(),
+            Self::Bass => sig.bass_clef()
+        }
+    }
+
+    fn size(&self) -> f32 {
+        match self {
+            Self::Treble => 13.5,
+            Self::Bass => 8.0
+        }
+    }
+
+    fn x_offset(&self) -> f32 {
+        10.0
+    }
+
+    fn y_offset(&self) -> f32 {
+        match self {
+            Self::Treble => 5.0,
+            Self::Bass => -0.45
+        }
+    }
+
+    fn render(&self, painter: &Painter, x: f32, y: f32, y_per_pitch: f32) {
+        painter.text(Pos2 {x: x + self.x_offset(), y: y + self.y_offset() * y_per_pitch}, Align2::CENTER_CENTER, self.symbol(), ReplayerApp::font_id(self.size() * y_per_pitch), Color32::BLACK);
     }
 }
