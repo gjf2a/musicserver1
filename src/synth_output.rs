@@ -89,29 +89,17 @@ fn run_synth<T: Sample>(
 ) {
     std::thread::spawn(move || {
         let mut stereo: StereoSounds<MAX_NOTES> = StereoSounds::new();
-        let mut current_left_synth;
-        let mut current_right_synth;
+        let mut left_id;
+        let mut right_id;
 
         loop {
-            reset_synth!(
-                current_left_synth,
-                new_left_synth,
-                human_synth_table,
-                human_synth_id
-            );
-            reset_synth!(
-                current_right_synth,
-                new_right_synth,
-                ai_synth_table,
-                ai_synth_id
-            );
-            stereo.change_synths(new_left_synth, new_right_synth);
+            reset_synth!(left_id, left_synth, human_synth_table, human_synth_id);
+            reset_synth!(right_id, right_synth, ai_synth_table, ai_synth_id);
+            stereo.change_synths(left_synth, right_synth);
             let stream = get_stream::<T>(&stereo, &config, &device);
             stream.play().unwrap();
 
-            while current_left_synth == human_synth_id.load()
-                && current_right_synth == ai_synth_id.load()
-            {
+            while left_id == human_synth_id.load() && right_id == ai_synth_id.load() {
                 if let Some(SynthOutputMsg { synth, midi }) = ai2output.pop() {
                     midi2stereo(&mut stereo, synth, midi);
                 }
