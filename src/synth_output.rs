@@ -68,6 +68,7 @@ pub fn start_output_thread(
     }
 }
 
+/// Used a macro because returned tuples can't mutate separate variables.
 macro_rules! reset_synth {
     ($current:ident, $new:ident, $table:ident, $id:ident) => {
         $current = $id.load();
