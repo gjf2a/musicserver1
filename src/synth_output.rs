@@ -201,10 +201,8 @@ impl <const N: usize> LiveSounds<N> {
     }
 
     pub fn sound_at(&self, i: usize) -> Box<dyn AudioUnit64> {
-        let pitch = self.pitches[i].clone();
-        let pitch = Net64::wrap(Box::new(envelope(move |_| midi_hz(pitch.value()))));
-        let velocity = self.velocities[i].clone();
-        let velocity = Net64::wrap(Box::new(envelope(move |_| velocity.value() / 127.0)));
+        let pitch = Net64::wrap(Box::new(self.pitches[i].clone()));
+        let velocity = Net64::wrap(Box::new(self.velocities[i].clone()));
         Box::new(Net64::bin_op(Net64::pipe_op(pitch, Net64::wrap(self.synth.clone())), velocity, FrameMul::new()))
     }
 
@@ -217,8 +215,8 @@ impl <const N: usize> LiveSounds<N> {
     }
 
     pub fn on(&mut self, pitch: u8, velocity: u8) {
-        self.pitches[self.next.a()].clone().set_value(pitch as f64);
-        self.velocities[self.next.a()].clone().set_value(velocity as f64);
+        self.pitches[self.next.a()].clone().set_value(midi_hz(pitch as f64));
+        self.velocities[self.next.a()].clone().set_value(velocity as f64 / 127.0);
         self.pitch2var.insert(pitch, self.next.a());
         self.recent_pitches[self.next.a()] = Some(pitch);
         self.next += 1;
