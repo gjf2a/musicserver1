@@ -2,7 +2,7 @@ use crate::analyzer::velocity2volume;
 use crate::runtime::{ChooserTable, SynthChoice, SHOW_MIDI_MSG};
 use bare_metal_modulo::*;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use cpal::{Device, Sample, SampleFormat, StreamConfig};
+use cpal::{Device, Sample, SampleFormat, Stream, StreamConfig};
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use fundsp::hacker::*;
@@ -68,6 +68,16 @@ pub fn start_output_thread(
     }
 }
 
+macro_rules! reset_synth {
+    ($current:ident, $new:ident, $table:ident, $id:ident) => {
+        $current = $id.load();
+        let $new = {
+            let $table = $table.lock().unwrap();
+            $table.current_choice().clone()
+        };
+    };
+}
+
 fn run_synth<T: Sample>(
     ai2output: Arc<SegQueue<SynthOutputMsg>>,
     device: Device,
@@ -79,66 +89,78 @@ fn run_synth<T: Sample>(
 ) {
     std::thread::spawn(move || {
         let mut stereo: StereoSounds<MAX_NOTES> = StereoSounds::new();
-        let sample_rate = config.sample_rate.0 as f64;
         let mut current_left_synth;
         let mut current_right_synth;
 
         loop {
-            current_left_synth = human_synth_id.load();
-            let new_left_synth = {
-                let human_synth_table = human_synth_table.lock().unwrap();
-                human_synth_table.current_choice().clone()
-            };
-            current_right_synth = ai_synth_id.load();
-            let new_right_synth = {
-                let ai_synth_table = ai_synth_table.lock().unwrap();
-                ai_synth_table.current_choice().clone()
-            };
+            reset_synth!(
+                current_left_synth,
+                new_left_synth,
+                human_synth_table,
+                human_synth_id
+            );
+            reset_synth!(
+                current_right_synth,
+                new_right_synth,
+                ai_synth_table,
+                ai_synth_id
+            );
             stereo.change_synths(new_left_synth, new_right_synth);
-
-            let mut sound = stereo.sound();
-            sound.reset(Some(sample_rate));
-            let mut next_value = move || sound.get_stereo();
-            let channels = config.channels as usize;
-            let err_fn = |err| eprintln!("Error on stream: {err}");
-            let stream = device
-                .build_output_stream(
-                    &config,
-                    move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
-                        write_data(data, channels, &mut next_value)
-                    },
-                    err_fn,
-                )
-                .unwrap();
-
+            let stream = get_stream::<T>(&stereo, &config, &device);
             stream.play().unwrap();
 
             while current_left_synth == human_synth_id.load()
                 && current_right_synth == ai_synth_id.load()
             {
                 if let Some(SynthOutputMsg { synth, midi }) = ai2output.pop() {
-                    if SHOW_MIDI_MSG {
-                        println!("synth_output: {midi:?}");
-                    }
-                    let side = match synth {
-                        SynthChoice::Human => StereoSide::Left,
-                        SynthChoice::Ai => StereoSide::Right,
-                    };
-                    if let MidiMsg::ChannelVoice { channel: _, msg } = midi {
-                        match msg {
-                            ChannelVoiceMsg::NoteOff { note, velocity: _ } => {
-                                stereo.note_off(note, side);
-                            }
-                            ChannelVoiceMsg::NoteOn { note, velocity } => {
-                                stereo.note_on(note, velocity, side);
-                            }
-                            _ => {}
-                        }
-                    }
+                    midi2stereo(&mut stereo, synth, midi);
                 }
             }
         }
     });
+}
+
+fn get_stream<T: Sample>(
+    stereo: &StereoSounds<MAX_NOTES>,
+    config: &StreamConfig,
+    device: &Device,
+) -> Stream {
+    let sample_rate = config.sample_rate.0 as f64;
+    let mut sound = stereo.sound();
+    sound.reset(Some(sample_rate));
+    let mut next_value = move || sound.get_stereo();
+    let channels = config.channels as usize;
+    let err_fn = |err| eprintln!("Error on stream: {err}");
+    device
+        .build_output_stream(
+            &config,
+            move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
+                write_data(data, channels, &mut next_value)
+            },
+            err_fn,
+        )
+        .unwrap()
+}
+
+fn midi2stereo(stereo: &mut StereoSounds<MAX_NOTES>, synth: SynthChoice, midi: MidiMsg) {
+    if SHOW_MIDI_MSG {
+        println!("synth_output: {midi:?}");
+    }
+    let side = match synth {
+        SynthChoice::Human => StereoSide::Left,
+        SynthChoice::Ai => StereoSide::Right,
+    };
+    if let MidiMsg::ChannelVoice { channel: _, msg } = midi {
+        match msg {
+            ChannelVoiceMsg::NoteOff { note, velocity: _ } => {
+                stereo.note_off(note, side);
+            }
+            ChannelVoiceMsg::NoteOn { note, velocity } => {
+                stereo.note_on(note, velocity, side);
+            }
+            _ => {}
+        }
+    }
 }
 
 #[derive(Clone)]
