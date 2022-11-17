@@ -215,8 +215,8 @@ impl <const N: usize> LiveSounds<N> {
     }
 
     pub fn on(&mut self, pitch: u8, velocity: u8) {
-        self.pitches[self.next.a()].clone().set_value(midi_hz(pitch as f64));
-        self.velocities[self.next.a()].clone().set_value(velocity as f64 / 127.0);
+        self.pitches[self.next.a()].set_value(midi_hz(pitch as f64));
+        self.velocities[self.next.a()].set_value(velocity as f64 / 127.0);
         self.pitch2var.insert(pitch, self.next.a());
         self.recent_pitches[self.next.a()] = Some(pitch);
         self.next += 1;
