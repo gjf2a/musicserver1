@@ -9,7 +9,7 @@ use crate::synth_output::SynthTable;
 // I'm using a macro because it is quicker to write down than using Net64.
 #[macro_export]
 macro_rules! moogify {
-    ($an:expr) => (($an | envelope(|t| xerp11(110.0, 11000.0, sin_hz(0.60, t)))) >> moog_q(0.6))
+    ($an:expr) => (($an | envelope(|t| xerp11(1100.0, 11000.0, sin_hz(0.15, t)))) >> moog_q(0.6))
 }
 
 /// All sounds should have one input (the pitch) and one output (the sound wave).
