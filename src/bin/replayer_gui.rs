@@ -11,12 +11,11 @@ use std::sync::{Arc, Mutex};
 use enum_iterator::all;
 use bare_metal_modulo::*;
 use std::str::FromStr;
-use fundsp::hacker::AudioUnit64;
 use musicserver1::ai_variation::{start_ai_thread, make_ai_table, NO_AI_NAME, DEFAULT_AI_NAME, AIFuncType};
 use musicserver1::analyzer::{Accidental, MusicMode, KeySignature, Melody, MidiByte};
 use musicserver1::database::{start_database_thread, Database, GuiDatabaseUpdate, MelodyInfo, Preference};
 use musicserver1::runtime::{ChooserTable, replay_slider, send_recorded_melody, SliderValue, SynthChoice, VariationControlSliders};
-use musicserver1::synth_output::{start_output_thread, SynthOutputMsg};
+use musicserver1::synth_output::{start_output_thread, SynthOutputMsg, SynthType};
 use musicserver1::synth_sounds::make_synth_table;
 use musicserver1::midi_input::start_input_thread;
 
@@ -134,8 +133,8 @@ struct ReplayerApp {
     midi_scenario: Arc<Mutex<MidiScenario>>,
     midi_in: Arc<Mutex<Option<MidiInput>>>,
     ai_algorithm: TableInfo<Arc<AIFuncType>>,
-    human_synth: TableInfo<Box<dyn AudioUnit64>>,
-    ai_synth: TableInfo<Box<dyn AudioUnit64>>,
+    human_synth: TableInfo<SynthType>,
+    ai_synth: TableInfo<SynthType>,
     variation_controls: VariationControlSliders,
     replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
     in_port: Option<MidiInputPort>,

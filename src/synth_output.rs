@@ -13,7 +13,8 @@ use crossbeam_utils::atomic::AtomicCell;
 
 const MAX_NOTES: usize = 1;
 
-pub type SynthTable = ChooserTable<Box<dyn AudioUnit64>>;
+pub type SynthType = (Box<dyn AudioUnit64>, (f64, f64, f64, f64));
+pub type SynthTable = ChooserTable<SynthType>;
 
 pub struct SynthOutputMsg {
     pub synth: SynthChoice,
@@ -152,7 +153,7 @@ impl <const N: usize> StereoSounds<N> {
         Self {left: LiveSounds::new(), right: LiveSounds::new()}
     }
 
-    pub fn change_synths(&mut self, new_left_synth: Box<dyn AudioUnit64>, new_right_synth: Box<dyn AudioUnit64>) {
+    pub fn change_synths(&mut self, new_left_synth: SynthType, new_right_synth: SynthType) {
         self.left.change_synth(new_left_synth);
         self.right.change_synth(new_right_synth);
     }
@@ -178,10 +179,12 @@ impl <const N: usize> StereoSounds<N> {
 struct LiveSounds<const N: usize> {
     pitches: [An<Var<f64>>; N],
     velocities: [An<Var<f64>>; N],
+    controls: [An<Var<f64>>; N],
     next: ModNumC<usize, N>,
     pitch2var: BTreeMap<u8,usize>,
     recent_pitches: [Option<u8>; N],
-    synth: Box<dyn AudioUnit64>
+    synth: Box<dyn AudioUnit64>,
+    adsr: (f64, f64, f64, f64)
 }
 
 impl <const N: usize> LiveSounds<N> {
@@ -189,21 +192,26 @@ impl <const N: usize> LiveSounds<N> {
         Self {
             pitches: [(); N].map(|_| var(0, 0.0)),
             velocities: [(); N].map(|_| var(1, 0.0)),
+            controls: [(); N].map(|_| var(2, 0.0)),
             next: ModNumC::new(0),
             pitch2var: BTreeMap::new(),
             recent_pitches: [None; N],
-            synth: Box::new(triangle())
+            synth: Box::new(triangle()),
+            adsr: (0.1, 0.1, 0.5, 0.1)
         }
     }
 
-    pub fn change_synth(&mut self, new_synth: Box<dyn AudioUnit64>) {
-        self.synth = new_synth;
+    pub fn change_synth(&mut self, new_synth: SynthType) {
+        self.synth = new_synth.0;
+        self.adsr = new_synth.1;
     }
 
     pub fn sound_at(&self, i: usize) -> Box<dyn AudioUnit64> {
         let pitch = Net64::wrap(Box::new(self.pitches[i].clone()));
         let velocity = Net64::wrap(Box::new(self.velocities[i].clone()));
-        Box::new(Net64::bin_op(Net64::pipe_op(pitch, Net64::wrap(self.synth.clone())), velocity, FrameMul::new()))
+        let control = Net64::wrap(Box::new(self.controls[i].clone()));
+        let adsr = Net64::wrap(Box::new(adsr_live(self.adsr.0, self.adsr.1, self.adsr.2, self.adsr.3)));
+        Box::new(Net64::bin_op(Net64::bin_op(Net64::pipe_op(pitch, Net64::wrap(self.synth.clone())), velocity, FrameMul::new()), Net64::pipe_op(control, adsr), FrameMul::new()))
     }
 
     pub fn sound(&self) -> Net64 {
@@ -217,6 +225,7 @@ impl <const N: usize> LiveSounds<N> {
     pub fn on(&mut self, pitch: u8, velocity: u8) {
         self.pitches[self.next.a()].set_value(midi_hz(pitch as f64));
         self.velocities[self.next.a()].set_value(velocity as f64 / 127.0);
+        self.controls[self.next.a()].set_value(1.0);
         self.pitch2var.insert(pitch, self.next.a());
         self.recent_pitches[self.next.a()] = Some(pitch);
         self.next += 1;
@@ -226,7 +235,7 @@ impl <const N: usize> LiveSounds<N> {
         if let Some(i) = self.pitch2var.remove(&pitch) {
             if self.recent_pitches[i] == Some(pitch) {
                 self.recent_pitches[i] = None;
-                self.velocities[i].clone().set_value(0.0);
+                self.controls[i].set_value(-1.0);
             }
         }
     }
