@@ -15,7 +15,8 @@ rand = "0.8"
 enum-iterator = "1"
 midir = "0.8"
 #fundsp = "0.9"
-fundsp = {git = "https://github.com/SamiPerttu/fundsp", rev="e2b4bf4"}
+#fundsp = {git = "https://github.com/SamiPerttu/fundsp", rev="e2b4bf4"}
+fundsp = {git = "https://github.com/gjf2a/fundsp"}
 cpal = "0.14"
 anyhow = "1"
 midi-msg = "0.4"

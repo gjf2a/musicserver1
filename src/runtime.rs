@@ -1,13 +1,21 @@
+use crate::analyzer::Melody;
+use crate::synth_output::SynthOutputMsg;
+use crossbeam_queue::SegQueue;
+use crossbeam_utils::atomic::AtomicCell;
 use read_input::prelude::input;
 use read_input::InputBuild;
 use std::collections::btree_map::BTreeMap;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
+<<<<<<< HEAD
 use std::time::{Duration, Instant};
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use crate::analyzer::Melody;
 use crate::synth_output::SynthOutputMsg;
+=======
+use std::time::Duration;
+>>>>>>> d9fd7df90655fee74cc563e9f3338c41cc6ec2eb
 
 pub const SHOW_MIDI_MSG: bool = false;
 
@@ -55,7 +63,12 @@ impl<T: Clone> ChooserTable<T> {
     }
 
     pub fn current_index(&self) -> usize {
-        self.names.iter().enumerate().find(|(_,n)| **n == self.current_name).map(|(i,_)| i).unwrap()
+        self.names
+            .iter()
+            .enumerate()
+            .find(|(_, n)| **n == self.current_name)
+            .map(|(i, _)| i)
+            .unwrap()
     }
 
     pub fn name_vec(&self) -> Vec<String> {
@@ -86,7 +99,7 @@ impl VariationControlSliders {
             p_random_slider: Arc::new(AtomicCell::new(prob_slider(0.8))),
             p_ornament_slider: Arc::new(AtomicCell::new(prob_slider(0.2))),
             whimsification_slider: Arc::new(AtomicCell::new(prob_slider(0.0))),
-            shortest_note_slider: Arc::new(AtomicCell::new(SliderValue::new(0.1, 0.0, 0.2)))
+            shortest_note_slider: Arc::new(AtomicCell::new(SliderValue::new(0.1, 0.0, 0.2))),
         }
     }
 }
@@ -112,7 +125,11 @@ impl<T: Copy + Clone + std::str::FromStr + PartialOrd + 'static> SliderValue<T> 
     }
 
     pub fn slid_to(&self, new_current: T) -> Self {
-        SliderValue {current: new_current, lo: self.lo, hi: self.hi}
+        SliderValue {
+            current: new_current,
+            lo: self.lo,
+            hi: self.hi,
+        }
     }
 
     pub fn set_current(&mut self, new_current: T) {
@@ -151,10 +168,14 @@ pub fn user_pick_element<T: Clone, S: Fn(&T) -> String>(
     choices[choice - 1].clone()
 }
 
-pub fn send_recorded_melody(melody: &Melody, synth: SynthChoice, ai2output: Arc<SegQueue<SynthOutputMsg>>) {
+pub fn send_recorded_melody(
+    melody: &Melody,
+    synth: SynthChoice,
+    ai2output: Arc<SegQueue<SynthOutputMsg>>,
+) {
     for note in melody.iter() {
         let (midi, duration) = note.to_midi();
-        ai2output.push(SynthOutputMsg {synth, midi});
+        ai2output.push(SynthOutputMsg { synth, midi });
         let start = Instant::now();
         while start.elapsed().as_secs_f64() < duration {}
     }

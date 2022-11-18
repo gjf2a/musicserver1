@@ -1,17 +1,20 @@
-use std::{fmt::{Display, Formatter}, sync::Arc};
-use enum_iterator::Sequence;
-use sqlite::{State,Connection};
-use anyhow::bail;
-use chrono::{Utc, NaiveDate, NaiveTime, Local, TimeZone};
-use std::str::FromStr;
-use std::collections::BTreeMap;
-use crossbeam_queue::SegQueue;
 use crate::analyzer::{Melody, MidiByte, Note};
+use anyhow::bail;
+use chrono::{Local, NaiveDate, NaiveTime, TimeZone, Utc};
+use crossbeam_queue::SegQueue;
+use enum_iterator::Sequence;
+use sqlite::{Connection, State};
+use std::collections::BTreeMap;
+use std::str::FromStr;
+use std::{
+    fmt::{Display, Formatter},
+    sync::Arc,
+};
 
 #[derive(Clone, Debug)]
 pub struct FromAiMsg {
     pub melody: Melody,
-    pub variation: Melody
+    pub variation: Melody,
 }
 
 #[derive(Clone, Debug)]
@@ -22,21 +25,21 @@ pub struct GuiDatabaseUpdate {
 }
 
 pub fn start_database_thread(
-    dbase2gui: Arc<SegQueue<(MelodyInfo,MelodyInfo)>>,
+    dbase2gui: Arc<SegQueue<(MelodyInfo, MelodyInfo)>>,
     gui2dbase: Arc<SegQueue<GuiDatabaseUpdate>>,
     ai2dbase: Arc<SegQueue<FromAiMsg>>,
-    mut database: Database
+    mut database: Database,
 ) {
-    std::thread::spawn(move || {
-        loop {
-            if let Some(info) = gui2dbase.pop() {
-                database.update_info(&info).unwrap();
-            }
+    std::thread::spawn(move || loop {
+        if let Some(info) = gui2dbase.pop() {
+            database.update_info(&info).unwrap();
+        }
 
-            if let Some(msg) = ai2dbase.pop() {
-                let info = database.add_melody_and_variation(&msg.melody, &msg.variation).unwrap();
-                dbase2gui.push(info);
-            }
+        if let Some(msg) = ai2dbase.pop() {
+            let info = database
+                .add_melody_and_variation(&msg.melody, &msg.variation)
+                .unwrap();
+            dbase2gui.push(info);
         }
     });
 }
@@ -46,7 +49,7 @@ const DATABASE_FILENAME: &str = "replayer_variations.db";
 #[derive(Clone, Debug)]
 pub struct Database {
     filename: String,
-    melody_cache: BTreeMap<i64, Melody>
+    melody_cache: BTreeMap<i64, Melody>,
 }
 
 impl Database {
@@ -60,33 +63,48 @@ impl Database {
     }
 
     pub fn new() -> Self {
-        Database {filename: DATABASE_FILENAME.to_string(), melody_cache: BTreeMap::new()}
+        Database {
+            filename: DATABASE_FILENAME.to_string(),
+            melody_cache: BTreeMap::new(),
+        }
     }
 
-    pub fn get_melody_pairs(&mut self) -> anyhow::Result<Vec<(MelodyInfo,MelodyInfo)>> {
+    pub fn get_melody_pairs(&mut self) -> anyhow::Result<Vec<(MelodyInfo, MelodyInfo)>> {
         let mut result = vec![];
         let connection = self.get_connection()?;
-        let mut statement = connection.prepare("SELECT melody_row, variation_row FROM melody_variation")?;
+        let mut statement =
+            connection.prepare("SELECT melody_row, variation_row FROM melody_variation")?;
         while let State::Row = statement.next().unwrap() {
-            let melody_row = statement.read::<i64,usize>(0)?;
-            let variation_row = statement.read::<i64,usize>(1)?;
+            let melody_row = statement.read::<i64, usize>(0)?;
+            let variation_row = statement.read::<i64, usize>(1)?;
             let melody = self.melody(&connection, melody_row)?;
             let variation = self.melody(&connection, variation_row)?;
-            result.push((Self::info_for(&connection, melody_row, melody)?,
-                         Self::info_for(&connection, variation_row, variation)?));
+            result.push((
+                Self::info_for(&connection, melody_row, melody)?,
+                Self::info_for(&connection, variation_row, variation)?,
+            ));
         }
         Ok(result)
     }
 
     fn info_for(connection: &Connection, rowid: i64, melody: Melody) -> anyhow::Result<MelodyInfo> {
-        let mut statement = connection.prepare("SELECT rowid, timestamp, rating, tag, scale_name FROM melody_index WHERE rowid = ?")?;
+        let mut statement = connection.prepare(
+            "SELECT rowid, timestamp, rating, tag, scale_name FROM melody_index WHERE rowid = ?",
+        )?;
         statement.bind((1, rowid))?;
         if let State::Row = statement.next()? {
-            let timestamp = statement.read::<i64,usize>(1)?;
-            let rating = statement.read::<String,usize>(2)?.parse::<Preference>()?;
-            let tag = statement.read::<String,usize>(3)?;
-            let scale_name = statement.read::<String,usize>(4)?;
-            Ok(MelodyInfo {rowid, timestamp, rating, tag, scale_name, melody})
+            let timestamp = statement.read::<i64, usize>(1)?;
+            let rating = statement.read::<String, usize>(2)?.parse::<Preference>()?;
+            let tag = statement.read::<String, usize>(3)?;
+            let scale_name = statement.read::<String, usize>(4)?;
+            Ok(MelodyInfo {
+                rowid,
+                timestamp,
+                rating,
+                tag,
+                scale_name,
+                melody,
+            })
         } else {
             bail!("{rowid} not in database.")
         }
@@ -102,9 +120,9 @@ impl Database {
             statement.bind((1, rowid))?;
             let mut melody = Melody::new();
             while let State::Row = statement.next()? {
-                let pitch = statement.read::<i64,usize>(0)?;
-                let duration = statement.read::<f64,usize>(1)?;
-                let velocity = statement.read::<i64,usize>(2)?;
+                let pitch = statement.read::<i64, usize>(0)?;
+                let duration = statement.read::<f64, usize>(1)?;
+                let velocity = statement.read::<i64, usize>(2)?;
                 let note = Note::new(pitch as MidiByte, duration, velocity as MidiByte);
                 melody.add(note);
             }
@@ -115,7 +133,8 @@ impl Database {
 
     pub fn update_info(&mut self, new_info: &GuiDatabaseUpdate) -> anyhow::Result<()> {
         let connection = self.get_connection()?;
-        let mut statement = connection.prepare("UPDATE melody_index SET rating = ?, tag = ? WHERE rowid = ?")?;
+        let mut statement =
+            connection.prepare("UPDATE melody_index SET rating = ?, tag = ? WHERE rowid = ?")?;
         statement.bind((1, new_info.rating.to_string().as_str()))?;
         statement.bind((2, new_info.tag.as_str()))?;
         statement.bind((3, new_info.rowid))?;
@@ -123,11 +142,16 @@ impl Database {
         Ok(())
     }
 
-    pub fn add_melody_and_variation(&mut self, melody: &Melody, variation: &Melody) -> anyhow::Result<(MelodyInfo, MelodyInfo)> {
+    pub fn add_melody_and_variation(
+        &mut self,
+        melody: &Melody,
+        variation: &Melody,
+    ) -> anyhow::Result<(MelodyInfo, MelodyInfo)> {
         let player_info = self.store_melody(melody)?;
         let variation_info = self.store_melody(variation)?;
         let connection = self.get_connection()?;
-        let mut statement = connection.prepare("INSERT INTO melody_variation (melody_row, variation_row) VALUES (?,?)")?;
+        let mut statement = connection
+            .prepare("INSERT INTO melody_variation (melody_row, variation_row) VALUES (?,?)")?;
         statement.bind((1, player_info.rowid))?;
         statement.bind((2, variation_info.rowid))?;
         statement.next().unwrap();
@@ -140,8 +164,9 @@ impl Database {
         let rating = Preference::Neutral;
         let connection = self.get_connection()?;
         let tag = "";
-        let mut statement = connection
-            .prepare("INSERT INTO melody_index (timestamp, rating, tag, scale_name) VALUES (?, ?, ?, ?)")?;
+        let mut statement = connection.prepare(
+            "INSERT INTO melody_index (timestamp, rating, tag, scale_name) VALUES (?, ?, ?, ?)",
+        )?;
         statement.bind((1, timestamp))?;
         statement.bind((2, rating.to_string().as_str()))?;
         statement.bind((3, tag))?;
@@ -149,11 +174,14 @@ impl Database {
         statement.next().unwrap();
         let mut statement = connection.prepare("SELECT last_insert_rowid()")?;
         statement.next()?;
-        let rowid = statement.read::<i64,usize>(0)?;
+        let rowid = statement.read::<i64, usize>(0)?;
 
         for note in melody.iter() {
             let mut statement = connection
-                .prepare("INSERT INTO melodies (row, pitch, duration, velocity) VALUES (?, ?, ?, ?);").unwrap();
+                .prepare(
+                    "INSERT INTO melodies (row, pitch, duration, velocity) VALUES (?, ?, ?, ?);",
+                )
+                .unwrap();
             statement.bind((1, rowid))?;
             statement.bind((2, note.pitch() as i64))?;
             statement.bind((3, note.duration()))?;
@@ -161,7 +189,14 @@ impl Database {
             statement.next().unwrap();
         }
 
-        let info = MelodyInfo { rowid, timestamp, tag: tag.to_string(), rating, scale_name: scale.name(), melody: melody.clone() };
+        let info = MelodyInfo {
+            rowid,
+            timestamp,
+            tag: tag.to_string(),
+            rating,
+            scale_name: scale.name(),
+            melody: melody.clone(),
+        };
         self.melody_cache.insert(info.rowid, melody.clone());
         Ok(info)
     }
@@ -174,7 +209,7 @@ pub struct MelodyInfo {
     rating: Preference,
     tag: String,
     scale_name: String,
-    melody: Melody
+    melody: Melody,
 }
 
 impl MelodyInfo {
@@ -207,7 +242,11 @@ impl MelodyInfo {
     }
 
     pub fn get_update(&self) -> GuiDatabaseUpdate {
-        GuiDatabaseUpdate {rowid: self.rowid, tag: self.tag.clone(), rating: self.rating}
+        GuiDatabaseUpdate {
+            rowid: self.rowid,
+            tag: self.tag.clone(),
+            rating: self.rating,
+        }
     }
 
     pub fn melody(&self) -> &Melody {
@@ -219,7 +258,7 @@ impl MelodyInfo {
 pub enum Preference {
     Favorite,
     Neutral,
-    Ignore
+    Ignore,
 }
 
 impl Display for Preference {
@@ -236,7 +275,7 @@ impl FromStr for Preference {
             "Favorite" => Ok(Preference::Favorite),
             "Neutral" => Ok(Preference::Neutral),
             "Ignore" => Ok(Preference::Ignore),
-            _ => bail!("No match for {s}")
+            _ => bail!("No match for {s}"),
         }
     }
 }

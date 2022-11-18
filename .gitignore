@@ -1,4 +1,8 @@
-.vscode
-target
-.gitignore
+/target
+Cargo.lock
 replayer_variations.db
+.idea
+.vscode
+leland/Leland.otf
+leland/LICENSE.txt
+leland/LelandText.otf
