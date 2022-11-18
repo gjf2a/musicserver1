@@ -3,7 +3,7 @@ use read_input::InputBuild;
 use std::collections::btree_map::BTreeMap;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use crate::analyzer::Melody;
@@ -155,6 +155,7 @@ pub fn send_recorded_melody(melody: &Melody, synth: SynthChoice, ai2output: Arc<
     for note in melody.iter() {
         let (midi, duration) = note.to_midi();
         ai2output.push(SynthOutputMsg {synth, midi});
-        std::thread::sleep(Duration::from_secs_f64(duration));
+        let start = Instant::now();
+        while start.elapsed().as_secs_f64() < duration {}
     }
 }
