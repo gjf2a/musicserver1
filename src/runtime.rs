@@ -7,15 +7,7 @@ use read_input::InputBuild;
 use std::collections::btree_map::BTreeMap;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
-<<<<<<< HEAD
-use std::time::{Duration, Instant};
-use crossbeam_queue::SegQueue;
-use crossbeam_utils::atomic::AtomicCell;
-use crate::analyzer::Melody;
-use crate::synth_output::SynthOutputMsg;
-=======
-use std::time::Duration;
->>>>>>> d9fd7df90655fee74cc563e9f3338c41cc6ec2eb
+use std::time::Instant;
 
 pub const SHOW_MIDI_MSG: bool = false;
 
