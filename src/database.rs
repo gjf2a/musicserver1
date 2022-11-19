@@ -218,11 +218,11 @@ impl MelodyInfo {
     }
 
     pub fn get_date(&self) -> NaiveDate {
-        Local.timestamp(self.timestamp, 0).date_naive()
+        Local.timestamp_opt(self.timestamp, 0).unwrap().date_naive()
     }
 
     pub fn get_time(&self) -> NaiveTime {
-        Local.timestamp(self.timestamp, 0).time()
+        Local.timestamp_opt(self.timestamp, 0).unwrap().time()
     }
 
     pub fn date_time_stamp(&self) -> String {
