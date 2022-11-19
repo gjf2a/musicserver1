@@ -33,6 +33,7 @@ pub fn start_ai_thread(
     ai2dbase: Arc<SegQueue<FromAiMsg>>,
     variation_controls: VariationControlSliders,
     replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
+    melody_progress: Arc<AtomicCell<Option<f32>>>,
 ) {
     std::thread::spawn(move || {
         let mut recorder = PlayerRecorder::new(
@@ -65,7 +66,12 @@ pub fn start_ai_thread(
                         melody,
                         variation: variation.clone(),
                     });
-                    send_recorded_melody(&variation, SynthChoice::Ai, ai2output.clone());
+                    send_recorded_melody(
+                        &variation,
+                        SynthChoice::Ai,
+                        ai2output.clone(),
+                        melody_progress.clone(),
+                    );
                 }
             }
         }

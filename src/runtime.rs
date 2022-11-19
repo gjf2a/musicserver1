@@ -164,11 +164,18 @@ pub fn send_recorded_melody(
     melody: &Melody,
     synth: SynthChoice,
     ai2output: Arc<SegQueue<SynthOutputMsg>>,
+    melody_progress: Arc<AtomicCell<Option<f32>>>,
 ) {
+    let total_start = Instant::now();
+    let total_duration = melody.duration() as f32;
     for note in melody.iter() {
         let (midi, duration) = note.to_midi();
         ai2output.push(SynthOutputMsg { synth, midi });
-        let start = Instant::now();
-        while start.elapsed().as_secs_f64() < duration {}
+        let note_start = Instant::now();
+        while note_start.elapsed().as_secs_f64() < duration {
+            let progress = Some(total_start.elapsed().as_secs_f32() / total_duration);
+            melody_progress.store(progress);
+        }
     }
+    melody_progress.store(None);
 }

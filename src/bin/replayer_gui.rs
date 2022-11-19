@@ -163,6 +163,7 @@ struct ReplayerApp {
     gui2dbase: Arc<SegQueue<GuiDatabaseUpdate>>,
     gui2ai: Arc<SegQueue<Melody>>,
     ai2output: Arc<SegQueue<SynthOutputMsg>>,
+    melody_progress: Arc<AtomicCell<Option<f32>>>,
 }
 
 const MIDDLE_C: MidiByte = 60;
@@ -239,6 +240,7 @@ impl ReplayerApp {
             gui2dbase: Arc::new(SegQueue::new()),
             gui2ai: Arc::new(SegQueue::new()),
             ai2output: Arc::new(SegQueue::new()),
+            melody_progress: Arc::new(AtomicCell::new(None)),
         };
         app.startup();
         Ok(app)
@@ -344,20 +346,12 @@ impl ReplayerApp {
         });
 
         if ui.button("Play Both").clicked() {
-            Self::play_melody_thread(
-                self.ai2output.clone(),
-                melody_info.melody().clone(),
-                SynthChoice::Human,
-            );
-            Self::play_melody_thread(
-                self.ai2output.clone(),
-                variation_info.melody().clone(),
-                SynthChoice::Ai,
-            );
+            self.play_melody_thread(melody_info.melody().clone(), SynthChoice::Human);
+            self.play_melody_thread(variation_info.melody().clone(), SynthChoice::Ai);
         }
         ui.vertical(|ui| {
-            Self::melody_buttons(self.ai2output.clone(), ui, &melody_info, SynthChoice::Human);
-            Self::melody_buttons(self.ai2output.clone(), ui, &variation_info, SynthChoice::Ai);
+            self.melody_buttons(ui, &melody_info, SynthChoice::Human);
+            self.melody_buttons(ui, &variation_info, SynthChoice::Ai);
         });
 
         if ui.button("Create New Variation").clicked() {
@@ -382,6 +376,7 @@ impl ReplayerApp {
                 (melody_info.melody(), Color32::BLACK),
                 (variation_info.melody(), Color32::RED),
             ],
+            self.melody_progress.clone(),
         );
     }
 
@@ -392,28 +387,21 @@ impl ReplayerApp {
         }
     }
 
-    fn melody_buttons(
-        ai2output: Arc<SegQueue<SynthOutputMsg>>,
-        ui: &mut Ui,
-        info: &MelodyInfo,
-        synth: SynthChoice,
-    ) {
+    fn melody_buttons(&self, ui: &mut Ui, info: &MelodyInfo, synth: SynthChoice) {
         ui.horizontal(|ui| {
             ui.label(info.date_time_stamp());
             ui.label(info.get_scale_name());
             if ui.button("Play").clicked() {
-                Self::play_melody_thread(ai2output, info.melody().clone(), synth);
+                self.play_melody_thread(info.melody().clone(), synth);
             }
         });
     }
 
-    fn play_melody_thread(
-        ai2output: Arc<SegQueue<SynthOutputMsg>>,
-        melody: Melody,
-        synth: SynthChoice,
-    ) {
+    fn play_melody_thread(&self, melody: Melody, synth: SynthChoice) {
+        let ai2output = self.ai2output.clone();
+        let melody_progress = self.melody_progress.clone();
         thread::spawn(move || {
-            send_recorded_melody(&melody, synth, ai2output);
+            send_recorded_melody(&melody, synth, ai2output, melody_progress);
         });
     }
 
@@ -556,6 +544,7 @@ impl ReplayerApp {
             ai2dbase.clone(),
             self.variation_controls.clone(),
             self.replay_delay_slider.clone(),
+            self.melody_progress.clone(),
         );
         start_input_thread(
             input2ai,
@@ -575,13 +564,24 @@ impl ReplayerApp {
         let dbase2gui = self.dbase2gui.clone();
         let variation_pref = self.variation_pref.clone();
         let melody_var_info = self.melody_var_info.clone();
-        thread::spawn(move || loop {
-            if let Some((player_info, variation_info)) = dbase2gui.pop() {
-                variation_pref.store(variation_info.rating());
-                let mut melody_var_info = melody_var_info.lock().unwrap();
-                melody_var_info.items.push((player_info, variation_info));
-                melody_var_info.go_to_end();
-                ctx.request_repaint();
+        let melody_progress = self.melody_progress.clone();
+        thread::spawn(move || {
+            let mut last_progress = None;
+            loop {
+                if let Some((player_info, variation_info)) = dbase2gui.pop() {
+                    variation_pref.store(variation_info.rating());
+                    let mut melody_var_info = melody_var_info.lock().unwrap();
+                    melody_var_info.items.push((player_info, variation_info));
+                    melody_var_info.go_to_end();
+                    ctx.request_repaint();
+                }
+                let current_progress = melody_progress.load();
+                if last_progress != current_progress {
+                    if let Some(_) = current_progress {
+                        ctx.request_repaint();
+                        last_progress = current_progress;
+                    }
+                }
             }
         });
     }
@@ -600,9 +600,11 @@ struct MelodyRenderer {
     scale: MusicMode,
     sig: KeySignature,
     x_range: RangeInclusive<f32>,
+    y_range: RangeInclusive<f32>,
     y_per_pitch: f32,
     y_middle_c: f32,
     hi: MidiByte,
+    melody_progress: Arc<AtomicCell<Option<f32>>>,
 }
 
 impl MelodyRenderer {
@@ -628,7 +630,12 @@ impl MelodyRenderer {
         self.min_x() + X_OFFSET + KEY_SIGNATURE_OFFSET + self.y_per_pitch * self.sig.len() as f32
     }
 
-    fn render(ui: &mut Ui, size: Vec2, melodies: &Vec<(&Melody, Color32)>) {
+    fn render(
+        ui: &mut Ui,
+        size: Vec2,
+        melodies: &Vec<(&Melody, Color32)>,
+        melody_progress: Arc<AtomicCell<Option<f32>>>,
+    ) {
         if melodies.len() > 0 {
             let (response, painter) = ui.allocate_painter(size, Sense::hover());
             let scale = melodies[0].0.best_scale_for();
@@ -643,10 +650,13 @@ impl MelodyRenderer {
                 scale,
                 y_per_pitch,
                 x_range: response.rect.min.x + BORDER_SIZE..=response.rect.max.x - BORDER_SIZE,
+                y_range: response.rect.min.y + BORDER_SIZE..=response.rect.max.y - BORDER_SIZE,
                 sig: scale.key_signature(),
                 y_middle_c: y_border
                     + y_per_pitch * scale.diatonic_steps_between_round_up(MIDDLE_C, hi) as f32,
+                melody_progress,
             };
+            renderer.draw_progress(&painter);
             renderer.draw_staff(
                 &painter,
                 Clef::Treble,
@@ -660,6 +670,28 @@ impl MelodyRenderer {
             for (melody, color) in melodies.iter().rev() {
                 renderer.draw_melody(&painter, melody, *color);
             }
+        }
+    }
+
+    fn draw_progress(&self, painter: &Painter) {
+        if let Some(progress) = self.melody_progress.load() {
+            let x = self.note_offset_x() + self.total_note_x() * progress;
+            painter.line_segment(
+                [
+                    Pos2 {
+                        x,
+                        y: *self.y_range.start(),
+                    },
+                    Pos2 {
+                        x,
+                        y: *self.y_range.end(),
+                    },
+                ],
+                Stroke {
+                    width: 5.0,
+                    color: Color32::GREEN,
+                },
+            );
         }
     }
 
