@@ -527,7 +527,7 @@ impl ReplayerApp {
         let mut database = None;
         mem::swap(&mut database, &mut self.database);
 
-        self.start_update_from_database_thread(ctx);
+        self.start_ui_listening_thread(ctx);
 
         start_output_thread(
             self.ai2output.clone(),
@@ -559,7 +559,7 @@ impl ReplayerApp {
         );
     }
 
-    fn start_update_from_database_thread(&self, ctx: &egui::Context) {
+    fn start_ui_listening_thread(&self, ctx: &egui::Context) {
         let ctx = ctx.clone();
         let dbase2gui = self.dbase2gui.clone();
         let variation_pref = self.variation_pref.clone();
@@ -711,6 +711,7 @@ impl MelodyRenderer {
                         auxiliary_symbol,
                         x + self.staff_line_space(),
                         y,
+                        color
                     );
                 }
             }
@@ -737,17 +738,18 @@ impl MelodyRenderer {
                 self.sig.symbol(),
                 self.min_x() + KEY_SIGNATURE_OFFSET + self.y_per_pitch * i as f32,
                 self.y_middle_c - *position as f32 * self.y_per_pitch,
+                Color32::BLACK,
             );
         }
     }
 
-    fn draw_accidental(&self, painter: &Painter, text: Accidental, x: f32, y: f32) {
+    fn draw_accidental(&self, painter: &Painter, text: Accidental, x: f32, y: f32, text_color: Color32) {
         painter.text(
             Pos2 { x, y },
             Align2::CENTER_CENTER,
             text.symbol(),
             ReplayerApp::font_id(ACCIDENTAL_SIZE_MULTIPLIER * self.y_per_pitch),
-            Color32::BLACK,
+            text_color,
         );
     }
 

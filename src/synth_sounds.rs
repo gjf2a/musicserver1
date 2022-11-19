@@ -15,11 +15,13 @@ macro_rules! moogify {
 }
 
 const ADSR1: (f64, f64, f64, f64) = (0.1, 0.2, 0.4, 0.2);
+const ADSR2: (f64, f64, f64, f64) = (0.0, 0.0, 1.0, 0.0);
 
 /// All sounds should have one input (the pitch and the ADSR control) and one output (the sound wave).
 /// The ADSR values should be supplied in order as well.
 pub fn make_synth_table() -> SynthTable {
     let synth_funcs: Vec<(&str, SynthType)> = vec![
+        ("80s Beep", (Box::new(triangle()), ADSR2)),
         ("Triangle", (Box::new(triangle()), ADSR1)),
         ("Pulse", (Box::new(sin_pulse()), ADSR1)),
         ("Triangle Moog", (Box::new(moogify!(triangle())), ADSR1)),
