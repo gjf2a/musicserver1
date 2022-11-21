@@ -175,6 +175,11 @@ const Y_OFFSET: f32 = BORDER_SIZE * 2.0;
 const X_OFFSET: f32 = BORDER_SIZE * 5.0;
 const ACCIDENTAL_SIZE_MULTIPLIER: f32 = 5.0;
 const KEY_SIGNATURE_OFFSET: f32 = 28.0;
+const NUM_STAFF_LINES: MidiByte = 5;
+const LINE_STROKE: Stroke = Stroke {
+    width: 1.0,
+    color: Color32::BLACK,
+};
 
 macro_rules! load_font {
     ($fonts:ident, $filename:literal) => {{
@@ -657,16 +662,10 @@ impl MelodyRenderer {
                 melody_progress,
             };
             renderer.draw_progress(&painter);
-            renderer.draw_staff(
-                &painter,
-                Clef::Treble,
-                y_border + y_per_pitch * renderer.space_above_staff(),
-            );
-            renderer.draw_staff(
-                &painter,
-                Clef::Bass,
-                renderer.y_middle_c + renderer.staff_line_space(),
-            );
+            let y_treble = y_border + y_per_pitch * renderer.space_above_staff();
+            renderer.draw_staff(&painter, Clef::Treble, y_treble);
+            let y_bass = renderer.y_middle_c + renderer.staff_line_space();
+            renderer.draw_staff(&painter, Clef::Bass, y_bass);
             for (melody, color) in melodies.iter().rev() {
                 renderer.draw_melody(&painter, melody, *color);
             }
@@ -676,17 +675,10 @@ impl MelodyRenderer {
     fn draw_progress(&self, painter: &Painter) {
         if let Some(progress) = self.melody_progress.load() {
             let x = self.note_offset_x() + self.total_note_x() * progress;
+            let y1 = *self.y_range.start();
+            let y2 = *self.y_range.end();
             painter.line_segment(
-                [
-                    Pos2 {
-                        x,
-                        y: *self.y_range.start(),
-                    },
-                    Pos2 {
-                        x,
-                        y: *self.y_range.end(),
-                    },
-                ],
+                [Pos2 { x, y: y1 }, Pos2 { x, y: y2 }],
                 Stroke {
                     width: 5.0,
                     color: Color32::GREEN,
@@ -706,14 +698,10 @@ impl MelodyRenderer {
                 let y = self.y_middle_c - staff_offset as f32 * self.y_per_pitch;
                 painter.circle_filled(Pos2 { x, y }, self.y_per_pitch, color);
                 if let Some(auxiliary_symbol) = auxiliary_symbol {
-                    self.draw_accidental(
-                        &painter,
-                        auxiliary_symbol,
-                        x + self.staff_line_space(),
-                        y,
-                        color
-                    );
+                    let x = x + self.staff_line_space();
+                    self.draw_accidental(&painter, auxiliary_symbol, x, y, color);
                 }
+                self.draw_extra_dashes(painter, x, staff_offset);
             }
         }
     }
@@ -721,29 +709,25 @@ impl MelodyRenderer {
     fn draw_staff(&self, painter: &Painter, clef: Clef, start_y: f32) {
         let mut y = start_y;
         clef.render(painter, self.min_x(), y, self.y_per_pitch);
-        for _ in 0..5 {
-            painter.hline(
-                self.x_range.clone(),
-                y,
-                Stroke {
-                    width: 1.0,
-                    color: Color32::BLACK,
-                },
-            );
+        for _ in 0..NUM_STAFF_LINES {
+            painter.hline(self.x_range.clone(), y, LINE_STROKE);
             y += self.staff_line_space();
         }
         for (i, position) in clef.key_signature_positions(&self.sig).iter().enumerate() {
-            self.draw_accidental(
-                painter,
-                self.sig.symbol(),
-                self.min_x() + KEY_SIGNATURE_OFFSET + self.y_per_pitch * i as f32,
-                self.y_middle_c - *position as f32 * self.y_per_pitch,
-                Color32::BLACK,
-            );
+            let x = self.min_x() + KEY_SIGNATURE_OFFSET + self.y_per_pitch * i as f32;
+            let y = self.y_middle_c - *position as f32 * self.y_per_pitch;
+            self.draw_accidental(painter, self.sig.symbol(), x, y, Color32::BLACK);
         }
     }
 
-    fn draw_accidental(&self, painter: &Painter, text: Accidental, x: f32, y: f32, text_color: Color32) {
+    fn draw_accidental(
+        &self,
+        painter: &Painter,
+        text: Accidental,
+        x: f32,
+        y: f32,
+        text_color: Color32,
+    ) {
         painter.text(
             Pos2 { x, y },
             Align2::CENTER_CENTER,
@@ -751,6 +735,29 @@ impl MelodyRenderer {
             ReplayerApp::font_id(ACCIDENTAL_SIZE_MULTIPLIER * self.y_per_pitch),
             text_color,
         );
+    }
+
+    fn draw_extra_dashes(&self, painter: &Painter, x: f32, staff_offset: MidiByte) {
+        let staff_extra_threshold = (NUM_STAFF_LINES + 1) * 2;
+        if staff_offset == 0 {
+            self.draw_extra_dash(painter, x, staff_offset);
+        } else if staff_offset >= staff_extra_threshold {
+            for offset in staff_extra_threshold..=staff_offset {
+                self.draw_extra_dash(painter, x, offset);
+            }
+        } else if staff_offset <= -staff_extra_threshold {
+            for offset in staff_offset..=-staff_extra_threshold {
+                self.draw_extra_dash(painter, x, offset);
+            }
+        }
+    }
+
+    fn draw_extra_dash(&self, painter: &Painter, x: f32, staff_offset: MidiByte) {
+        let x_offset = self.y_per_pitch * 1.5;
+        let x1 = x - x_offset;
+        let x2 = x + x_offset;
+        let y = self.y_middle_c - staff_offset as f32 * self.y_per_pitch;
+        painter.line_segment([Pos2 {x: x1, y}, Pos2 {x: x2, y}], LINE_STROKE);
     }
 
     fn min_max_staff(
