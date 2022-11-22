@@ -726,22 +726,6 @@ impl MelodyMaker {
             .collect()
     }
 
-    fn append_pitches_to(
-        notes: &mut Melody,
-        pitches: &VecDeque<MidiByte>,
-        i: usize,
-        match_len: usize,
-        original: &Melody,
-    ) {
-        let mut pitch = 0;
-        for m in 1..match_len {
-            if original[i + m].pitch != original[i + m - 1].pitch {
-                pitch += 1;
-            }
-            notes.add(original[i + m].repitched(pitches[pitch]));
-        }
-    }
-
     pub fn pick_figure(&self, figure: MelodicFigure) -> MelodicFigure {
         let figure_length = figure.len();
         let jump = figure.total_change();
@@ -797,6 +781,9 @@ impl MelodyMaker {
         let mut countdown = whimsifier.len();
         let mut i = original.len();
         while countdown > 0 {
+            if i == 0 {
+                return result;
+            }
             i -= 1;
             if !result[i].is_rest() {
                 countdown -= 1;
@@ -808,29 +795,6 @@ impl MelodyMaker {
             i -= 1;
             let pitch = if result[i].is_rest() {pitches[pitches.len() - 1]} else {pitches.pop_back().unwrap()};
             result[i] = result[i].repitched(pitch);
-        }
-        result
-    }
-
-    pub fn suffix_whimsified_melody(&self, original: &Melody, portion_to_replace: f64) -> Melody {
-        let prefix_size = max(
-            1,
-            ((1.0 - portion_to_replace) * original.len() as f64) as usize,
-        );
-        let mut result = original.fragment(0, prefix_size);
-        let start = result.len() - 1;
-        let scale = original.best_scale_for();
-        let distro = self.make_figure_distribution(original);
-        let mut i = start;
-        while i < original.len() {
-            let generator = distro.random_pick();
-            let pitches = generator.make_pitches(result.last_note().pitch, &scale);
-            if let Some(num_adds) = original.distinct_seq_len(i, generator.len()) {
-                Self::append_pitches_to(&mut result, &pitches, i, num_adds, original);
-                i += num_adds - 1;
-            } else {
-                break;
-            }
         }
         result
     }
