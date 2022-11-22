@@ -59,6 +59,12 @@ impl Database {
         connection.execute("CREATE TABLE IF NOT EXISTS melody_index (timestamp INTEGER, rating TEXT, tag TEXT, scale_name TEXT);")?;
         connection.execute("CREATE TABLE IF NOT EXISTS melody_variation (melody_row INTEGER, variation_row INTEGER);")?;
         connection.execute("CREATE TABLE IF NOT EXISTS melodies (row INTEGER, pitch INTEGER, duration FLOAT, velocity INTEGER);")?;
+        connection.execute("CREATE INDEX IF NOT EXISTS melody_rows ON melody_variation (melody_row)")?;
+        connection.execute("CREATE INDEX IF NOT EXISTS variation_rows ON melody_variation (variation_row)")?;
+        connection.execute("CREATE INDEX IF NOT EXISTS melodies_rows ON melodies (row)")?;
+        connection.execute("CREATE INDEX IF NOT EXISTS timestamps ON melody_index (timestamp)")?;
+        connection.execute("CREATE INDEX IF NOT EXISTS ratings ON melody_index (rating)")?;
+        connection.execute("CREATE INDEX IF NOT EXISTS tags ON melody_index (tag)")?;
         Ok(connection)
     }
 

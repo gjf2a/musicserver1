@@ -27,6 +27,7 @@ use std::cmp::{max, min};
 use std::ops::RangeInclusive;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use std::{mem, thread};
 
 fn main() -> anyhow::Result<()> {
@@ -219,7 +220,9 @@ impl ReplayerApp {
         let variation_controls = VariationControls::new();
         let replay_delay_slider = Arc::new(AtomicCell::new(replay_slider()));
         let mut database = Database::new();
+        let database_timer = Instant::now();
         let (melody_var_info, variation_pref) = Self::retrieve_melody_info(&mut database, Preference::Neutral, Preference::Favorite);
+        println!("Database load time: {}s", database_timer.elapsed().as_secs_f64());
 
         let app = ReplayerApp {
             midi_scenario: Arc::new(Mutex::new(MidiScenario::StartingUp)),
