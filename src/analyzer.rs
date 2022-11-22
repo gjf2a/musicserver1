@@ -790,19 +790,24 @@ impl MelodyMaker {
         MelodySection::from(&subs, &intervals, &consolidated)
     }
 
-    // TODO: Write a unit test to ensure that the returned melody is the correct length and (usually) different
-    // from the original.
     pub fn whimsified_ending(&self, original: &Melody) -> Melody {
         let distro = self.make_figure_distribution(original);
         let whimsifier = distro.random_pick();
-        let mut result = Melody::new();
-        let last_original = original.len() - whimsifier.len();
-        for i in 0..last_original {
-            result.add(original[i]);
+        let mut result = original.clone();
+        let mut countdown = whimsifier.len();
+        let mut i = original.len();
+        while countdown > 0 {
+            i -= 1;
+            if !result[i].is_rest() {
+                countdown -= 1;
+            }
         }
-        let pitches = whimsifier.make_pitches(result.last_note().pitch(), &original.best_scale_for());
-        for i in 0..pitches.len() {
-            result.add(original[i + last_original].repitched(pitches[i]));
+        let mut pitches = whimsifier.make_pitches(original[i].pitch(), &original.best_scale_for());
+        let mut i = original.len();
+        while pitches.len() > 0 {
+            i -= 1;
+            let pitch = if result[i].is_rest() {pitches[pitches.len() - 1]} else {pitches.pop_back().unwrap()};
+            result[i] = result[i].repitched(pitch);
         }
         result
     }
@@ -3653,7 +3658,7 @@ mod tests {
         for _ in 0..NUM_RANDOM_TESTS {
             let whimsified = maker.whimsified_ending(&melody);
             assert_eq!(melody.len(), whimsified.len());
-            assert!(melody.common_prefix_length(&whimsified) >= melody.len() - 4);
+            assert!(melody.common_prefix_length(&whimsified) >= melody.len() - 8);
             if melody != whimsified {
                 num_different += 1;
             }

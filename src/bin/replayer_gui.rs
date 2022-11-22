@@ -289,9 +289,6 @@ impl ReplayerApp {
             self.human_synth.update_choice();
             self.ai_synth.update_choice();
 
-            let mut whimsify = self.variation_controls.whimsify.load();
-            ui.checkbox(&mut whimsify, "Whimsify Suffix?");
-            self.variation_controls.whimsify.store(whimsify);
             Self::insert_slider(
                 ui,
                 self.variation_controls.p_random_slider.clone(),
@@ -312,6 +309,10 @@ impl ReplayerApp {
                 self.variation_controls.shortest_note_slider.clone(),
                 "Shortest Playable Note (seconds)",
             );
+            let mut whimsify = self.variation_controls.whimsify.load();
+            ui.checkbox(&mut whimsify, "Whimsify Suffix?");
+            self.variation_controls.whimsify.store(whimsify);
+
             let empty = {
                 let melody_var_info = self.melody_var_info.lock().unwrap();
                 melody_var_info.is_empty()
