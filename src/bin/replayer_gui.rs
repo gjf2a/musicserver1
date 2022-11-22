@@ -19,7 +19,7 @@ use musicserver1::database::{
 use musicserver1::midi_input::start_input_thread;
 use musicserver1::runtime::{
     replay_slider, send_recorded_melody, ChooserTable, SliderValue, SynthChoice,
-    VariationControlSliders,
+    VariationControls,
 };
 use musicserver1::synth_output::{start_output_thread, SynthOutputMsg, SynthType};
 use musicserver1::synth_sounds::make_synth_table;
@@ -152,11 +152,13 @@ struct ReplayerApp {
     ai_algorithm: TableInfo<Arc<AIFuncType>>,
     human_synth: TableInfo<SynthType>,
     ai_synth: TableInfo<SynthType>,
-    variation_controls: VariationControlSliders,
+    variation_controls: VariationControls,
     replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
     in_port: Option<MidiInputPort>,
     in_port_name: Option<String>,
     variation_pref: Arc<AtomicCell<Preference>>,
+    today_search_pref: Arc<AtomicCell<Preference>>,
+    older_search_pref: Arc<AtomicCell<Preference>>,
     melody_var_info: Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo)>>>,
     database: Option<Database>,
     dbase2gui: Arc<SegQueue<(MelodyInfo, MelodyInfo)>>,
@@ -164,6 +166,7 @@ struct ReplayerApp {
     gui2ai: Arc<SegQueue<Melody>>,
     ai2output: Arc<SegQueue<SynthOutputMsg>>,
     melody_progress: Arc<AtomicCell<Option<f32>>>,
+    adjust_search_preferences: bool
 }
 
 const MIDDLE_C: MidiByte = 60;
@@ -213,20 +216,10 @@ impl ReplayerApp {
         let ai_algorithm = TableInfo::new(make_ai_table());
         let human_synth = TableInfo::new(make_synth_table());
         let ai_synth = TableInfo::new(make_synth_table());
-        let variation_controls = VariationControlSliders::new();
+        let variation_controls = VariationControls::new();
         let replay_delay_slider = Arc::new(AtomicCell::new(replay_slider()));
         let mut database = Database::new();
-        let (melody_var_info, variation_pref) = {
-            let mut melody_var_info = VecTracker::new(database.get_melody_pairs().unwrap());
-            melody_var_info.go_to_end();
-            let variation_pref = melody_var_info
-                .get()
-                .map_or(Preference::Neutral, |(_, v)| v.rating());
-            (
-                Arc::new(Mutex::new(melody_var_info)),
-                Arc::new(AtomicCell::new(variation_pref)),
-            )
-        };
+        let (melody_var_info, variation_pref) = Self::retrieve_melody_info(&mut database, Preference::Neutral, Preference::Favorite);
 
         let app = ReplayerApp {
             midi_scenario: Arc::new(Mutex::new(MidiScenario::StartingUp)),
@@ -239,6 +232,8 @@ impl ReplayerApp {
             in_port: None,
             in_port_name: None,
             variation_pref,
+            today_search_pref: Arc::new(AtomicCell::new(Preference::Neutral)),
+            older_search_pref: Arc::new(AtomicCell::new(Preference::Favorite)),
             melody_var_info,
             database: Some(database),
             dbase2gui: Arc::new(SegQueue::new()),
@@ -246,9 +241,22 @@ impl ReplayerApp {
             gui2ai: Arc::new(SegQueue::new()),
             ai2output: Arc::new(SegQueue::new()),
             melody_progress: Arc::new(AtomicCell::new(None)),
+            adjust_search_preferences: false
         };
         app.startup();
         Ok(app)
+    }
+
+    fn retrieve_melody_info(database: &mut Database, min_today_pref: Preference, min_older_pref: Preference) -> (Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo)>>>,Arc<AtomicCell<Preference>>) {
+        let mut melody_var_info = VecTracker::new(database.get_melody_pairs(min_today_pref, min_older_pref).unwrap());
+        melody_var_info.go_to_end();
+        let variation_pref = melody_var_info
+            .get()
+            .map_or(Preference::Neutral, |(_, v)| v.rating());
+        (
+            Arc::new(Mutex::new(melody_var_info)),
+            Arc::new(AtomicCell::new(variation_pref)),
+        )
     }
 
     fn main_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -281,11 +289,9 @@ impl ReplayerApp {
             self.human_synth.update_choice();
             self.ai_synth.update_choice();
 
-            Self::insert_slider(
-                ui,
-                self.variation_controls.whimsification_slider.clone(),
-                "Portion of Suffix to Whimsify",
-            );
+            let mut whimsify = self.variation_controls.whimsify.load();
+            ui.checkbox(&mut whimsify, "Whimsify Suffix?");
+            self.variation_controls.whimsify.store(whimsify);
             Self::insert_slider(
                 ui,
                 self.variation_controls.p_random_slider.clone(),
@@ -312,7 +318,15 @@ impl ReplayerApp {
             };
 
             if !empty {
-                self.display_melody_info(ui);
+                ui.checkbox(&mut self.adjust_search_preferences, "Set Search Preferences");
+                if self.adjust_search_preferences {
+                    ui.label("Minimum Preference for Today");
+                    Self::preference_buttons(ui, self.today_search_pref.clone());
+                    ui.label("Minimum Preference for Previous Days");
+                    Self::preference_buttons(ui, self.older_search_pref.clone());
+                } else {
+                    self.display_melody_info(ui);
+                }
             }
         });
     }

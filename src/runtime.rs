@@ -78,19 +78,19 @@ macro_rules! arc_vec {
 }
 
 #[derive(Clone)]
-pub struct VariationControlSliders {
+pub struct VariationControls {
     pub p_random_slider: Arc<AtomicCell<SliderValue<f64>>>,
     pub p_ornament_slider: Arc<AtomicCell<SliderValue<f64>>>,
-    pub whimsification_slider: Arc<AtomicCell<SliderValue<f64>>>,
+    pub whimsify: Arc<AtomicCell<bool>>,
     pub shortest_note_slider: Arc<AtomicCell<SliderValue<f64>>>,
 }
 
-impl VariationControlSliders {
+impl VariationControls {
     pub fn new() -> Self {
         Self {
             p_random_slider: Arc::new(AtomicCell::new(prob_slider(0.8))),
             p_ornament_slider: Arc::new(AtomicCell::new(prob_slider(0.2))),
-            whimsification_slider: Arc::new(AtomicCell::new(prob_slider(0.0))),
+            whimsify: Arc::new(AtomicCell::new(false)),
             shortest_note_slider: Arc::new(AtomicCell::new(SliderValue::new(0.1, 0.0, 0.2))),
         }
     }

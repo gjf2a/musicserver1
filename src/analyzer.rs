@@ -281,6 +281,18 @@ impl Melody {
         pitch_changes
     }
 
+    pub fn common_prefix_length(&self, other: &Melody) -> usize {
+        let mut count = 0;
+        for i in 0..min(self.len(), other.len()) {
+            if self[i] == other[i] {
+                count += 1;
+            } else {
+                return count;
+            }
+        }
+        count
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &Note> {
         self.notes.iter()
     }
@@ -776,6 +788,23 @@ impl MelodyMaker {
             Self::MIN_MOTIVE_LEN,
         );
         MelodySection::from(&subs, &intervals, &consolidated)
+    }
+
+    // TODO: Write a unit test to ensure that the returned melody is the correct length and (usually) different
+    // from the original.
+    pub fn whimsified_ending(&self, original: &Melody) -> Melody {
+        let distro = self.make_figure_distribution(original);
+        let whimsifier = distro.random_pick();
+        let mut result = Melody::new();
+        let last_original = original.len() - whimsifier.len();
+        for i in 0..last_original {
+            result.add(original[i]);
+        }
+        let pitches = whimsifier.make_pitches(result.last_note().pitch(), &original.best_scale_for());
+        for i in 0..pitches.len() {
+            result.add(original[i + last_original].repitched(pitches[i]));
+        }
+        result
     }
 
     pub fn suffix_whimsified_melody(&self, original: &Melody, portion_to_replace: f64) -> Melody {
@@ -3611,5 +3640,24 @@ mod tests {
             }
             println!("{ornaments} ({})", melody.len());
         }
+    }
+
+    #[test]
+    fn test_whimsified_ending() {
+        let maker = MelodyMaker::new();
+        let mut melody = Melody::new();
+        for (pitch, duration, velocity) in LEAN_ON_ME.iter().copied() {
+            melody.add(Note::new(pitch, duration, velocity));
+        }
+        let mut num_different = 0;
+        for _ in 0..NUM_RANDOM_TESTS {
+            let whimsified = maker.whimsified_ending(&melody);
+            assert_eq!(melody.len(), whimsified.len());
+            assert!(melody.common_prefix_length(&whimsified) >= melody.len() - 4);
+            if melody != whimsified {
+                num_different += 1;
+            }
+        }
+        assert!(num_different >= NUM_RANDOM_TESTS - 1);
     }
 }

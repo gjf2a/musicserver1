@@ -3,7 +3,7 @@ use anyhow::bail;
 use chrono::{Local, NaiveDate, NaiveTime, TimeZone, Utc};
 use crossbeam_queue::SegQueue;
 use enum_iterator::Sequence;
-use sqlite::{Connection, State};
+use sqlite::{Connection, State, Statement};
 use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::{
@@ -69,22 +69,36 @@ impl Database {
         }
     }
 
-    pub fn get_melody_pairs(&mut self) -> anyhow::Result<Vec<(MelodyInfo, MelodyInfo)>> {
+    pub fn one_day_ago() -> i64 {
+        Local::now().timestamp() - (24 * 60 * 60)
+    }
+
+    pub fn get_melody_pairs(&mut self, min_today_pref: Preference, min_older_pref: Preference) -> anyhow::Result<Vec<(MelodyInfo, MelodyInfo)>> {
         let mut result = vec![];
         let connection = self.get_connection()?;
-        let mut statement =
+        let statement =
             connection.prepare("SELECT melody_row, variation_row FROM melody_variation")?;
+        self.read_from_statement(statement, &connection, &mut result)?;
+        Ok(result)
+    }
+
+    /*fn melody_pair_statement(connection: &Connection, is_today: bool, min_pref: Preference) -> anyhow::Result<Statement> {
+        let mut template = String::from("SELECT melody_row, variation_row FROM melody_variation WHERE ");
+
+    }*/
+
+    fn read_from_statement(&mut self, mut statement: Statement, connection: &Connection, output: &mut Vec<(MelodyInfo, MelodyInfo)>) -> anyhow::Result<()> {
         while let State::Row = statement.next().unwrap() {
             let melody_row = statement.read::<i64, usize>(0)?;
             let variation_row = statement.read::<i64, usize>(1)?;
             let melody = self.melody(&connection, melody_row)?;
             let variation = self.melody(&connection, variation_row)?;
-            result.push((
+            output.push((
                 Self::info_for(&connection, melody_row, melody)?,
                 Self::info_for(&connection, variation_row, variation)?,
             ));
         }
-        Ok(result)
+        Ok(())
     }
 
     fn info_for(connection: &Connection, rowid: i64, melody: Melody) -> anyhow::Result<MelodyInfo> {
@@ -259,6 +273,16 @@ pub enum Preference {
     Favorite,
     Neutral,
     Ignore,
+}
+
+impl Preference {
+    pub fn equal_or_greater(&self) -> Vec<Preference> {
+        match self {
+            Preference::Favorite => vec![Self::Favorite],
+            Preference::Neutral => vec![Self::Favorite, Self::Neutral],
+            Preference::Ignore => vec![Self::Favorite, Self::Neutral, Self::Ignore],
+        }
+    }
 }
 
 impl Display for Preference {

@@ -1,7 +1,7 @@
 use crate::analyzer::{Melody, MelodyMaker, PendingNote};
 use crate::database::FromAiMsg;
 use crate::runtime::{
-    send_recorded_melody, ChooserTable, SliderValue, SynthChoice, VariationControlSliders,
+    send_recorded_melody, ChooserTable, SliderValue, SynthChoice, VariationControls,
 };
 use crate::synth_output::SynthOutputMsg;
 use crate::{analyzer, arc_vec};
@@ -31,7 +31,7 @@ pub fn start_ai_thread(
     gui2ai: Arc<SegQueue<Melody>>,
     ai2output: Arc<SegQueue<SynthOutputMsg>>,
     ai2dbase: Arc<SegQueue<FromAiMsg>>,
-    variation_controls: VariationControlSliders,
+    variation_controls: VariationControls,
     replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
     melody_progress: Arc<AtomicCell<Option<f32>>>,
 ) {
@@ -166,12 +166,12 @@ impl PlayerRecorder {
 
 struct Performer {
     maker: MelodyMaker,
-    variation_controls: VariationControlSliders,
+    variation_controls: VariationControls,
     ai_table: Arc<Mutex<AITable>>,
 }
 
 impl Performer {
-    fn new(variation_controls: VariationControlSliders, ai_table: Arc<Mutex<AITable>>) -> Self {
+    fn new(variation_controls: VariationControls, ai_table: Arc<Mutex<AITable>>) -> Self {
         Performer {
             maker: MelodyMaker::new(),
             variation_controls,
@@ -186,16 +186,14 @@ impl Performer {
     fn create_variation(&self, melody: &Melody) -> Melody {
         let p_random = Self::from_slider(&self.variation_controls.p_random_slider);
         let p_ornament = Self::from_slider(&self.variation_controls.p_ornament_slider);
-        let whimsification = Self::from_slider(&self.variation_controls.whimsification_slider);
+        let whimsify = self.variation_controls.whimsify.load();
         let var_func = {
             let ai_table = self.ai_table.lock().unwrap();
             ai_table.current_choice()
         };
         let mut variation = var_func(&self.maker, &melody, p_random);
-        if variation.len() > 0 && whimsification > 0.0 {
-            variation = self
-                .maker
-                .suffix_whimsified_melody(&variation, whimsification);
+        if variation.len() > 0 && whimsify {
+            variation = self.maker.whimsified_ending(&variation);
         }
         self.maker.ornamented(&variation, p_ornament)
     }
