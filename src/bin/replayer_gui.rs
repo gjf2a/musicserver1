@@ -364,6 +364,8 @@ impl ReplayerApp {
                     .1
                     .set_rating(self.variation_pref.load());
                 self.gui2dbase
+                    .push(melody_var_info.get().cloned().unwrap().0.get_update());
+                self.gui2dbase
                     .push(melody_var_info.get().cloned().unwrap().1.get_update());
             }
         });

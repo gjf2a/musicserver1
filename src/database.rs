@@ -85,12 +85,12 @@ impl Database {
         let melody_ids = Self::get_melody_ids(&connection, min_today_pref, min_older_pref)?;
         for melody_id in melody_ids {
             let melody = self.melody(&connection, melody_id)?;
+            let mut melody_info = Self::info_for(&connection, melody_id, melody)?;
             let variation_id = Self::variation_for(&connection, melody_id)?;
             let variation = self.melody(&connection, variation_id)?;
-            result.push((
-                Self::info_for(&connection, melody_id, melody)?,
-                Self::info_for(&connection, variation_id, variation)?,
-            ));
+            let variation_info = Self::info_for(&connection, variation_id, variation)?;
+            melody_info.rating = variation_info.rating;
+            result.push((melody_info, variation_info));
         }
         Ok(result)
     }
@@ -98,14 +98,14 @@ impl Database {
     fn get_melody_ids(connection: &Connection, min_today_pref: Preference, min_older_pref: Preference) -> anyhow::Result<Vec<i64>> {
         let mut result = vec![];
         let cutoff = Self::one_day_ago();
+        Self::add_melody_ids(connection, "<=", cutoff, min_older_pref, &mut result)?;
         Self::add_melody_ids(connection, ">", cutoff, min_today_pref, &mut result)?;
-        Self::add_melody_ids(connection, ">=", cutoff, min_older_pref, &mut result)?;
         Ok(result)
     }
 
     fn add_melody_ids(connection: &Connection, comparison: &str, cutoff: i64, min_pref: Preference, result: &mut Vec<i64>) -> anyhow::Result<()> {
         let template = String::from("SELECT melody_row FROM melody_variation INNER JOIN melody_index ON melody_variation.melody_row = melody_index.rowid");
-        let statement_str = format!("{template} WHERE timestamp {comparison} ? and {}", min_pref.sql_choice_str());
+        let statement_str = format!("{template} WHERE timestamp {comparison} ? AND {}", min_pref.sql_choice_str());
         let mut statement = connection.prepare(statement_str)?;
         statement.bind((1, cutoff))?;
         while let State::Row = statement.next()? {
@@ -301,7 +301,7 @@ impl Preference {
     pub fn sql_choice_str(&self) -> &'static str {
         match self {
             Preference::Favorite => "rating = 'Favorite'",
-            Preference::Neutral => "rating <> 'Ignore'",
+            Preference::Neutral => "(rating = 'Favorite' OR rating = 'Neutral')",
             Preference::Ignore => "rating LIKE '%'",
         }
     }
