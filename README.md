@@ -16,9 +16,18 @@ perform a response.
 This program is very much a work in progress. Contributions are welcome - see the 
 [Issues page](https://github.com/gjf2a/musicserver1/issues) for ideas. 
 
-At some point, I plan to change the name - this originated as a 
-[TCP server](https://github.com/gjf2a/musicserver1/blob/master/src/bin/musicserver1.rs) for use with Sonic Pi, until I decided
+At some point, I plan to change the name - this originated as a TCP server for use with Sonic Pi, until I decided
 I preferred a standalone program. 
+
+## Compiling
+
+To compile and execute the program, run the following at the command line:
+
+```
+cargo run --bin replayer_gui --release
+```
+
+The `--release` is very important - sound quality often suffers if compiler optimizations aren't enabled.
 
 ## License
 

@@ -3,7 +3,7 @@ use anyhow::bail;
 use chrono::{Local, NaiveDate, NaiveTime, TimeZone, Utc};
 use crossbeam_queue::SegQueue;
 use enum_iterator::Sequence;
-use sqlite::{Connection, State, Statement};
+use sqlite::{Connection, State};
 use std::collections::BTreeMap;
 use std::str::FromStr;
 use std::{
@@ -82,29 +82,45 @@ impl Database {
     pub fn get_melody_pairs(&mut self, min_today_pref: Preference, min_older_pref: Preference) -> anyhow::Result<Vec<(MelodyInfo, MelodyInfo)>> {
         let mut result = vec![];
         let connection = self.get_connection()?;
-        let statement =
-            connection.prepare("SELECT melody_row, variation_row FROM melody_variation")?;
-        self.read_from_statement(statement, &connection, &mut result)?;
+        let melody_ids = Self::get_melody_ids(&connection, min_today_pref, min_older_pref)?;
+        for melody_id in melody_ids {
+            let melody = self.melody(&connection, melody_id)?;
+            let variation_id = Self::variation_for(&connection, melody_id)?;
+            let variation = self.melody(&connection, variation_id)?;
+            result.push((
+                Self::info_for(&connection, melody_id, melody)?,
+                Self::info_for(&connection, variation_id, variation)?,
+            ));
+        }
         Ok(result)
     }
 
-    /*fn melody_pair_statement(connection: &Connection, is_today: bool, min_pref: Preference) -> anyhow::Result<Statement> {
-        let mut template = String::from("SELECT melody_row, variation_row FROM melody_variation WHERE ");
+    fn get_melody_ids(connection: &Connection, min_today_pref: Preference, min_older_pref: Preference) -> anyhow::Result<Vec<i64>> {
+        let mut result = vec![];
+        let cutoff = Self::one_day_ago();
+        Self::add_melody_ids(connection, ">", cutoff, min_today_pref, &mut result)?;
+        Self::add_melody_ids(connection, ">=", cutoff, min_older_pref, &mut result)?;
+        Ok(result)
+    }
 
-    }*/
-
-    fn read_from_statement(&mut self, mut statement: Statement, connection: &Connection, output: &mut Vec<(MelodyInfo, MelodyInfo)>) -> anyhow::Result<()> {
-        while let State::Row = statement.next().unwrap() {
-            let melody_row = statement.read::<i64, usize>(0)?;
-            let variation_row = statement.read::<i64, usize>(1)?;
-            let melody = self.melody(&connection, melody_row)?;
-            let variation = self.melody(&connection, variation_row)?;
-            output.push((
-                Self::info_for(&connection, melody_row, melody)?,
-                Self::info_for(&connection, variation_row, variation)?,
-            ));
+    fn add_melody_ids(connection: &Connection, comparison: &str, cutoff: i64, min_pref: Preference, result: &mut Vec<i64>) -> anyhow::Result<()> {
+        let template = String::from("SELECT melody_row FROM melody_variation INNER JOIN melody_index ON melody_variation.melody_row = melody_index.rowid");
+        let statement_str = format!("{template} WHERE timestamp {comparison} ? and {}", min_pref.sql_choice_str());
+        let mut statement = connection.prepare(statement_str)?;
+        statement.bind((1, cutoff))?;
+        while let State::Row = statement.next()? {
+            result.push(statement.read::<i64, usize>(0)?);
         }
         Ok(())
+    }
+
+    fn variation_for(connection: &Connection, melody_id: i64) -> anyhow::Result<i64> {
+        let mut statement = connection.prepare("SELECT variation_row FROM melody_variation WHERE melody_row = ?")?;
+        statement.bind((1, melody_id))?;
+        match statement.next()? {
+            State::Row => Ok(statement.read::<i64, usize>(0)?),
+            State::Done => bail!("No matching variation for {}", melody_id),
+        }
     }
 
     fn info_for(connection: &Connection, rowid: i64, melody: Melody) -> anyhow::Result<MelodyInfo> {
@@ -282,11 +298,11 @@ pub enum Preference {
 }
 
 impl Preference {
-    pub fn equal_or_greater(&self) -> Vec<Preference> {
+    pub fn sql_choice_str(&self) -> &'static str {
         match self {
-            Preference::Favorite => vec![Self::Favorite],
-            Preference::Neutral => vec![Self::Favorite, Self::Neutral],
-            Preference::Ignore => vec![Self::Favorite, Self::Neutral, Self::Ignore],
+            Preference::Favorite => "rating = 'Favorite'",
+            Preference::Neutral => "rating <> 'Ignore'",
+            Preference::Ignore => "rating LIKE '%'",
         }
     }
 }
