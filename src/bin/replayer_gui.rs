@@ -75,7 +75,7 @@ impl<T: Clone> VecTracker<T> {
     }
 
     pub fn get(&self) -> Option<&T> {
-        self.items.get(self.tracker.unwrap().a())
+        self.tracker.and_then(|t| self.items.get(t.a()))
     }
 
     pub fn get_mut(&mut self) -> Option<&mut T> {
