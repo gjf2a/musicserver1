@@ -595,8 +595,7 @@ impl ReplayerApp {
         }
         let input2ai = Arc::new(SegQueue::new());
         let ai2dbase = Arc::new(SegQueue::new());
-        let mut database = None;
-        mem::swap(&mut database, &mut self.database);
+        let database = self.database.take();
 
         self.start_ui_listening_thread(ctx);
 
