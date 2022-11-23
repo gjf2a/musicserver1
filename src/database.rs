@@ -19,13 +19,23 @@ pub struct FromAiMsg {
 
 #[derive(Clone, Debug)]
 pub enum GuiDatabaseUpdate {
-    Info {rowid: i64, tag: String, rating: Preference},
-    RefreshAll {min_today_pref: Preference, min_older_pref: Preference},
+    Info {
+        rowid: i64,
+        tag: String,
+        rating: Preference,
+    },
+    RefreshAll {
+        min_today_pref: Preference,
+        min_older_pref: Preference,
+    },
 }
 
 #[derive(Clone, Debug)]
 pub enum DatabaseGuiUpdate {
-    Info {melody: MelodyInfo, variation: MelodyInfo},
+    Info {
+        melody: MelodyInfo,
+        variation: MelodyInfo,
+    },
     AllPairs(Vec<(MelodyInfo, MelodyInfo)>),
 }
 
@@ -38,9 +48,16 @@ pub fn start_database_thread(
     std::thread::spawn(move || loop {
         if let Some(info) = gui2dbase.pop() {
             match info {
-                GuiDatabaseUpdate::Info { rowid, tag, rating } => database.update_info(rowid, tag.as_str(), rating).unwrap(),
-                GuiDatabaseUpdate::RefreshAll {min_today_pref, min_older_pref} => {
-                    let pairs = database.get_melody_pairs(min_today_pref, min_older_pref).unwrap();
+                GuiDatabaseUpdate::Info { rowid, tag, rating } => {
+                    database.update_info(rowid, tag.as_str(), rating).unwrap()
+                }
+                GuiDatabaseUpdate::RefreshAll {
+                    min_today_pref,
+                    min_older_pref,
+                } => {
+                    let pairs = database
+                        .get_melody_pairs(min_today_pref, min_older_pref)
+                        .unwrap();
                     dbase2gui.push(DatabaseGuiUpdate::AllPairs(pairs));
                 }
             }
@@ -50,7 +67,10 @@ pub fn start_database_thread(
             let info = database
                 .add_melody_and_variation(&msg.melody, &msg.variation)
                 .unwrap();
-            dbase2gui.push(DatabaseGuiUpdate::Info {melody: info.0, variation: info.1});
+            dbase2gui.push(DatabaseGuiUpdate::Info {
+                melody: info.0,
+                variation: info.1,
+            });
         }
     });
 }
@@ -70,8 +90,11 @@ impl Database {
         connection.execute("CREATE TABLE IF NOT EXISTS melody_index (timestamp INTEGER, rating TEXT, tag TEXT, scale_name TEXT);")?;
         connection.execute("CREATE TABLE IF NOT EXISTS melody_variation (melody_row INTEGER, variation_row INTEGER);")?;
         connection.execute("CREATE TABLE IF NOT EXISTS melodies (row INTEGER, pitch INTEGER, duration FLOAT, velocity INTEGER);")?;
-        connection.execute("CREATE INDEX IF NOT EXISTS melody_rows ON melody_variation (melody_row)")?;
-        connection.execute("CREATE INDEX IF NOT EXISTS variation_rows ON melody_variation (variation_row)")?;
+        connection
+            .execute("CREATE INDEX IF NOT EXISTS melody_rows ON melody_variation (melody_row)")?;
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS variation_rows ON melody_variation (variation_row)",
+        )?;
         connection.execute("CREATE INDEX IF NOT EXISTS melodies_rows ON melodies (row)")?;
         connection.execute("CREATE INDEX IF NOT EXISTS timestamps ON melody_index (timestamp)")?;
         connection.execute("CREATE INDEX IF NOT EXISTS ratings ON melody_index (rating)")?;
@@ -94,7 +117,11 @@ impl Database {
         timestamp > Self::one_day_ago()
     }
 
-    pub fn get_melody_pairs(&mut self, min_today_pref: Preference, min_older_pref: Preference) -> anyhow::Result<Vec<(MelodyInfo, MelodyInfo)>> {
+    pub fn get_melody_pairs(
+        &mut self,
+        min_today_pref: Preference,
+        min_older_pref: Preference,
+    ) -> anyhow::Result<Vec<(MelodyInfo, MelodyInfo)>> {
         let mut result = vec![];
         let connection = self.get_connection()?;
         let melody_ids = Self::get_melody_ids(&connection, min_today_pref, min_older_pref)?;
@@ -110,7 +137,11 @@ impl Database {
         Ok(result)
     }
 
-    fn get_melody_ids(connection: &Connection, min_today_pref: Preference, min_older_pref: Preference) -> anyhow::Result<Vec<i64>> {
+    fn get_melody_ids(
+        connection: &Connection,
+        min_today_pref: Preference,
+        min_older_pref: Preference,
+    ) -> anyhow::Result<Vec<i64>> {
         let mut result = vec![];
         let cutoff = Self::one_day_ago();
         Self::add_melody_ids(connection, "<=", cutoff, min_older_pref, &mut result)?;
@@ -118,9 +149,18 @@ impl Database {
         Ok(result)
     }
 
-    fn add_melody_ids(connection: &Connection, comparison: &str, cutoff: i64, min_pref: Preference, result: &mut Vec<i64>) -> anyhow::Result<()> {
+    fn add_melody_ids(
+        connection: &Connection,
+        comparison: &str,
+        cutoff: i64,
+        min_pref: Preference,
+        result: &mut Vec<i64>,
+    ) -> anyhow::Result<()> {
         let template = String::from("SELECT melody_row FROM melody_variation INNER JOIN melody_index ON melody_variation.melody_row = melody_index.rowid");
-        let statement_str = format!("{template} WHERE timestamp {comparison} ? AND {}", min_pref.sql_choice_str());
+        let statement_str = format!(
+            "{template} WHERE timestamp {comparison} ? AND {}",
+            min_pref.sql_choice_str()
+        );
         let mut statement = connection.prepare(statement_str)?;
         statement.bind((1, cutoff))?;
         while let State::Row = statement.next()? {
@@ -130,7 +170,8 @@ impl Database {
     }
 
     fn variation_for(connection: &Connection, melody_id: i64) -> anyhow::Result<i64> {
-        let mut statement = connection.prepare("SELECT variation_row FROM melody_variation WHERE melody_row = ?")?;
+        let mut statement = connection
+            .prepare("SELECT variation_row FROM melody_variation WHERE melody_row = ?")?;
         statement.bind((1, melody_id))?;
         match statement.next()? {
             State::Row => Ok(statement.read::<i64, usize>(0)?),
@@ -297,7 +338,7 @@ impl MelodyInfo {
     }
 
     pub fn update(&self) -> GuiDatabaseUpdate {
-        GuiDatabaseUpdate::Info { 
+        GuiDatabaseUpdate::Info {
             rowid: self.rowid,
             tag: self.tag.clone(),
             rating: self.rating,

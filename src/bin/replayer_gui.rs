@@ -14,12 +14,11 @@ use musicserver1::ai_variation::{
 };
 use musicserver1::analyzer::{Accidental, KeySignature, Melody, MidiByte, MusicMode};
 use musicserver1::database::{
-    start_database_thread, Database, GuiDatabaseUpdate, MelodyInfo, Preference, DatabaseGuiUpdate,
+    start_database_thread, Database, DatabaseGuiUpdate, GuiDatabaseUpdate, MelodyInfo, Preference,
 };
 use musicserver1::midi_input::start_input_thread;
 use musicserver1::runtime::{
-    replay_slider, send_recorded_melody, ChooserTable, SliderValue, SynthChoice,
-    VariationControls,
+    replay_slider, send_recorded_melody, ChooserTable, SliderValue, SynthChoice, VariationControls,
 };
 use musicserver1::synth_output::{start_output_thread, SynthOutputMsg, SynthType};
 use musicserver1::synth_sounds::make_synth_table;
@@ -171,7 +170,7 @@ struct ReplayerApp {
     gui2ai: Arc<SegQueue<Melody>>,
     ai2output: Arc<SegQueue<SynthOutputMsg>>,
     melody_progress: Arc<AtomicCell<Option<f32>>>,
-    adjust_search_preferences: bool
+    adjust_search_preferences: bool,
 }
 
 const MIDDLE_C: MidiByte = 60;
@@ -225,8 +224,12 @@ impl ReplayerApp {
         let replay_delay_slider = Arc::new(AtomicCell::new(replay_slider()));
         let mut database = Database::new();
         let database_timer = Instant::now();
-        let (melody_var_info, variation_pref) = Self::wrapped_melody_info(&mut database, Preference::Neutral, Preference::Favorite);
-        println!("Database load time: {}s", database_timer.elapsed().as_secs_f64());
+        let (melody_var_info, variation_pref) =
+            Self::wrapped_melody_info(&mut database, Preference::Neutral, Preference::Favorite);
+        println!(
+            "Database load time: {}s",
+            database_timer.elapsed().as_secs_f64()
+        );
 
         let app = ReplayerApp {
             midi_scenario: Arc::new(Mutex::new(MidiScenario::StartingUp)),
@@ -248,19 +251,38 @@ impl ReplayerApp {
             gui2ai: Arc::new(SegQueue::new()),
             ai2output: Arc::new(SegQueue::new()),
             melody_progress: Arc::new(AtomicCell::new(None)),
-            adjust_search_preferences: false
+            adjust_search_preferences: false,
         };
         app.startup();
         Ok(app)
     }
 
-    fn wrapped_melody_info(database: &mut Database, min_today_pref: Preference, min_older_pref: Preference) -> (Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo)>>>,Arc<AtomicCell<Preference>>) {
-        let (melody_var_info, variation_pref) = Self::retrieve_melody_info(database, min_today_pref, min_older_pref);
-        (Arc::new(Mutex::new(melody_var_info)), Arc::new(AtomicCell::new(variation_pref)))
+    fn wrapped_melody_info(
+        database: &mut Database,
+        min_today_pref: Preference,
+        min_older_pref: Preference,
+    ) -> (
+        Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo)>>>,
+        Arc<AtomicCell<Preference>>,
+    ) {
+        let (melody_var_info, variation_pref) =
+            Self::retrieve_melody_info(database, min_today_pref, min_older_pref);
+        (
+            Arc::new(Mutex::new(melody_var_info)),
+            Arc::new(AtomicCell::new(variation_pref)),
+        )
     }
 
-    fn retrieve_melody_info(database: &mut Database, min_today_pref: Preference, min_older_pref: Preference) -> (VecTracker<(MelodyInfo, MelodyInfo)>,Preference) {
-        let mut melody_var_info = VecTracker::new(database.get_melody_pairs(min_today_pref, min_older_pref).unwrap());
+    fn retrieve_melody_info(
+        database: &mut Database,
+        min_today_pref: Preference,
+        min_older_pref: Preference,
+    ) -> (VecTracker<(MelodyInfo, MelodyInfo)>, Preference) {
+        let mut melody_var_info = VecTracker::new(
+            database
+                .get_melody_pairs(min_today_pref, min_older_pref)
+                .unwrap(),
+        );
         melody_var_info.go_to_end();
         let variation_pref = melody_var_info
             .get()
@@ -328,7 +350,10 @@ impl ReplayerApp {
             };
 
             if !empty {
-                ui.checkbox(&mut self.adjust_search_preferences, "Set Search Preferences");
+                ui.checkbox(
+                    &mut self.adjust_search_preferences,
+                    "Set Search Preferences",
+                );
                 if self.adjust_search_preferences {
                     let old_today = self.today_search_pref.load();
                     let old_older = self.older_search_pref.load();
@@ -336,7 +361,9 @@ impl ReplayerApp {
                     Self::preference_buttons(ui, self.today_search_pref.clone());
                     ui.label("Minimum Preference for Previous Days");
                     Self::preference_buttons(ui, self.older_search_pref.clone());
-                    if old_today != self.today_search_pref.load() || old_older != self.older_search_pref.load() {
+                    if old_today != self.today_search_pref.load()
+                        || old_older != self.older_search_pref.load()
+                    {
                         self.request_refresh();
                     }
                 } else {
@@ -347,7 +374,10 @@ impl ReplayerApp {
     }
 
     fn request_refresh(&self) {
-        self.gui2dbase.push(GuiDatabaseUpdate::RefreshAll {min_today_pref: self.today_search_pref.load(), min_older_pref: self.older_search_pref.load()});
+        self.gui2dbase.push(GuiDatabaseUpdate::RefreshAll {
+            min_today_pref: self.today_search_pref.load(),
+            min_older_pref: self.older_search_pref.load(),
+        });
     }
 
     fn display_melody_info(&mut self, ui: &mut Ui) {
@@ -611,24 +641,32 @@ impl ReplayerApp {
             loop {
                 if let Some(msg) = dbase2gui.pop() {
                     match msg {
-                        DatabaseGuiUpdate::Info { melody: player_info, variation: variation_info } => {
+                        DatabaseGuiUpdate::Info {
+                            melody: player_info,
+                            variation: variation_info,
+                        } => {
                             variation_pref.store(variation_info.rating());
                             let mut melody_var_info = melody_var_info.lock().unwrap();
                             melody_var_info.add((player_info, variation_info));
-                        },
+                        }
                         DatabaseGuiUpdate::AllPairs(pairs) => {
                             let mut melody_var_info = melody_var_info.lock().unwrap();
-                            let current_timestamp = melody_var_info.get().map(|(m,_)| m.timestamp());
+                            let current_timestamp =
+                                melody_var_info.get().map(|(m, _)| m.timestamp());
                             melody_var_info.replace_vec(pairs);
                             if let Some(current_timestamp) = current_timestamp {
-                                while !melody_var_info.at_start() && melody_var_info.get().map_or(false, |(m,_)| m.timestamp() > current_timestamp) {
+                                while !melody_var_info.at_start()
+                                    && melody_var_info
+                                        .get()
+                                        .map_or(false, |(m, _)| m.timestamp() > current_timestamp)
+                                {
                                     melody_var_info.go_left();
                                 }
                             }
-                            if let Some((_,v)) = melody_var_info.get() {
+                            if let Some((_, v)) = melody_var_info.get() {
                                 variation_pref.store(v.rating());
                             }
-                        },
+                        }
                     }
                     ctx.request_repaint();
                 }
@@ -809,7 +847,7 @@ impl MelodyRenderer {
         let x1 = x - x_offset;
         let x2 = x + x_offset;
         let y = self.y_middle_c - staff_offset as f32 * self.y_per_pitch;
-        painter.line_segment([Pos2 {x: x1, y}, Pos2 {x: x2, y}], LINE_STROKE);
+        painter.line_segment([Pos2 { x: x1, y }, Pos2 { x: x2, y }], LINE_STROKE);
     }
 
     fn min_max_staff(

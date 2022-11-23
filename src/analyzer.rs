@@ -793,7 +793,11 @@ impl MelodyMaker {
         let mut i = original.len();
         while pitches.len() > 0 {
             i -= 1;
-            let pitch = if result[i].is_rest() {pitches[pitches.len() - 1]} else {pitches.pop_back().unwrap()};
+            let pitch = if result[i].is_rest() {
+                pitches[pitches.len() - 1]
+            } else {
+                pitches.pop_back().unwrap()
+            };
             result[i] = result[i].repitched(pitch);
         }
         result
