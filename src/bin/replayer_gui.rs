@@ -14,7 +14,7 @@ use musicserver1::ai_variation::{
 };
 use musicserver1::analyzer::{Accidental, KeySignature, Melody, MidiByte, MusicMode};
 use musicserver1::database::{
-    start_database_thread, Database, GuiDatabaseUpdate, MelodyInfo, Preference,
+    start_database_thread, Database, GuiDatabaseUpdate, MelodyInfo, Preference, DatabaseGuiUpdate,
 };
 use musicserver1::midi_input::start_input_thread;
 use musicserver1::runtime::{
@@ -88,8 +88,7 @@ impl<T: Clone> VecTracker<T> {
         self.tracker = if self.items.is_empty() {
             None
         } else {
-            let t = self.tracker.map_or(self.items.len() - 1, |t| t.a());
-            Some(ModNum::new(t, self.items.len()))
+            Some(ModNum::new(self.items.len() - 1, self.items.len()))
         };
     }
 
@@ -123,6 +122,11 @@ impl<T: Clone> VecTracker<T> {
         if !self.is_empty() && !self.at_end() {
             self.tracker = self.tracker.map(|t| t + 1);
         }
+    }
+
+    pub fn add(&mut self, item: T) {
+        self.items.push(item);
+        self.go_to_end();
     }
 }
 
@@ -162,7 +166,7 @@ struct ReplayerApp {
     older_search_pref: Arc<AtomicCell<Preference>>,
     melody_var_info: Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo)>>>,
     database: Option<Database>,
-    dbase2gui: Arc<SegQueue<(MelodyInfo, MelodyInfo)>>,
+    dbase2gui: Arc<SegQueue<DatabaseGuiUpdate>>,
     gui2dbase: Arc<SegQueue<GuiDatabaseUpdate>>,
     gui2ai: Arc<SegQueue<Melody>>,
     ai2output: Arc<SegQueue<SynthOutputMsg>>,
@@ -221,7 +225,7 @@ impl ReplayerApp {
         let replay_delay_slider = Arc::new(AtomicCell::new(replay_slider()));
         let mut database = Database::new();
         let database_timer = Instant::now();
-        let (melody_var_info, variation_pref) = Self::retrieve_melody_info(&mut database, Preference::Neutral, Preference::Favorite);
+        let (melody_var_info, variation_pref) = Self::wrapped_melody_info(&mut database, Preference::Neutral, Preference::Favorite);
         println!("Database load time: {}s", database_timer.elapsed().as_secs_f64());
 
         let app = ReplayerApp {
@@ -250,16 +254,18 @@ impl ReplayerApp {
         Ok(app)
     }
 
-    fn retrieve_melody_info(database: &mut Database, min_today_pref: Preference, min_older_pref: Preference) -> (Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo)>>>,Arc<AtomicCell<Preference>>) {
+    fn wrapped_melody_info(database: &mut Database, min_today_pref: Preference, min_older_pref: Preference) -> (Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo)>>>,Arc<AtomicCell<Preference>>) {
+        let (melody_var_info, variation_pref) = Self::retrieve_melody_info(database, min_today_pref, min_older_pref);
+        (Arc::new(Mutex::new(melody_var_info)), Arc::new(AtomicCell::new(variation_pref)))
+    }
+
+    fn retrieve_melody_info(database: &mut Database, min_today_pref: Preference, min_older_pref: Preference) -> (VecTracker<(MelodyInfo, MelodyInfo)>,Preference) {
         let mut melody_var_info = VecTracker::new(database.get_melody_pairs(min_today_pref, min_older_pref).unwrap());
         melody_var_info.go_to_end();
         let variation_pref = melody_var_info
             .get()
             .map_or(Preference::Neutral, |(_, v)| v.rating());
-        (
-            Arc::new(Mutex::new(melody_var_info)),
-            Arc::new(AtomicCell::new(variation_pref)),
-        )
+        (melody_var_info, variation_pref)
     }
 
     fn main_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -324,15 +330,24 @@ impl ReplayerApp {
             if !empty {
                 ui.checkbox(&mut self.adjust_search_preferences, "Set Search Preferences");
                 if self.adjust_search_preferences {
+                    let old_today = self.today_search_pref.load();
+                    let old_older = self.older_search_pref.load();
                     ui.label("Minimum Preference for Today");
                     Self::preference_buttons(ui, self.today_search_pref.clone());
                     ui.label("Minimum Preference for Previous Days");
                     Self::preference_buttons(ui, self.older_search_pref.clone());
+                    if old_today != self.today_search_pref.load() || old_older != self.older_search_pref.load() {
+                        self.request_refresh();
+                    }
                 } else {
                     self.display_melody_info(ui);
                 }
             }
         });
+    }
+
+    fn request_refresh(&self) {
+        self.gui2dbase.push(GuiDatabaseUpdate::RefreshAll {min_today_pref: self.today_search_pref.load(), min_older_pref: self.older_search_pref.load()});
     }
 
     fn display_melody_info(&mut self, ui: &mut Ui) {
@@ -364,9 +379,10 @@ impl ReplayerApp {
                     .1
                     .set_rating(self.variation_pref.load());
                 self.gui2dbase
-                    .push(melody_var_info.get().cloned().unwrap().0.get_update());
+                    .push(melody_var_info.get().cloned().unwrap().0.update());
                 self.gui2dbase
-                    .push(melody_var_info.get().cloned().unwrap().1.get_update());
+                    .push(melody_var_info.get().cloned().unwrap().1.update());
+                self.request_refresh();
             }
         });
 
@@ -415,7 +431,7 @@ impl ReplayerApp {
     fn melody_buttons(&self, ui: &mut Ui, info: &MelodyInfo, synth: SynthChoice) {
         ui.horizontal(|ui| {
             ui.label(info.date_time_stamp());
-            ui.label(info.get_scale_name());
+            ui.label(info.scale_name());
             if ui.button("Play").clicked() {
                 self.play_melody_thread(info.melody().clone(), synth);
             }
@@ -593,11 +609,27 @@ impl ReplayerApp {
         thread::spawn(move || {
             let mut last_progress = None;
             loop {
-                if let Some((player_info, variation_info)) = dbase2gui.pop() {
-                    variation_pref.store(variation_info.rating());
-                    let mut melody_var_info = melody_var_info.lock().unwrap();
-                    melody_var_info.items.push((player_info, variation_info));
-                    melody_var_info.go_to_end();
+                if let Some(msg) = dbase2gui.pop() {
+                    match msg {
+                        DatabaseGuiUpdate::Info { melody: player_info, variation: variation_info } => {
+                            variation_pref.store(variation_info.rating());
+                            let mut melody_var_info = melody_var_info.lock().unwrap();
+                            melody_var_info.add((player_info, variation_info));
+                        },
+                        DatabaseGuiUpdate::AllPairs(pairs) => {
+                            let mut melody_var_info = melody_var_info.lock().unwrap();
+                            let current_timestamp = melody_var_info.get().map(|(m,_)| m.timestamp());
+                            melody_var_info.replace_vec(pairs);
+                            if let Some(current_timestamp) = current_timestamp {
+                                while !melody_var_info.at_start() && melody_var_info.get().map_or(false, |(m,_)| m.timestamp() > current_timestamp) {
+                                    melody_var_info.go_left();
+                                }
+                            }
+                            if let Some((_,v)) = melody_var_info.get() {
+                                variation_pref.store(v.rating());
+                            }
+                        },
+                    }
                     ctx.request_repaint();
                 }
                 let current_progress = melody_progress.load();

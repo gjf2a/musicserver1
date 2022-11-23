@@ -11,5 +11,5 @@ fn main() {
 
 fn print_info(info: &MelodyInfo) {
     println!("{info:?}");
-    println!("{:?} {:?}", info.get_date(), info.get_time());
+    println!("{:?} {:?}", info.date(), info.time());
 }

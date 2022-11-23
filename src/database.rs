@@ -18,28 +18,39 @@ pub struct FromAiMsg {
 }
 
 #[derive(Clone, Debug)]
-pub struct GuiDatabaseUpdate {
-    pub rowid: i64,
-    pub tag: String,
-    pub rating: Preference,
+pub enum GuiDatabaseUpdate {
+    Info {rowid: i64, tag: String, rating: Preference},
+    RefreshAll {min_today_pref: Preference, min_older_pref: Preference},
+}
+
+#[derive(Clone, Debug)]
+pub enum DatabaseGuiUpdate {
+    Info {melody: MelodyInfo, variation: MelodyInfo},
+    AllPairs(Vec<(MelodyInfo, MelodyInfo)>),
 }
 
 pub fn start_database_thread(
-    dbase2gui: Arc<SegQueue<(MelodyInfo, MelodyInfo)>>,
+    dbase2gui: Arc<SegQueue<DatabaseGuiUpdate>>,
     gui2dbase: Arc<SegQueue<GuiDatabaseUpdate>>,
     ai2dbase: Arc<SegQueue<FromAiMsg>>,
     mut database: Database,
 ) {
     std::thread::spawn(move || loop {
         if let Some(info) = gui2dbase.pop() {
-            database.update_info(&info).unwrap();
+            match info {
+                GuiDatabaseUpdate::Info { rowid, tag, rating } => database.update_info(rowid, tag.as_str(), rating).unwrap(),
+                GuiDatabaseUpdate::RefreshAll {min_today_pref, min_older_pref} => {
+                    let pairs = database.get_melody_pairs(min_today_pref, min_older_pref).unwrap();
+                    dbase2gui.push(DatabaseGuiUpdate::AllPairs(pairs));
+                }
+            }
         }
 
         if let Some(msg) = ai2dbase.pop() {
             let info = database
                 .add_melody_and_variation(&msg.melody, &msg.variation)
                 .unwrap();
-            dbase2gui.push(info);
+            dbase2gui.push(DatabaseGuiUpdate::Info {melody: info.0, variation: info.1});
         }
     });
 }
@@ -77,6 +88,10 @@ impl Database {
 
     pub fn one_day_ago() -> i64 {
         Local::now().timestamp() - (24 * 60 * 60)
+    }
+
+    pub fn is_today(timestamp: i64) -> bool {
+        timestamp > Self::one_day_ago()
     }
 
     pub fn get_melody_pairs(&mut self, min_today_pref: Preference, min_older_pref: Preference) -> anyhow::Result<Vec<(MelodyInfo, MelodyInfo)>> {
@@ -167,13 +182,13 @@ impl Database {
         }
     }
 
-    pub fn update_info(&mut self, new_info: &GuiDatabaseUpdate) -> anyhow::Result<()> {
+    pub fn update_info(&mut self, rowid: i64, tag: &str, rating: Preference) -> anyhow::Result<()> {
         let connection = self.get_connection()?;
         let mut statement =
             connection.prepare("UPDATE melody_index SET rating = ?, tag = ? WHERE rowid = ?")?;
-        statement.bind((1, new_info.rating.to_string().as_str()))?;
-        statement.bind((2, new_info.tag.as_str()))?;
-        statement.bind((3, new_info.rowid))?;
+        statement.bind((1, rating.to_string().as_str()))?;
+        statement.bind((2, tag))?;
+        statement.bind((3, rowid))?;
         statement.next()?;
         Ok(())
     }
@@ -249,23 +264,27 @@ pub struct MelodyInfo {
 }
 
 impl MelodyInfo {
-    pub fn get_row_id(&self) -> i64 {
+    pub fn row_id(&self) -> i64 {
         self.rowid
     }
 
-    pub fn get_date(&self) -> NaiveDate {
+    pub fn timestamp(&self) -> i64 {
+        self.timestamp
+    }
+
+    pub fn date(&self) -> NaiveDate {
         Local.timestamp_opt(self.timestamp, 0).unwrap().date_naive()
     }
 
-    pub fn get_time(&self) -> NaiveTime {
+    pub fn time(&self) -> NaiveTime {
         Local.timestamp_opt(self.timestamp, 0).unwrap().time()
     }
 
     pub fn date_time_stamp(&self) -> String {
-        format!("{:?} {:?}", self.get_date(), self.get_time())
+        format!("{:?} {:?}", self.date(), self.time())
     }
 
-    pub fn get_scale_name(&self) -> String {
+    pub fn scale_name(&self) -> String {
         self.scale_name.clone()
     }
 
@@ -277,8 +296,8 @@ impl MelodyInfo {
         self.rating = pref;
     }
 
-    pub fn get_update(&self) -> GuiDatabaseUpdate {
-        GuiDatabaseUpdate {
+    pub fn update(&self) -> GuiDatabaseUpdate {
+        GuiDatabaseUpdate::Info { 
             rowid: self.rowid,
             tag: self.tag.clone(),
             rating: self.rating,
