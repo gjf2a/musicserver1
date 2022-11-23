@@ -27,7 +27,7 @@ use std::ops::RangeInclusive;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use std::{mem, thread};
+use std::thread;
 
 fn main() -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions::default();
@@ -588,11 +588,10 @@ impl ReplayerApp {
     fn start_now(&mut self, ctx: &egui::Context) {
         let in_port = self.in_port.as_ref().unwrap().clone();
         self.set_in_port_name(&in_port);
-        let mut midi_in = None;
-        {
+        let midi_in = {
             let mut self_midi_in = self.midi_in.lock().unwrap();
-            mem::swap(&mut midi_in, &mut *self_midi_in);
-        }
+            self_midi_in.take()
+        };
         let input2ai = Arc::new(SegQueue::new());
         let ai2dbase = Arc::new(SegQueue::new());
         let database = self.database.take();
