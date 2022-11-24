@@ -16,9 +16,9 @@ const MAX_NOTES: usize = 1;
 pub type SynthType = (Box<dyn AudioUnit64>, (f64, f64, f64, f64));
 pub type SynthTable = ChooserTable<SynthType>;
 
-pub struct SynthOutputMsg {
-    pub synth: SynthChoice,
-    pub midi: MidiMsg,
+pub enum SynthOutputMsg {
+    Play {synth: SynthChoice, midi: MidiMsg},
+    StopAll
 }
 
 pub fn convert_midi(note: u8, velocity: u8) -> (f64, f64) {
@@ -101,8 +101,11 @@ fn run_synth<T: Sample>(
             stream.play().unwrap();
 
             while left_id == human_synth_id.load() && right_id == ai_synth_id.load() {
-                if let Some(SynthOutputMsg { synth, midi }) = ai2output.pop() {
-                    midi2stereo(&mut stereo, synth, midi);
+                if let Some(msg) = ai2output.pop() {
+                    match msg {
+                        SynthOutputMsg::Play { synth, midi } => midi2stereo(&mut stereo, synth, midi),
+                        SynthOutputMsg::StopAll => stereo.all_off(),
+                    }
                 }
             }
         }
@@ -192,6 +195,11 @@ impl<const N: usize> StereoSounds<N> {
         self.side(side).off(pitch)
     }
 
+    pub fn all_off(&mut self) {
+        self.left.all_off();
+        self.right.all_off();
+    }
+
     pub fn sound(&self) -> Net64 {
         Net64::stack_op(self.left.sound(), self.right.sound())
     }
@@ -269,9 +277,19 @@ impl<const N: usize> LiveSounds<N> {
     pub fn off(&mut self, pitch: u8) {
         if let Some(i) = self.pitch2var.remove(&pitch) {
             if self.recent_pitches[i] == Some(pitch) {
-                self.recent_pitches[i] = None;
-                self.controls[i].set_value(-1.0);
+                self.release(i);
             }
+        }
+    }
+
+    fn release(&mut self, i: usize) {
+        self.recent_pitches[i] = None;
+        self.controls[i].set_value(-1.0);
+    }
+
+    pub fn all_off(&mut self) {
+        for i in 0..N {
+            self.release(i);
         }
     }
 }

@@ -206,7 +206,7 @@ pub fn send_recorded_melody(
     let total_duration = melody.duration() as f32;
     'outer: for note in melody.iter() {
         let (midi, duration) = note.to_midi();
-        ai2output.push(SynthOutputMsg { synth, midi });
+        ai2output.push(SynthOutputMsg::Play { synth, midi });
         let note_start = Instant::now();
         while note_start.elapsed().as_secs_f64() < duration {
             let progress = Some(total_start.elapsed().as_secs_f32() / total_duration);
@@ -216,6 +216,7 @@ pub fn send_recorded_melody(
             }
         }
     }
+    ai2output.push(SynthOutputMsg::StopAll);
     melody_run_status.report_stop();
     melody_progress.store(None);
 }

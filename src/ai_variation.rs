@@ -151,7 +151,7 @@ impl PlayerRecorder {
                 _ => {}
             }
         }
-        self.ai2output.push(SynthOutputMsg {
+        self.ai2output.push(SynthOutputMsg::Play {
             synth: SynthChoice::Human,
             midi: msg,
         });
