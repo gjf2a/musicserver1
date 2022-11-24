@@ -26,8 +26,8 @@ use std::cmp::{max, min};
 use std::ops::RangeInclusive;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
 use std::thread;
+use std::time::Instant;
 
 fn main() -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions::default();
