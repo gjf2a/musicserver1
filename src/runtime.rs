@@ -160,22 +160,62 @@ pub fn user_pick_element<T: Clone, S: Fn(&T) -> String>(
     choices[choice - 1].clone()
 }
 
+#[derive(Clone)]
+pub struct MelodyRunStatus {
+    num_running: Arc<AtomicCell<usize>>,
+    stop: Arc<AtomicCell<bool>>,
+}
+
+impl MelodyRunStatus {
+    pub fn new() -> Self {
+        MelodyRunStatus { num_running: Arc::new(AtomicCell::new(0)), stop: Arc::new(AtomicCell::new(false)) }
+    }
+
+    pub fn is_stopping(&self) -> bool {
+        self.stop.load()
+    }
+
+    pub fn send_stop(&self) {
+        if self.num_running.load() > 0 {
+            self.stop.store(true);
+        }
+    }
+
+    pub fn report_start(&self) {
+        self.num_running.store(self.num_running.load() + 1);
+    }
+
+    pub fn report_stop(&self) {
+        assert!(self.num_running.load() > 0);
+        self.num_running.store(self.num_running.load() - 1);
+        if self.num_running.load() == 0 {
+            self.stop.store(false);
+        }
+    }
+}
+
 pub fn send_recorded_melody(
     melody: &Melody,
     synth: SynthChoice,
     ai2output: Arc<SegQueue<SynthOutputMsg>>,
     melody_progress: Arc<AtomicCell<Option<f32>>>,
+    melody_run_status: MelodyRunStatus,
 ) {
+    melody_run_status.report_start();
     let total_start = Instant::now();
     let total_duration = melody.duration() as f32;
-    for note in melody.iter() {
+    'outer: for note in melody.iter() {
         let (midi, duration) = note.to_midi();
         ai2output.push(SynthOutputMsg { synth, midi });
         let note_start = Instant::now();
         while note_start.elapsed().as_secs_f64() < duration {
             let progress = Some(total_start.elapsed().as_secs_f32() / total_duration);
             melody_progress.store(progress);
+            if melody_run_status.is_stopping() {
+                break 'outer;
+            }
         }
     }
+    melody_run_status.report_stop();
     melody_progress.store(None);
 }

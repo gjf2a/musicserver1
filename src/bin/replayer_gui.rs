@@ -18,7 +18,7 @@ use musicserver1::database::{
 };
 use musicserver1::midi_input::start_input_thread;
 use musicserver1::runtime::{
-    replay_slider, send_recorded_melody, ChooserTable, SliderValue, SynthChoice, VariationControls,
+    replay_slider, send_recorded_melody, ChooserTable, SliderValue, SynthChoice, VariationControls, MelodyRunStatus,
 };
 use musicserver1::synth_output::{start_output_thread, SynthOutputMsg, SynthType};
 use musicserver1::synth_sounds::make_synth_table;
@@ -170,6 +170,7 @@ struct ReplayerApp {
     gui2ai: Arc<SegQueue<Melody>>,
     ai2output: Arc<SegQueue<SynthOutputMsg>>,
     melody_progress: Arc<AtomicCell<Option<f32>>>,
+    melody_run_status: MelodyRunStatus,
     adjust_search_preferences: bool,
 }
 
@@ -226,10 +227,9 @@ impl ReplayerApp {
         let database_timer = Instant::now();
         let (melody_var_info, variation_pref) =
             Self::wrapped_melody_info(&mut database, Preference::Neutral, Preference::Favorite);
-        println!(
-            "Database load time: {}s",
-            database_timer.elapsed().as_secs_f64()
-        );
+        let database_load_time = database_timer.elapsed().as_secs_f64();
+        println!("Database load time: {database_load_time}s");
+        let melody_run_status = MelodyRunStatus::new();
 
         let app = ReplayerApp {
             midi_scenario: Arc::new(Mutex::new(MidiScenario::StartingUp)),
@@ -251,6 +251,7 @@ impl ReplayerApp {
             gui2ai: Arc::new(SegQueue::new()),
             ai2output: Arc::new(SegQueue::new()),
             melody_progress: Arc::new(AtomicCell::new(None)),
+            melody_run_status,
             adjust_search_preferences: false,
         };
         app.startup();
@@ -417,6 +418,7 @@ impl ReplayerApp {
         });
 
         if ui.button("Play Both").clicked() {
+            self.melody_run_status.send_stop();
             self.play_melody_thread(melody_info.melody().clone(), SynthChoice::Human);
             self.play_melody_thread(variation_info.melody().clone(), SynthChoice::Ai);
         }
@@ -463,6 +465,7 @@ impl ReplayerApp {
             ui.label(info.date_time_stamp());
             ui.label(info.scale_name());
             if ui.button("Play").clicked() {
+                self.melody_run_status.send_stop();
                 self.play_melody_thread(info.melody().clone(), synth);
             }
         });
@@ -471,8 +474,10 @@ impl ReplayerApp {
     fn play_melody_thread(&self, melody: Melody, synth: SynthChoice) {
         let ai2output = self.ai2output.clone();
         let melody_progress = self.melody_progress.clone();
+        let melody_run_status = self.melody_run_status.clone();
         thread::spawn(move || {
-            send_recorded_melody(&melody, synth, ai2output, melody_progress);
+            while melody_run_status.is_stopping() {}
+            send_recorded_melody(&melody, synth, ai2output, melody_progress, melody_run_status);
         });
     }
 
@@ -614,6 +619,7 @@ impl ReplayerApp {
             self.variation_controls.clone(),
             self.replay_delay_slider.clone(),
             self.melody_progress.clone(),
+            self.melody_run_status.clone(),
         );
         start_input_thread(
             input2ai,

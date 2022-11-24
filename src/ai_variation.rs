@@ -1,7 +1,7 @@
 use crate::analyzer::{Melody, MelodyMaker, PendingNote};
 use crate::database::FromAiMsg;
 use crate::runtime::{
-    send_recorded_melody, ChooserTable, SliderValue, SynthChoice, VariationControls,
+    send_recorded_melody, ChooserTable, SliderValue, SynthChoice, VariationControls, MelodyRunStatus,
 };
 use crate::synth_output::SynthOutputMsg;
 use crate::{analyzer, arc_vec};
@@ -34,6 +34,7 @@ pub fn start_ai_thread(
     variation_controls: VariationControls,
     replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
     melody_progress: Arc<AtomicCell<Option<f32>>>,
+    melody_run_status: MelodyRunStatus,
 ) {
     std::thread::spawn(move || {
         let mut recorder = PlayerRecorder::new(
@@ -66,11 +67,14 @@ pub fn start_ai_thread(
                         melody,
                         variation: variation.clone(),
                     });
+                    melody_run_status.send_stop();
+                    while melody_run_status.is_stopping() {}
                     send_recorded_melody(
                         &variation,
                         SynthChoice::Ai,
                         ai2output.clone(),
                         melody_progress.clone(),
+                        melody_run_status.clone(),
                     );
                 }
             }
