@@ -638,34 +638,7 @@ impl ReplayerApp {
             let mut last_progress = None;
             loop {
                 if let Some(msg) = dbase2gui.pop() {
-                    match msg {
-                        DatabaseGuiUpdate::Info {
-                            melody: player_info,
-                            variation: variation_info,
-                        } => {
-                            variation_pref.store(variation_info.rating());
-                            let mut melody_var_info = melody_var_info.lock().unwrap();
-                            melody_var_info.add((player_info, variation_info));
-                        }
-                        DatabaseGuiUpdate::AllPairs(pairs) => {
-                            let mut melody_var_info = melody_var_info.lock().unwrap();
-                            let current_timestamp =
-                                melody_var_info.get().map(|(m, _)| m.timestamp());
-                            melody_var_info.replace_vec(pairs);
-                            if let Some(current_timestamp) = current_timestamp {
-                                while !melody_var_info.at_start()
-                                    && melody_var_info
-                                        .get()
-                                        .map_or(false, |(m, _)| m.timestamp() > current_timestamp)
-                                {
-                                    melody_var_info.go_left();
-                                }
-                            }
-                            if let Some((_, v)) = melody_var_info.get() {
-                                variation_pref.store(v.rating());
-                            }
-                        }
-                    }
+                    Self::handle_database_msg(msg, variation_pref.clone(), melody_var_info.clone());
                     ctx.request_repaint();
                 }
                 let current_progress = melody_progress.load();
@@ -677,6 +650,40 @@ impl ReplayerApp {
                 }
             }
         });
+    }
+
+    fn handle_database_msg(
+        msg: DatabaseGuiUpdate,
+        variation_pref: Arc<AtomicCell<Preference>>,
+        melody_var_info: Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo)>>>,
+    ) {
+        match msg {
+            DatabaseGuiUpdate::Info {
+                melody: player_info,
+                variation: variation_info,
+            } => {
+                variation_pref.store(variation_info.rating());
+                let mut melody_var_info = melody_var_info.lock().unwrap();
+                melody_var_info.add((player_info, variation_info));
+            }
+            DatabaseGuiUpdate::AllPairs(pairs) => {
+                let mut melody_var_info = melody_var_info.lock().unwrap();
+                let current_timestamp = melody_var_info.get().map(|(m, _)| m.timestamp());
+                melody_var_info.replace_vec(pairs);
+                if let Some(current_timestamp) = current_timestamp {
+                    while !melody_var_info.at_start()
+                        && melody_var_info
+                            .get()
+                            .map_or(false, |(m, _)| m.timestamp() > current_timestamp)
+                    {
+                        melody_var_info.go_left();
+                    }
+                }
+                if let Some((_, v)) = melody_var_info.get() {
+                    variation_pref.store(v.rating());
+                }
+            }
+        }
     }
 
     fn set_in_port_name(&mut self, in_port: &MidiInputPort) {
