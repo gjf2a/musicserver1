@@ -322,26 +322,14 @@ impl ReplayerApp {
             self.human_synth.update_choice();
             self.ai_synth.update_choice();
 
-            Self::insert_slider(
-                ui,
-                self.variation_controls.p_random_slider.clone(),
-                "Probability of Randomization",
-            );
-            Self::insert_slider(
-                ui,
-                self.variation_controls.p_ornament_slider.clone(),
-                "Probability of Inserting Ornament",
-            );
-            Self::insert_slider(
-                ui,
-                self.replay_delay_slider.clone(),
-                "Replay Delay (seconds)",
-            );
-            Self::insert_slider(
-                ui,
-                self.variation_controls.shortest_note_slider.clone(),
-                "Shortest Playable Note (seconds)",
-            );
+            let p_random_slider = self.variation_controls.p_random_slider.clone();
+            Self::insert_slider(ui, p_random_slider, "Probability of Randomization");
+            let p_ornament_slider = self.variation_controls.p_ornament_slider.clone();
+            Self::insert_slider(ui, p_ornament_slider, "Probability of Inserting Ornament");
+            let replay_delay_slider = self.replay_delay_slider.clone();
+            Self::insert_slider(ui, replay_delay_slider, "Replay Delay (seconds)");
+            let shortest_note_slider = self.variation_controls.shortest_note_slider.clone();
+            Self::insert_slider(ui, shortest_note_slider, "Shortest Playable Note (seconds)");
             let mut whimsify = self.variation_controls.whimsify.load();
             ui.checkbox(&mut whimsify, "Whimsify Suffix");
             self.variation_controls.whimsify.store(whimsify);
@@ -401,7 +389,7 @@ impl ReplayerApp {
                 }
             }
         });
-        
+
         ui.vertical(|ui| {
             self.melody_buttons(ui, &melody_info, SynthChoice::Human);
             self.melody_buttons(ui, &variation_info, SynthChoice::Ai);
