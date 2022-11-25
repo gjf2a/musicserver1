@@ -294,33 +294,13 @@ impl ReplayerApp {
 
     fn main_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading(format!(
-                "Replayer ({})",
-                self.in_port_name.as_ref().unwrap()
-            ));
+            let heading = format!("Replayer ({})", self.in_port_name.as_ref().unwrap());
+            ui.heading(heading);
             ui.horizontal(|ui| {
-                Self::radio_choice(
-                    ui,
-                    "Human Synthesizer",
-                    self.human_synth.table.clone(),
-                    &mut self.human_synth.name,
-                );
-                Self::radio_choice(
-                    ui,
-                    "Variation Synthesizer",
-                    self.ai_synth.table.clone(),
-                    &mut self.ai_synth.name,
-                );
-                Self::radio_choice(
-                    ui,
-                    "Variation Algorithm",
-                    self.ai_algorithm.table.clone(),
-                    &mut self.ai_algorithm.name,
-                );
+                Self::radio_choice(ui, "Human Synthesizer", &mut self.human_synth);
+                Self::radio_choice(ui, "Variation Synthesizer", &mut self.ai_synth);
+                Self::radio_choice(ui, "Variation Algorithm", &mut self.ai_algorithm);
             });
-            self.ai_algorithm.update_choice();
-            self.human_synth.update_choice();
-            self.ai_synth.update_choice();
 
             let p_random_slider = self.variation_controls.p_random_slider.clone();
             Self::insert_slider(ui, p_random_slider, "Probability of Randomization");
@@ -510,19 +490,15 @@ impl ReplayerApp {
         pref.store(current_value);
     }
 
-    fn radio_choice<T: Clone>(
-        ui: &mut Ui,
-        header: &str,
-        table: Arc<Mutex<ChooserTable<T>>>,
-        tag: &mut String,
-    ) {
+    fn radio_choice<T: Clone>(ui: &mut Ui, header: &str, info: &mut TableInfo<T>) {
         ui.vertical(|ui| {
-            let table = table.lock().unwrap();
+            let table = info.table.lock().unwrap();
             ui.label(header);
             for item in table.name_vec() {
-                ui.radio_value(tag, item.clone(), item.clone());
+                ui.radio_value(&mut info.name, item.clone(), item.clone());
             }
         });
+        info.update_choice();
     }
 
     fn insert_slider<N: FromStr + Numeric>(
