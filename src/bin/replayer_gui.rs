@@ -334,12 +334,7 @@ impl ReplayerApp {
             ui.checkbox(&mut whimsify, "Whimsify Suffix");
             self.variation_controls.whimsify.store(whimsify);
 
-            let empty = {
-                let melody_var_info = self.melody_var_info.lock().unwrap();
-                melody_var_info.is_empty()
-            };
-
-            if !empty {
+            if self.displaying_melody_var_info() {
                 ui.checkbox(
                     &mut self.adjust_search_preferences,
                     "Set Search Preferences",
@@ -351,6 +346,11 @@ impl ReplayerApp {
                 }
             }
         });
+    }
+
+    fn displaying_melody_var_info(&self) -> bool {
+        let melody_var_info = self.melody_var_info.lock().unwrap();
+        !melody_var_info.is_empty()
     }
 
     fn search_preference_screen(&self, ui: &mut Ui) {
