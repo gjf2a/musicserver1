@@ -343,7 +343,7 @@ impl ReplayerApp {
                 "Shortest Playable Note (seconds)",
             );
             let mut whimsify = self.variation_controls.whimsify.load();
-            ui.checkbox(&mut whimsify, "Whimsify Suffix?");
+            ui.checkbox(&mut whimsify, "Whimsify Suffix");
             self.variation_controls.whimsify.store(whimsify);
 
             let empty = {
@@ -372,8 +372,7 @@ impl ReplayerApp {
         Self::preference_buttons(ui, self.today_search_pref.clone());
         ui.label("Minimum Preference for Previous Days");
         Self::preference_buttons(ui, self.older_search_pref.clone());
-        if old_today != self.today_search_pref.load()
-            || old_older != self.older_search_pref.load()
+        if old_today != self.today_search_pref.load() || old_older != self.older_search_pref.load()
         {
             self.request_refresh();
         }
@@ -392,9 +391,17 @@ impl ReplayerApp {
             self.melody_variation_selector(ui, &mut melody_var_info);
             melody_var_info.get().cloned().unwrap()
         };
-        if ui.button("Play Both").clicked() {
-            self.play_both(&melody_info, &variation_info);
-        }
+        ui.horizontal(|ui| {
+            if ui.button("Play Both").clicked() {
+                self.play_both(&melody_info, &variation_info);
+            }
+            if self.melody_progress.load().is_some() {
+                if ui.button("Stop").clicked() {
+                    self.melody_run_status.send_stop();
+                }
+            }
+        });
+        
         ui.vertical(|ui| {
             self.melody_buttons(ui, &melody_info, SynthChoice::Human);
             self.melody_buttons(ui, &variation_info, SynthChoice::Ai);
@@ -415,7 +422,11 @@ impl ReplayerApp {
         MelodyRenderer::render(ui, size, &melodies, self.melody_progress.clone());
     }
 
-    fn melody_variation_selector(&self, ui: &mut Ui, melody_var_info: &mut VecTracker<(MelodyInfo, MelodyInfo)>) {
+    fn melody_variation_selector(
+        &self,
+        ui: &mut Ui,
+        melody_var_info: &mut VecTracker<(MelodyInfo, MelodyInfo)>,
+    ) {
         ui.horizontal(|ui| {
             if !melody_var_info.at_start() && ui.button("<").clicked() {
                 melody_var_info.go_left();
@@ -436,7 +447,10 @@ impl ReplayerApp {
         });
     }
 
-    fn update_database_preferences(&self, melody_var_info: &mut VecTracker<(MelodyInfo, MelodyInfo)>) {
+    fn update_database_preferences(
+        &self,
+        melody_var_info: &mut VecTracker<(MelodyInfo, MelodyInfo)>,
+    ) {
         {
             let (m, v) = melody_var_info.get_mut().unwrap();
             m.set_rating(self.variation_pref.load());
@@ -446,7 +460,7 @@ impl ReplayerApp {
         self.gui2dbase.push(m.update());
         self.gui2dbase.push(v.update());
     }
-    
+
     fn create_new_variation(&mut self, melody_info: &MelodyInfo) {
         {
             let mut ai_table = self.ai_algorithm.table.lock().unwrap();
