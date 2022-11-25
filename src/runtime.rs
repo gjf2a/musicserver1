@@ -168,7 +168,10 @@ pub struct MelodyRunStatus {
 
 impl MelodyRunStatus {
     pub fn new() -> Self {
-        MelodyRunStatus { num_running: Arc::new(AtomicCell::new(0)), stop: Arc::new(AtomicCell::new(false)) }
+        MelodyRunStatus {
+            num_running: Arc::new(AtomicCell::new(0)),
+            stop: Arc::new(AtomicCell::new(false)),
+        }
     }
 
     pub fn is_stopping(&self) -> bool {
@@ -182,12 +185,12 @@ impl MelodyRunStatus {
     }
 
     pub fn report_start(&self) {
-        self.num_running.store(self.num_running.load() + 1);
+        self.num_running.fetch_add(1);
     }
 
     pub fn report_stop(&self) {
         assert!(self.num_running.load() > 0);
-        self.num_running.store(self.num_running.load() - 1);
+        self.num_running.fetch_sub(1);
         if self.num_running.load() == 0 {
             self.stop.store(false);
         }

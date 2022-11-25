@@ -18,7 +18,8 @@ use musicserver1::database::{
 };
 use musicserver1::midi_input::start_input_thread;
 use musicserver1::runtime::{
-    replay_slider, send_recorded_melody, ChooserTable, SliderValue, SynthChoice, VariationControls, MelodyRunStatus,
+    replay_slider, send_recorded_melody, ChooserTable, MelodyRunStatus, SliderValue, SynthChoice,
+    VariationControls,
 };
 use musicserver1::synth_output::{start_output_thread, SynthOutputMsg, SynthType};
 use musicserver1::synth_sounds::make_synth_table;
@@ -356,22 +357,26 @@ impl ReplayerApp {
                     "Set Search Preferences",
                 );
                 if self.adjust_search_preferences {
-                    let old_today = self.today_search_pref.load();
-                    let old_older = self.older_search_pref.load();
-                    ui.label("Minimum Preference for Today");
-                    Self::preference_buttons(ui, self.today_search_pref.clone());
-                    ui.label("Minimum Preference for Previous Days");
-                    Self::preference_buttons(ui, self.older_search_pref.clone());
-                    if old_today != self.today_search_pref.load()
-                        || old_older != self.older_search_pref.load()
-                    {
-                        self.request_refresh();
-                    }
+                    self.search_preference_screen(ui);
                 } else {
                     self.display_melody_info(ui);
                 }
             }
         });
+    }
+
+    fn search_preference_screen(&self, ui: &mut Ui) {
+        let old_today = self.today_search_pref.load();
+        let old_older = self.older_search_pref.load();
+        ui.label("Minimum Preference for Today");
+        Self::preference_buttons(ui, self.today_search_pref.clone());
+        ui.label("Minimum Preference for Previous Days");
+        Self::preference_buttons(ui, self.older_search_pref.clone());
+        if old_today != self.today_search_pref.load()
+            || old_older != self.older_search_pref.load()
+        {
+            self.request_refresh();
+        }
     }
 
     fn request_refresh(&self) {
@@ -382,9 +387,35 @@ impl ReplayerApp {
     }
 
     fn display_melody_info(&mut self, ui: &mut Ui) {
-        let mut melody_var_info = self.melody_var_info.lock().unwrap();
-        let (melody_info, variation_info) = melody_var_info.get().cloned().unwrap();
+        let (melody_info, variation_info) = {
+            let mut melody_var_info = self.melody_var_info.lock().unwrap();
+            self.melody_variation_selector(ui, &mut melody_var_info);
+            melody_var_info.get().cloned().unwrap()
+        };
+        if ui.button("Play Both").clicked() {
+            self.play_both(&melody_info, &variation_info);
+        }
+        ui.vertical(|ui| {
+            self.melody_buttons(ui, &melody_info, SynthChoice::Human);
+            self.melody_buttons(ui, &variation_info, SynthChoice::Ai);
+        });
 
+        if ui.button("Create New Variation").clicked() {
+            self.create_new_variation(&melody_info);
+        }
+
+        let size = Vec2::new(
+            ui.available_width(),
+            (ui.min_size().y - ui.available_height()) / 2.0,
+        );
+        let melodies = vec![
+            (melody_info.melody(), Color32::BLACK),
+            (variation_info.melody(), Color32::RED),
+        ];
+        MelodyRenderer::render(ui, size, &melodies, self.melody_progress.clone());
+    }
+
+    fn melody_variation_selector(&self, ui: &mut Ui, melody_var_info: &mut VecTracker<(MelodyInfo, MelodyInfo)>) {
         ui.horizontal(|ui| {
             if !melody_var_info.at_start() && ui.button("<").clicked() {
                 melody_var_info.go_left();
@@ -399,58 +430,38 @@ impl ReplayerApp {
                 self.variation_pref.store(variation_info.rating());
             }
             if start_variation_pref != self.variation_pref.load() {
-                melody_var_info
-                    .get_mut()
-                    .unwrap()
-                    .0
-                    .set_rating(self.variation_pref.load());
-                melody_var_info
-                    .get_mut()
-                    .unwrap()
-                    .1
-                    .set_rating(self.variation_pref.load());
-                self.gui2dbase
-                    .push(melody_var_info.get().cloned().unwrap().0.update());
-                self.gui2dbase
-                    .push(melody_var_info.get().cloned().unwrap().1.update());
+                self.update_database_preferences(melody_var_info);
                 self.request_refresh();
             }
         });
+    }
 
-        if ui.button("Play Both").clicked() {
-            self.melody_run_status.send_stop();
-            self.play_melody_thread(melody_info.melody().clone(), SynthChoice::Human);
-            self.play_melody_thread(variation_info.melody().clone(), SynthChoice::Ai);
+    fn update_database_preferences(&self, melody_var_info: &mut VecTracker<(MelodyInfo, MelodyInfo)>) {
+        {
+            let (m, v) = melody_var_info.get_mut().unwrap();
+            m.set_rating(self.variation_pref.load());
+            v.set_rating(self.variation_pref.load());
         }
-        ui.vertical(|ui| {
-            self.melody_buttons(ui, &melody_info, SynthChoice::Human);
-            self.melody_buttons(ui, &variation_info, SynthChoice::Ai);
-        });
-
-        if ui.button("Create New Variation").clicked() {
-            {
-                let mut ai_table = self.ai_algorithm.table.lock().unwrap();
-                if ai_table.current_name() == NO_AI_NAME {
-                    ai_table.choose(DEFAULT_AI_NAME);
-                    self.ai_algorithm.name = String::from(DEFAULT_AI_NAME);
-                }
+        let (m, v) = melody_var_info.get().unwrap();
+        self.gui2dbase.push(m.update());
+        self.gui2dbase.push(v.update());
+    }
+    
+    fn create_new_variation(&mut self, melody_info: &MelodyInfo) {
+        {
+            let mut ai_table = self.ai_algorithm.table.lock().unwrap();
+            if ai_table.current_name() == NO_AI_NAME {
+                ai_table.choose(DEFAULT_AI_NAME);
+                self.ai_algorithm.name = String::from(DEFAULT_AI_NAME);
             }
-            self.gui2ai.push(melody_info.melody().clone());
         }
+        self.gui2ai.push(melody_info.melody().clone());
+    }
 
-        let size = Vec2::new(
-            ui.available_width(),
-            (ui.min_size().y - ui.available_height()) / 2.0,
-        );
-        MelodyRenderer::render(
-            ui,
-            size,
-            &vec![
-                (melody_info.melody(), Color32::BLACK),
-                (variation_info.melody(), Color32::RED),
-            ],
-            self.melody_progress.clone(),
-        );
+    fn play_both(&self, melody_info: &MelodyInfo, variation_info: &MelodyInfo) {
+        self.melody_run_status.send_stop();
+        self.play_melody_thread(melody_info.melody().clone(), SynthChoice::Human);
+        self.play_melody_thread(variation_info.melody().clone(), SynthChoice::Ai);
     }
 
     fn font_id(size: f32) -> FontId {
@@ -477,7 +488,13 @@ impl ReplayerApp {
         let melody_run_status = self.melody_run_status.clone();
         thread::spawn(move || {
             while melody_run_status.is_stopping() {}
-            send_recorded_melody(&melody, synth, ai2output, melody_progress, melody_run_status);
+            send_recorded_melody(
+                &melody,
+                synth,
+                ai2output,
+                melody_progress,
+                melody_run_status,
+            );
         });
     }
 

@@ -1,7 +1,8 @@
 use crate::analyzer::{Melody, MelodyMaker, PendingNote};
 use crate::database::FromAiMsg;
 use crate::runtime::{
-    send_recorded_melody, ChooserTable, SliderValue, SynthChoice, VariationControls, MelodyRunStatus,
+    send_recorded_melody, ChooserTable, MelodyRunStatus, SliderValue, SynthChoice,
+    VariationControls,
 };
 use crate::synth_output::SynthOutputMsg;
 use crate::{analyzer, arc_vec};
@@ -53,11 +54,9 @@ pub fn start_ai_thread(
                 min_melody_pitches,
                 replay_delay_slider.load().current(),
             ) {
-                print_debug(&melody, "melody");
                 let melody = melody
                     .without_brief_notes(variation_controls.shortest_note_slider.load().current());
                 let variation = performer.create_variation(&melody);
-                print_debug(&variation, "variation");
                 if long_enough(
                     &variation,
                     min_melody_pitches,
@@ -82,7 +81,7 @@ pub fn start_ai_thread(
     });
 }
 
-fn print_debug(melody: &Melody, label: &str) {
+fn _print_debug(melody: &Melody, label: &str) {
     println!("{label} ({} s): {melody:?}", melody.duration());
     melody.tuple_print();
 }

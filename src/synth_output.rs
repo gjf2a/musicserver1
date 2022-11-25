@@ -17,8 +17,8 @@ pub type SynthType = (Box<dyn AudioUnit64>, (f64, f64, f64, f64));
 pub type SynthTable = ChooserTable<SynthType>;
 
 pub enum SynthOutputMsg {
-    Play {synth: SynthChoice, midi: MidiMsg},
-    StopAll
+    Play { synth: SynthChoice, midi: MidiMsg },
+    StopAll,
 }
 
 pub fn convert_midi(note: u8, velocity: u8) -> (f64, f64) {
@@ -103,7 +103,9 @@ fn run_synth<T: Sample>(
             while left_id == human_synth_id.load() && right_id == ai_synth_id.load() {
                 if let Some(msg) = ai2output.pop() {
                     match msg {
-                        SynthOutputMsg::Play { synth, midi } => midi2stereo(&mut stereo, synth, midi),
+                        SynthOutputMsg::Play { synth, midi } => {
+                            midi2stereo(&mut stereo, synth, midi)
+                        }
                         SynthOutputMsg::StopAll => stereo.all_off(),
                     }
                 }
