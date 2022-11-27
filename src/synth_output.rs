@@ -1,4 +1,4 @@
-use crate::analyzer::velocity2volume;
+use crate::analyzer::{velocity2volume, MidiByte};
 use crate::runtime::{ChooserTable, SynthChoice, SHOW_MIDI_MSG};
 use bare_metal_modulo::*;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -19,10 +19,6 @@ pub type SynthTable = ChooserTable<SynthType>;
 pub enum SynthOutputMsg {
     Play { synth: SynthChoice, midi: MidiMsg },
     StopAll,
-}
-
-pub fn convert_midi(note: u8, velocity: u8) -> (f64, f64) {
-    (midi_hz(note as f64), (velocity2volume(velocity.into())))
 }
 
 pub fn start_output_thread(
@@ -269,7 +265,7 @@ impl<const N: usize> LiveSounds<N> {
 
     pub fn on(&mut self, pitch: u8, velocity: u8) {
         self.pitches[self.next.a()].set_value(midi_hz(pitch as f64));
-        self.velocities[self.next.a()].set_value(velocity as f64 / 127.0);
+        self.velocities[self.next.a()].set_value(velocity2volume(velocity as MidiByte));
         self.controls[self.next.a()].set_value(1.0);
         self.pitch2var.insert(pitch, self.next.a());
         self.recent_pitches[self.next.a()] = Some(pitch);
