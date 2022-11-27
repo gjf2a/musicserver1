@@ -359,20 +359,14 @@ impl ReplayerApp {
             self.melody_variation_selector(ui, &mut melody_var_info);
             melody_var_info.get().cloned().unwrap()
         };
+
         ui.horizontal(|ui| {
-            if ui.button("Play Both").clicked() {
-                self.play_both(&melody_info, &variation_info);
-            }
-            if self.melody_progress.load().is_some() {
-                if ui.button("Stop").clicked() {
-                    self.melody_run_status.send_stop();
-                }
-            }
+            ui.label(melody_info.date_time_stamp());
+            ui.label(melody_info.scale_name());
         });
 
-        ui.vertical(|ui| {
-            self.melody_buttons(ui, &melody_info, SynthChoice::Human);
-            self.melody_buttons(ui, &variation_info, SynthChoice::Ai);
+        ui.horizontal(|ui| {
+            self.melody_play_stop_buttons(ui, &melody_info, &variation_info);
         });
 
         if ui.button("Create New Variation").clicked() {
@@ -390,6 +384,24 @@ impl ReplayerApp {
         MelodyRenderer::render(ui, size, &melodies, self.melody_progress.clone());
     }
 
+    fn melody_play_stop_buttons(
+        &self,
+        ui: &mut Ui,
+        melody_info: &MelodyInfo,
+        variation_info: &MelodyInfo,
+    ) {
+        self.melody_buttons(ui, &melody_info, SynthChoice::Original);
+        self.melody_buttons(ui, &variation_info, SynthChoice::Variation);
+        if ui.button("Play Both").clicked() {
+            self.play_both(melody_info, variation_info);
+        }
+        if self.melody_progress.load().is_some() {
+            if ui.button("Stop").clicked() {
+                self.melody_run_status.send_stop();
+            }
+        }
+    }
+
     fn melody_variation_selector(
         &self,
         ui: &mut Ui,
@@ -397,6 +409,7 @@ impl ReplayerApp {
     ) {
         ui.horizontal(|ui| {
             if !melody_var_info.at_start() && ui.button("<").clicked() {
+                self.melody_run_status.send_stop();
                 melody_var_info.go_left();
                 let (_, variation_info) = melody_var_info.get().unwrap();
                 self.variation_pref.store(variation_info.rating());
@@ -404,6 +417,7 @@ impl ReplayerApp {
             let start_variation_pref = self.variation_pref.load();
             Self::preference_buttons(ui, self.variation_pref.clone());
             if !melody_var_info.at_end() && ui.button(">").clicked() {
+                self.melody_run_status.send_stop();
                 melody_var_info.go_right();
                 let (_, variation_info) = melody_var_info.get().unwrap();
                 self.variation_pref.store(variation_info.rating());
@@ -442,8 +456,8 @@ impl ReplayerApp {
 
     fn play_both(&self, melody_info: &MelodyInfo, variation_info: &MelodyInfo) {
         self.melody_run_status.send_stop();
-        self.play_melody_thread(melody_info.melody().clone(), SynthChoice::Human);
-        self.play_melody_thread(variation_info.melody().clone(), SynthChoice::Ai);
+        self.play_melody_thread(melody_info.melody().clone(), SynthChoice::Original);
+        self.play_melody_thread(variation_info.melody().clone(), SynthChoice::Variation);
     }
 
     fn font_id(size: f32) -> FontId {
@@ -454,14 +468,11 @@ impl ReplayerApp {
     }
 
     fn melody_buttons(&self, ui: &mut Ui, info: &MelodyInfo, synth: SynthChoice) {
-        ui.horizontal(|ui| {
-            ui.label(info.date_time_stamp());
-            ui.label(info.scale_name());
-            if ui.button("Play").clicked() {
-                self.melody_run_status.send_stop();
-                self.play_melody_thread(info.melody().clone(), synth);
-            }
-        });
+        let text = format!("Play {synth:?}");
+        if ui.button(text).clicked() {
+            self.melody_run_status.send_stop();
+            self.play_melody_thread(info.melody().clone(), synth);
+        }
     }
 
     fn play_melody_thread(&self, melody: Melody, synth: SynthChoice) {

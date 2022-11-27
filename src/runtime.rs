@@ -11,10 +11,10 @@ use std::time::Instant;
 
 pub const SHOW_MIDI_MSG: bool = false;
 
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum SynthChoice {
-    Human,
-    Ai,
+    Original,
+    Variation,
 }
 
 pub struct ChooserTable<T: Clone> {

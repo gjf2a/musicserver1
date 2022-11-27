@@ -141,8 +141,8 @@ fn midi2stereo(stereo: &mut StereoSounds<MAX_NOTES>, synth: SynthChoice, midi: M
         println!("synth_output: {midi:?}");
     }
     let side = match synth {
-        SynthChoice::Human => StereoSide::Left,
-        SynthChoice::Ai => StereoSide::Right,
+        SynthChoice::Original => StereoSide::Left,
+        SynthChoice::Variation => StereoSide::Right,
     };
     if let MidiMsg::ChannelVoice { channel: _, msg } = midi {
         match msg {

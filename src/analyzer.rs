@@ -635,12 +635,11 @@ impl MelodyMaker {
             .get(&step_gap)
     }
 
-    pub fn ornamented(&self, melody: &Melody, p_ornament: f64) -> Melody {
+    pub fn ornamented(&self, scale: &MusicMode, melody: &Melody, p_ornament: f64) -> Melody {
         if melody.len() == 0 {
             return melody.clone();
         }
         let mut rng = rand::thread_rng();
-        let scale = melody.best_scale_for();
         let consolidated = melody.get_consolidated_notes();
         let ornament_duration = consolidated.iter().map(|(_, n)| n.duration).min().unwrap();
 

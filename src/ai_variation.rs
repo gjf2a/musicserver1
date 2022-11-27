@@ -70,7 +70,7 @@ pub fn start_ai_thread(
                     while melody_run_status.is_stopping() {}
                     send_recorded_melody(
                         &variation,
-                        SynthChoice::Ai,
+                        SynthChoice::Variation,
                         ai2output.clone(),
                         melody_progress.clone(),
                         melody_run_status.clone(),
@@ -151,7 +151,7 @@ impl PlayerRecorder {
             }
         }
         self.ai2output.push(SynthOutputMsg::Play {
-            synth: SynthChoice::Human,
+            synth: SynthChoice::Original,
             midi: msg,
         });
     }
@@ -198,6 +198,6 @@ impl Performer {
         if variation.len() > 0 && whimsify {
             variation = self.maker.whimsified_ending(&variation);
         }
-        self.maker.ornamented(&variation, p_ornament)
+        self.maker.ornamented(&melody.best_scale_for(), &variation, p_ornament)
     }
 }
