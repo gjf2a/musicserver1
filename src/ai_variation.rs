@@ -198,6 +198,7 @@ impl Performer {
         if variation.len() > 0 && whimsify {
             variation = self.maker.whimsified_ending(&variation);
         }
-        self.maker.ornamented(&melody.best_scale_for(), &variation, p_ornament)
+        self.maker
+            .ornamented(&melody.best_scale_for(), &variation, p_ornament)
     }
 }
