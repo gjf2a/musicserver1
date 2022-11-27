@@ -209,9 +209,9 @@ impl<const N: usize> StereoSounds<N> {
 
 #[derive(Clone)]
 struct LiveSounds<const N: usize> {
-    pitches: [An<Var<f64>>; N],
-    velocities: [An<Var<f64>>; N],
-    controls: [An<Var<f64>>; N],
+    pitches: [Shared<f64>; N],
+    velocities: [Shared<f64>; N],
+    controls: [Shared<f64>; N],
     next: ModNumC<usize, N>,
     pitch2var: BTreeMap<u8, usize>,
     recent_pitches: [Option<u8>; N],
@@ -222,9 +222,9 @@ struct LiveSounds<const N: usize> {
 impl<const N: usize> LiveSounds<N> {
     pub fn new() -> Self {
         Self {
-            pitches: [(); N].map(|_| var(0, 0.0)),
-            velocities: [(); N].map(|_| var(1, 0.0)),
-            controls: [(); N].map(|_| var(2, 0.0)),
+            pitches: [(); N].map(|_| shared(0.0)),
+            velocities: [(); N].map(|_| shared(0.0)),
+            controls: [(); N].map(|_| shared(0.0)),
             next: ModNumC::new(0),
             pitch2var: BTreeMap::new(),
             recent_pitches: [None; N],
@@ -239,9 +239,9 @@ impl<const N: usize> LiveSounds<N> {
     }
 
     pub fn sound_at(&self, i: usize) -> Box<dyn AudioUnit64> {
-        let pitch = Net64::wrap(Box::new(self.pitches[i].clone()));
-        let velocity = Net64::wrap(Box::new(self.velocities[i].clone()));
-        let control = Net64::wrap(Box::new(self.controls[i].clone()));
+        let pitch = Net64::wrap(Box::new(var(&self.pitches[i])));
+        let velocity = Net64::wrap(Box::new(var(&self.velocities[i])));
+        let control = Net64::wrap(Box::new(var(&self.controls[i])));
         let adsr = Net64::wrap(Box::new(adsr_live(
             self.adsr.0,
             self.adsr.1,
