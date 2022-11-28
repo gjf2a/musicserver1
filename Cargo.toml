@@ -14,8 +14,7 @@ histogram_macros = {git = "https://github.com/gjf2a/histogram_macros"}
 rand = "0.8"
 enum-iterator = "1"
 midir = "0.8"
-#fundsp = "0.9"
-fundsp = {git = "https://github.com/gjf2a/fundsp"}
+fundsp = "0.10"
 cpal = "0.14"
 anyhow = "1"
 midi-msg = "0.4"
