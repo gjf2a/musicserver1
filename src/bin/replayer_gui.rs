@@ -408,26 +408,50 @@ impl ReplayerApp {
         melody_var_info: &mut VecTracker<(MelodyInfo, MelodyInfo)>,
     ) {
         ui.horizontal(|ui| {
-            if !melody_var_info.at_start() && ui.button("<").clicked() {
-                self.melody_run_status.send_stop();
-                melody_var_info.go_left();
-                let (_, variation_info) = melody_var_info.get().unwrap();
-                self.variation_pref.store(variation_info.rating());
-            }
+            self.melody_arrow(
+                "<",
+                ui,
+                melody_var_info,
+                |mvi| mvi.at_start(),
+                |mvi| mvi.go_left(),
+            );
+
             let start_variation_pref = self.variation_pref.load();
             Self::preference_buttons(ui, self.variation_pref.clone());
-            if !melody_var_info.at_end() && ui.button(">").clicked() {
-                self.melody_run_status.send_stop();
-                melody_var_info.go_right();
-                let (_, variation_info) = melody_var_info.get().unwrap();
-                self.variation_pref.store(variation_info.rating());
-            }
+
+            self.melody_arrow(
+                ">",
+                ui,
+                melody_var_info,
+                |mvi| mvi.at_end(),
+                |mvi| mvi.go_right(),
+            );
+
             if start_variation_pref != self.variation_pref.load() {
                 self.melody_run_status.send_stop();
                 self.update_database_preferences(melody_var_info);
                 self.request_refresh();
             }
         });
+    }
+
+    fn melody_arrow<
+        F: Fn(&VecTracker<(MelodyInfo, MelodyInfo)>) -> bool,
+        M: FnMut(&mut VecTracker<(MelodyInfo, MelodyInfo)>),
+    >(
+        &self,
+        arrow: &str,
+        ui: &mut Ui,
+        melody_var_info: &mut VecTracker<(MelodyInfo, MelodyInfo)>,
+        filter: F,
+        mut mover: M,
+    ) {
+        if !filter(melody_var_info) && ui.button(arrow).clicked() {
+            self.melody_run_status.send_stop();
+            mover(melody_var_info);
+            let (_, variation_info) = melody_var_info.get().unwrap();
+            self.variation_pref.store(variation_info.rating());
+        }
     }
 
     fn update_database_preferences(
@@ -647,17 +671,15 @@ impl ReplayerApp {
         let variation_pref = self.variation_pref.clone();
         let melody_var_info = self.melody_var_info.clone();
         let melody_progress = self.melody_progress.clone();
-        thread::spawn(move || {
-            loop {
-                if let Some(msg) = dbase2gui.pop() {
-                    Self::handle_database_msg(msg, variation_pref.clone(), melody_var_info.clone());
-                    ctx.request_repaint();
-                }
-                if let Some(_) = melody_progress.load() {
-                    ctx.request_repaint();
-                }
-                thread::sleep(Duration::from_millis(25));
+        thread::spawn(move || loop {
+            if let Some(msg) = dbase2gui.pop() {
+                Self::handle_database_msg(msg, variation_pref.clone(), melody_var_info.clone());
+                ctx.request_repaint();
             }
+            if let Some(_) = melody_progress.load() {
+                ctx.request_repaint();
+            }
+            thread::sleep(Duration::from_millis(25));
         });
     }
 
