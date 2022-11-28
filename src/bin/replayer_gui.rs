@@ -28,7 +28,7 @@ use std::ops::RangeInclusive;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 fn main() -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions::default();
@@ -423,6 +423,7 @@ impl ReplayerApp {
                 self.variation_pref.store(variation_info.rating());
             }
             if start_variation_pref != self.variation_pref.load() {
+                self.melody_run_status.send_stop();
                 self.update_database_preferences(melody_var_info);
                 self.request_refresh();
             }
@@ -647,19 +648,15 @@ impl ReplayerApp {
         let melody_var_info = self.melody_var_info.clone();
         let melody_progress = self.melody_progress.clone();
         thread::spawn(move || {
-            let mut last_progress = None;
             loop {
                 if let Some(msg) = dbase2gui.pop() {
                     Self::handle_database_msg(msg, variation_pref.clone(), melody_var_info.clone());
                     ctx.request_repaint();
                 }
-                let current_progress = melody_progress.load();
-                if last_progress != current_progress {
-                    if let Some(_) = current_progress {
-                        ctx.request_repaint();
-                        last_progress = current_progress;
-                    }
+                if let Some(_) = melody_progress.load() {
+                    ctx.request_repaint();
                 }
+                thread::sleep(Duration::from_millis(25));
             }
         });
     }
