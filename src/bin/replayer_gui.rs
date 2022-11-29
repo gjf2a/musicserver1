@@ -314,11 +314,11 @@ impl ReplayerApp {
             ui.checkbox(&mut whimsify, "Whimsify Suffix");
             self.variation_controls.whimsify.store(whimsify);
 
-            self.display_melody_section(ui);
+            self.display_melody_section(ui, 1.0);
         });
     }
 
-    fn display_melody_section(&mut self, ui: &mut Ui) {
+    fn display_melody_section(&mut self, ui: &mut Ui, staff_scaling: f32) {
         if self.displaying_melody_var_info() {
             ui.checkbox(
                 &mut self.adjust_search_preferences,
@@ -327,7 +327,7 @@ impl ReplayerApp {
             if self.adjust_search_preferences {
                 self.search_preference_screen(ui);
             } else {
-                self.display_melody_info(ui);
+                self.display_melody_info(ui, staff_scaling);
             }
         }
     }
@@ -357,7 +357,7 @@ impl ReplayerApp {
         });
     }
 
-    fn display_melody_info(&mut self, ui: &mut Ui) {
+    fn display_melody_info(&mut self, ui: &mut Ui, staff_scaling: f32) {
         let (melody_info, variation_info) = {
             let mut melody_var_info = self.melody_var_info.lock().unwrap();
             self.melody_variation_selector(ui, &mut melody_var_info);
@@ -379,7 +379,7 @@ impl ReplayerApp {
 
         let size = Vec2::new(
             ui.available_width(),
-            (ui.min_size().y - ui.available_height()) / 2.0,
+            ui.available_height() * staff_scaling,
         );
         let melodies = vec![
             (melody_info.melody(), Color32::BLACK),
@@ -589,7 +589,7 @@ impl ReplayerApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Replayer: No MIDI Devices Available");
             ui.label(message);
-            self.display_melody_section(ui);
+            self.display_melody_section(ui, 0.5);
         });
     }
 
