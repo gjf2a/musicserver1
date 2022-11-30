@@ -8,13 +8,14 @@ use eframe::egui::{
 };
 use eframe::emath::Numeric;
 use enum_iterator::all;
-use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts};
+use midi_msg::MidiMsg;
+use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts, InitError};
 use musicserver1::ai_variation::{
     make_ai_table, start_ai_thread, AIFuncType, DEFAULT_AI_NAME, NO_AI_NAME,
 };
 use musicserver1::analyzer::{Accidental, KeySignature, Melody, MidiByte, MusicMode};
 use musicserver1::database::{
-    start_database_thread, Database, DatabaseGuiUpdate, GuiDatabaseUpdate, MelodyInfo, Preference,
+    start_database_thread, Database, DatabaseGuiUpdate, GuiDatabaseUpdate, MelodyInfo, Preference, FromAiMsg,
 };
 use musicserver1::midi_input::start_input_thread;
 use musicserver1::runtime::{
@@ -46,6 +47,27 @@ enum MidiScenario {
     NoInputPorts(String),
     InputPortSelected { in_port: MidiInputPort },
     MultipleInputPorts { in_ports: MidiInputPorts },
+}
+
+impl MidiScenario {
+    fn new(midi_in: &mut Result<MidiInput, InitError>) -> Self {
+        match midi_in {
+            Ok(ref mut midi_in) => {
+                midi_in.ignore(Ignore::None);
+                let in_ports = midi_in.ports();
+                match in_ports.len() {
+                    0 => MidiScenario::NoInputPorts("No MIDI devices found".to_string()),
+                    1 => MidiScenario::InputPortSelected {
+                        in_port: in_ports[0].clone(),
+                    },
+                    _ => MidiScenario::MultipleInputPorts {
+                        in_ports: in_ports.clone(),
+                    },
+                }
+            }
+            Err(e) => MidiScenario::NoInputPorts(e.to_string()),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -166,6 +188,8 @@ struct ReplayerApp {
     older_search_pref: Arc<AtomicCell<Preference>>,
     melody_var_info: Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo)>>>,
     database: Option<Database>,
+    input2ai: Arc<SegQueue<MidiMsg>>,
+    ai2dbase: Arc<SegQueue<FromAiMsg>>,
     dbase2gui: Arc<SegQueue<DatabaseGuiUpdate>>,
     gui2dbase: Arc<SegQueue<GuiDatabaseUpdate>>,
     gui2ai: Arc<SegQueue<Melody>>,
@@ -175,6 +199,9 @@ struct ReplayerApp {
     adjust_search_preferences: bool,
 }
 
+
+const MAIN_MELODY_SCALING: f32 = 0.8;
+const NO_MIDI_MELODY_SCALING: f32 = 0.4;
 const MIDDLE_C: MidiByte = 60;
 const STAFF_PITCH_WIDTH: MidiByte = 19;
 const LOWEST_STAFF_PITCH: MidiByte = MIDDLE_C - STAFF_PITCH_WIDTH;
@@ -232,7 +259,7 @@ impl ReplayerApp {
         println!("Database load time: {database_load_time}s");
         let melody_run_status = MelodyRunStatus::new();
 
-        let app = ReplayerApp {
+        let mut app = ReplayerApp {
             midi_scenario: Arc::new(Mutex::new(MidiScenario::StartingUp)),
             midi_in: Arc::new(Mutex::new(None)),
             variation_controls,
@@ -247,6 +274,8 @@ impl ReplayerApp {
             older_search_pref: Arc::new(AtomicCell::new(Preference::Favorite)),
             melody_var_info,
             database: Some(database),
+            input2ai: Arc::new(SegQueue::new()),
+            ai2dbase: Arc::new(SegQueue::new()),
             dbase2gui: Arc::new(SegQueue::new()),
             gui2dbase: Arc::new(SegQueue::new()),
             gui2ai: Arc::new(SegQueue::new()),
@@ -314,7 +343,7 @@ impl ReplayerApp {
             ui.checkbox(&mut whimsify, "Whimsify Suffix");
             self.variation_controls.whimsify.store(whimsify);
 
-            self.display_melody_section(ui, 1.0);
+            self.display_melody_section(ui, MAIN_MELODY_SCALING);
         });
     }
 
@@ -559,24 +588,41 @@ impl ReplayerApp {
         });
     }
 
-    fn startup(&self) {
+    fn startup(&mut self) {
+        start_output_thread(
+            self.ai2output.clone(),
+            self.human_synth.table.clone(),
+            self.human_synth.index.clone(),
+            self.ai_synth.table.clone(),
+            self.ai_synth.index.clone(),
+        );
+        start_ai_thread(
+            self.ai_algorithm.table.clone(),
+            self.input2ai.clone(),
+            self.gui2ai.clone(),
+            self.ai2output.clone(),
+            self.ai2dbase.clone(),
+            self.variation_controls.clone(),
+            self.replay_delay_slider.clone(),
+            self.melody_progress.clone(),
+            self.melody_run_status.clone(),
+        );
+
+        let database = self.database.take();
+
+        start_database_thread(
+            self.dbase2gui.clone(),
+            self.gui2dbase.clone(),
+            self.ai2dbase.clone(),
+            database.unwrap(),
+        );
+
+        self.try_midi_input();
+    }
+
+    fn try_midi_input(&self) {
         let mut midi_in = MidiInput::new("midir reading input");
-        let scenario = match midi_in {
-            Ok(ref mut midi_in) => {
-                midi_in.ignore(Ignore::None);
-                let in_ports = midi_in.ports();
-                match in_ports.len() {
-                    0 => MidiScenario::NoInputPorts("No MIDI devices found".to_string()),
-                    1 => MidiScenario::InputPortSelected {
-                        in_port: in_ports[0].clone(),
-                    },
-                    _ => MidiScenario::MultipleInputPorts {
-                        in_ports: in_ports.clone(),
-                    },
-                }
-            }
-            Err(e) => MidiScenario::NoInputPorts(e.to_string()),
-        };
+        let scenario = MidiScenario::new(&mut midi_in);
         {
             let mut midi_scenario = self.midi_scenario.lock().unwrap();
             *midi_scenario = scenario;
@@ -589,7 +635,8 @@ impl ReplayerApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("Replayer: No MIDI Devices Available");
             ui.label(message);
-            self.display_melody_section(ui, 0.5);
+            self.display_melody_section(ui, NO_MIDI_MELODY_SCALING);
+            self.start_ui_listening_thread(ctx);
         });
     }
 
@@ -621,52 +668,25 @@ impl ReplayerApp {
                         in_port: self.in_port.clone().unwrap(),
                     };
                 }
-                self.start_now(ctx);
+                self.start_input(ctx);
             }
         });
     }
 
-    fn start_now(&mut self, ctx: &egui::Context) {
+    fn start_input(&mut self, ctx: &egui::Context) {
         let in_port = self.in_port.as_ref().unwrap().clone();
         self.set_in_port_name(&in_port);
         let midi_in = {
             let mut self_midi_in = self.midi_in.lock().unwrap();
             self_midi_in.take()
         };
-        let input2ai = Arc::new(SegQueue::new());
-        let ai2dbase = Arc::new(SegQueue::new());
-        let database = self.database.take();
 
         self.start_ui_listening_thread(ctx);
 
-        start_output_thread(
-            self.ai2output.clone(),
-            self.human_synth.table.clone(),
-            self.human_synth.index.clone(),
-            self.ai_synth.table.clone(),
-            self.ai_synth.index.clone(),
-        );
-        start_ai_thread(
-            self.ai_algorithm.table.clone(),
-            input2ai.clone(),
-            self.gui2ai.clone(),
-            self.ai2output.clone(),
-            ai2dbase.clone(),
-            self.variation_controls.clone(),
-            self.replay_delay_slider.clone(),
-            self.melody_progress.clone(),
-            self.melody_run_status.clone(),
-        );
         start_input_thread(
-            input2ai,
+            self.input2ai.clone(),
             midi_in.unwrap(),
             self.in_port.as_ref().unwrap().clone(),
-        );
-        start_database_thread(
-            self.dbase2gui.clone(),
-            self.gui2dbase.clone(),
-            ai2dbase,
-            database.unwrap(),
         );
     }
 
@@ -923,7 +943,7 @@ impl eframe::App for ReplayerApp {
             MidiScenario::InputPortSelected { in_port } => {
                 if self.in_port.is_none() {
                     self.in_port = Some(in_port);
-                    self.start_now(ctx);
+                    self.start_input(ctx);
                 }
                 self.main_screen(ctx, frame)
             }
