@@ -361,7 +361,7 @@ impl Preference {
     pub fn sql_choice_str(&self) -> &'static str {
         match self {
             Preference::Favorite => "rating = 'Favorite'",
-            Preference::Neutral => "(rating = 'Favorite' OR rating = 'Neutral')",
+            Preference::Neutral => "rating <> 'Ignore'",
             Preference::Ignore => "rating LIKE '%'",
         }
     }

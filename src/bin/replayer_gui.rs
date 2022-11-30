@@ -56,7 +56,7 @@ impl MidiScenario {
                 midi_in.ignore(Ignore::None);
                 let in_ports = midi_in.ports();
                 match in_ports.len() {
-                    0 => MidiScenario::NoInputPorts("No MIDI devices found".to_string()),
+                    0 => MidiScenario::NoInputPorts("No MIDI devices found\nRestart program after MIDI device plugged in".to_string()),
                     1 => MidiScenario::InputPortSelected {
                         in_port: in_ports[0].clone(),
                     },
