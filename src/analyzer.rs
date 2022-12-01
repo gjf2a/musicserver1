@@ -773,6 +773,22 @@ impl MelodyMaker {
         MelodySection::from(&subs, &intervals, &consolidated)
     }
 
+    pub fn create_whimsical_variation(&self, original: &Melody, p_go_back: f64) -> Melody {
+        // Algorithm:
+        //
+        // 1. Start at original pitch.
+        // 2. For each pitch:
+        // * Roll the dice, based on p_go_back. 
+        //   * If we are going back, select an interval that moves us closer to the original pitch at the end of the interval.
+        //   * If not, select an interval that moves us away from the original pitch.
+        // 3. Keep going until we have exhausted the figure.
+        //   * Variation: Include a chance of picking a new figure that "fits" the current one.
+        // 4. Pick a new figure once we're done.
+        // 5. p_go_back increases with each interval we pick. It resets when we get back to an original note.
+        //   * Idea: Maybe p_go_back can be that interval, and it always just starts at zero.
+        original.clone() // TODO: just to make it compile for now
+    }
+
     pub fn whimsified_ending(&self, original: &Melody) -> Melody {
         let distro = self.make_figure_distribution(original);
         let whimsifier = distro.random_pick();
