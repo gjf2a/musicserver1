@@ -1,7 +1,9 @@
 use crate::analyzer::Melody;
-use crate::synth_output::SynthOutputMsg;
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
+use midi_fundsp::SynthFunc;
+use midi_fundsp::io::{SynthMsg, Speaker, StereoPlayer};
+use midi_fundsp::sounds::options;
 use read_input::prelude::input;
 use read_input::InputBuild;
 use std::collections::btree_map::BTreeMap;
@@ -11,10 +13,36 @@ use std::time::Instant;
 
 pub const SHOW_MIDI_MSG: bool = false;
 
+pub const HUMAN_SPEAKER: Speaker = Speaker::Left;
+pub const VARIATION_SPEAKER: Speaker = Speaker::Right;
+
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum SynthChoice {
     Original,
     Variation,
+}
+
+impl SynthChoice {
+    pub fn speaker(&self) -> Speaker {
+        match self {
+            SynthChoice::Original => HUMAN_SPEAKER,
+            SynthChoice::Variation => VARIATION_SPEAKER,
+        }
+    }
+}
+
+pub type SynthTable = ChooserTable<SynthFunc>;
+
+pub fn make_synth_table() -> SynthTable {
+    ChooserTable::from(&options())
+}
+
+pub fn start_output_thread(ai2output: Arc<SegQueue<SynthMsg>>, start_func: SynthFunc) {
+    std::thread::spawn(move || {
+        let mut player = StereoPlayer::<10>::stereo(start_func.clone(), start_func.clone());
+        player.run_output(ai2output).unwrap();
+        loop {}
+    });
 }
 
 pub struct ChooserTable<T: Clone> {
@@ -199,8 +227,8 @@ impl MelodyRunStatus {
 
 pub fn send_recorded_melody(
     melody: &Melody,
-    synth: SynthChoice,
-    ai2output: Arc<SegQueue<SynthOutputMsg>>,
+    speaker: Speaker,
+    ai2output: Arc<SegQueue<SynthMsg>>,
     melody_progress: Arc<AtomicCell<Option<f32>>>,
     melody_run_status: MelodyRunStatus,
 ) {
@@ -209,7 +237,7 @@ pub fn send_recorded_melody(
     let total_duration = melody.duration() as f32;
     'outer: for note in melody.iter() {
         let (midi, duration) = note.to_midi();
-        ai2output.push(SynthOutputMsg::Play { synth, midi });
+        ai2output.push(SynthMsg::Midi(midi, speaker));
         let note_start = Instant::now();
         while note_start.elapsed().as_secs_f64() < duration {
             let progress = Some(total_start.elapsed().as_secs_f32() / total_duration);
@@ -219,7 +247,7 @@ pub fn send_recorded_melody(
             }
         }
     }
-    ai2output.push(SynthOutputMsg::StopAll);
+    ai2output.push(SynthMsg::Off(speaker));
     melody_run_status.report_stop();
     melody_progress.store(None);
 }

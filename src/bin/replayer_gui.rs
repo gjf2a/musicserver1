@@ -8,7 +8,6 @@ use eframe::egui::{
 };
 use eframe::emath::Numeric;
 use enum_iterator::all;
-use midi_msg::MidiMsg;
 use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts, InitError};
 use musicserver1::ai_variation::{
     make_ai_table, start_ai_thread, AIFuncType, DEFAULT_AI_NAME, NO_AI_NAME,
@@ -17,19 +16,18 @@ use musicserver1::analyzer::{Accidental, KeySignature, Melody, MidiByte, MusicMo
 use musicserver1::database::{
     start_database_thread, Database, DatabaseGuiUpdate, GuiDatabaseUpdate, MelodyInfo, Preference, FromAiMsg,
 };
-use musicserver1::midi_input::start_input_thread;
 use musicserver1::runtime::{
     replay_slider, send_recorded_melody, ChooserTable, MelodyRunStatus, SliderValue, SynthChoice,
-    VariationControls,
+    VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER, make_synth_table, start_output_thread
 };
-use musicserver1::synth_output::{start_output_thread, SynthOutputMsg, SynthType};
-use musicserver1::synth_sounds::make_synth_table;
 use std::cmp::{max, min};
 use std::ops::RangeInclusive;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
+use midi_fundsp::SynthFunc;
+use midi_fundsp::io::{start_input_thread, SynthMsg, Speaker};
 
 fn main() -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions::default();
@@ -171,14 +169,19 @@ impl<T: Clone> TableInfo<T> {
         table.choose(self.name.as_str());
         self.index.store(table.current_index());
     }
+
+    fn current_choice(&self) -> T {
+        let table = self.table.lock().unwrap();
+        table.current_choice()
+    }
 }
 
 struct ReplayerApp {
     midi_scenario: Arc<Mutex<MidiScenario>>,
     midi_in: Arc<Mutex<Option<MidiInput>>>,
     ai_algorithm: TableInfo<Arc<AIFuncType>>,
-    human_synth: TableInfo<SynthType>,
-    ai_synth: TableInfo<SynthType>,
+    human_synth: TableInfo<SynthFunc>,
+    ai_synth: TableInfo<SynthFunc>,
     variation_controls: VariationControls,
     replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
     in_port: Option<MidiInputPort>,
@@ -188,12 +191,12 @@ struct ReplayerApp {
     older_search_pref: Arc<AtomicCell<Preference>>,
     melody_var_info: Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo)>>>,
     database: Option<Database>,
-    input2ai: Arc<SegQueue<MidiMsg>>,
+    input2ai: Arc<SegQueue<SynthMsg>>,
     ai2dbase: Arc<SegQueue<FromAiMsg>>,
     dbase2gui: Arc<SegQueue<DatabaseGuiUpdate>>,
     gui2dbase: Arc<SegQueue<GuiDatabaseUpdate>>,
     gui2ai: Arc<SegQueue<Melody>>,
-    ai2output: Arc<SegQueue<SynthOutputMsg>>,
+    ai2output: Arc<SegQueue<SynthMsg>>,
     melody_progress: Arc<AtomicCell<Option<f32>>>,
     melody_run_status: MelodyRunStatus,
     adjust_search_preferences: bool,
@@ -326,9 +329,17 @@ impl ReplayerApp {
             let heading = format!("Replayer ({})", self.in_port_name.as_ref().unwrap());
             ui.heading(heading);
             ui.horizontal(|ui| {
+                let human_name = self.human_synth.name.clone();
+                let ai_name = self.ai_synth.name.clone();
                 Self::radio_choice(ui, "Human Synthesizer", &mut self.human_synth);
                 Self::radio_choice(ui, "Variation Synthesizer", &mut self.ai_synth);
                 Self::radio_choice(ui, "Variation Algorithm", &mut self.ai_algorithm);
+                if human_name != self.human_synth.name {
+                    self.ai2output.push(SynthMsg::SetSynth(self.human_synth.current_choice(), HUMAN_SPEAKER));
+                }
+                if ai_name != self.ai_synth.name {
+                    self.ai2output.push(SynthMsg::SetSynth(self.ai_synth.current_choice(), VARIATION_SPEAKER));
+                }
             });
 
             let p_random_slider = self.variation_controls.p_random_slider.clone();
@@ -514,8 +525,8 @@ impl ReplayerApp {
 
     fn play_both(&self, melody_info: &MelodyInfo, variation_info: &MelodyInfo) {
         self.melody_run_status.send_stop();
-        self.play_melody_thread(melody_info.melody().clone(), SynthChoice::Original);
-        self.play_melody_thread(variation_info.melody().clone(), SynthChoice::Variation);
+        self.play_melody_thread(melody_info.melody().clone(), HUMAN_SPEAKER);
+        self.play_melody_thread(variation_info.melody().clone(), VARIATION_SPEAKER);
     }
 
     fn font_id(size: f32) -> FontId {
@@ -529,11 +540,11 @@ impl ReplayerApp {
         let text = format!("Play {synth:?}");
         if ui.button(text).clicked() {
             self.melody_run_status.send_stop();
-            self.play_melody_thread(info.melody().clone(), synth);
+            self.play_melody_thread(info.melody().clone(), synth.speaker());
         }
     }
 
-    fn play_melody_thread(&self, melody: Melody, synth: SynthChoice) {
+    fn play_melody_thread(&self, melody: Melody, speaker: Speaker) {
         let ai2output = self.ai2output.clone();
         let melody_progress = self.melody_progress.clone();
         let melody_run_status = self.melody_run_status.clone();
@@ -541,7 +552,7 @@ impl ReplayerApp {
             while melody_run_status.is_stopping() {}
             send_recorded_melody(
                 &melody,
-                synth,
+                speaker,
                 ai2output,
                 melody_progress,
                 melody_run_status,
@@ -591,10 +602,10 @@ impl ReplayerApp {
     fn startup(&mut self) {
         start_output_thread(
             self.ai2output.clone(),
-            self.human_synth.table.clone(),
-            self.human_synth.index.clone(),
-            self.ai_synth.table.clone(),
-            self.ai_synth.index.clone(),
+            {
+                let table = self.human_synth.table.lock().unwrap();
+                table.current_choice().clone()
+            }
         );
         start_ai_thread(
             self.ai_algorithm.table.clone(),

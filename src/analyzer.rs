@@ -3597,8 +3597,9 @@ mod tests {
         for (pitch, duration, velocity) in LEAN_ON_ME.iter().copied() {
             melody.add(Note::new(pitch, duration, velocity));
         }
+        let scale = melody.best_scale_for();
         for _ in 0..NUM_RANDOM_TESTS {
-            let ornamented = maker.ornamented(&melody, 1.0);
+            let ornamented = maker.ornamented(&scale, &melody, 1.0);
             assert!(ornamented.len() > melody.len());
             assert_approx_eq!(f64, melody.duration(), ornamented.duration());
             let cm = melody.get_consolidated_notes();

@@ -1,14 +1,14 @@
 use crate::analyzer::{Melody, MelodyMaker, PendingNote};
 use crate::database::FromAiMsg;
 use crate::runtime::{
-    send_recorded_melody, ChooserTable, MelodyRunStatus, SliderValue, SynthChoice,
-    VariationControls,
+    send_recorded_melody, ChooserTable, MelodyRunStatus, SliderValue,
+    VariationControls, VARIATION_SPEAKER, HUMAN_SPEAKER,
 };
-use crate::synth_output::SynthOutputMsg;
 use crate::{analyzer, arc_vec};
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use eframe::emath::Numeric;
+use midi_fundsp::io::SynthMsg;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -28,9 +28,9 @@ pub fn make_ai_table() -> AITable {
 
 pub fn start_ai_thread(
     ai_table: Arc<Mutex<AITable>>,
-    input2ai: Arc<SegQueue<MidiMsg>>,
+    input2ai: Arc<SegQueue<SynthMsg>>,
     gui2ai: Arc<SegQueue<Melody>>,
-    ai2output: Arc<SegQueue<SynthOutputMsg>>,
+    ai2output: Arc<SegQueue<SynthMsg>>,
     ai2dbase: Arc<SegQueue<FromAiMsg>>,
     variation_controls: VariationControls,
     replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
@@ -70,7 +70,7 @@ pub fn start_ai_thread(
                     while melody_run_status.is_stopping() {}
                     send_recorded_melody(
                         &variation,
-                        SynthChoice::Variation,
+                        VARIATION_SPEAKER,
                         ai2output.clone(),
                         melody_progress.clone(),
                         melody_run_status.clone(),
@@ -91,9 +91,9 @@ fn long_enough(melody: &Melody, min_melody_pitches: usize, min_duration: f64) ->
 }
 
 struct PlayerRecorder {
-    input2ai: Arc<SegQueue<MidiMsg>>,
+    input2ai: Arc<SegQueue<SynthMsg>>,
     gui2ai: Arc<SegQueue<Melody>>,
-    ai2output: Arc<SegQueue<SynthOutputMsg>>,
+    ai2output: Arc<SegQueue<SynthMsg>>,
     replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
     waiting: Option<PendingNote>,
     player_melody: Melody,
@@ -101,9 +101,9 @@ struct PlayerRecorder {
 
 impl PlayerRecorder {
     fn new(
-        input2ai: Arc<SegQueue<MidiMsg>>,
+        input2ai: Arc<SegQueue<SynthMsg>>,
         gui2ai: Arc<SegQueue<Melody>>,
-        ai2output: Arc<SegQueue<SynthOutputMsg>>,
+        ai2output: Arc<SegQueue<SynthMsg>>,
         replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
     ) -> Self {
         PlayerRecorder {
@@ -124,7 +124,7 @@ impl PlayerRecorder {
                 return melody;
             }
             if let Some(msg) = self.input2ai.pop() {
-                self.handle_incoming(msg);
+                self.handle_incoming(&msg);
             }
 
             if let Some(pending_note) = self.waiting {
@@ -137,23 +137,22 @@ impl PlayerRecorder {
         result
     }
 
-    fn handle_incoming(&mut self, msg: MidiMsg) {
-        if let MidiMsg::ChannelVoice { channel: _, msg } = msg {
-            match msg {
-                ChannelVoiceMsg::NoteOff { note, velocity }
-                | ChannelVoiceMsg::NoteOn { note, velocity } => {
-                    if let Some(pending_note) = self.waiting {
-                        self.player_melody.add(pending_note.into());
+    fn handle_incoming(&mut self, synth_msg: &SynthMsg) {
+        if let SynthMsg::Midi(msg, _) = synth_msg {
+            if let MidiMsg::ChannelVoice { channel: _, msg } = msg {
+                match msg {
+                    ChannelVoiceMsg::NoteOff { note, velocity }
+                    | ChannelVoiceMsg::NoteOn { note, velocity } => {
+                        if let Some(pending_note) = self.waiting {
+                            self.player_melody.add(pending_note.into());
+                        }
+                        self.waiting = Some(PendingNote::new(*note, *velocity));
                     }
-                    self.waiting = Some(PendingNote::new(note, velocity));
+                    _ => {}
                 }
-                _ => {}
             }
+            self.ai2output.push(synth_msg.speaker_swapped(HUMAN_SPEAKER));
         }
-        self.ai2output.push(SynthOutputMsg::Play {
-            synth: SynthChoice::Original,
-            midi: msg,
-        });
     }
 
     fn check_if_finished(&mut self, pending_note: PendingNote) -> bool {
