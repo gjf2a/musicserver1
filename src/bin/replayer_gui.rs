@@ -8,17 +8,20 @@ use eframe::egui::{
 };
 use eframe::emath::Numeric;
 use enum_iterator::all;
-use midir::{Ignore, MidiInput, MidiInputPort, MidiInputPorts, InitError};
+use midi_fundsp::io::{start_input_thread, Speaker, SynthMsg};
+use midi_fundsp::SynthFunc;
+use midir::{Ignore, InitError, MidiInput, MidiInputPort, MidiInputPorts};
 use musicserver1::ai_variation::{
     make_ai_table, start_ai_thread, AIFuncType, DEFAULT_AI_NAME, NO_AI_NAME,
 };
 use musicserver1::analyzer::{Accidental, KeySignature, Melody, MidiByte, MusicMode};
 use musicserver1::database::{
-    start_database_thread, Database, DatabaseGuiUpdate, GuiDatabaseUpdate, MelodyInfo, Preference, FromAiMsg,
+    start_database_thread, Database, DatabaseGuiUpdate, FromAiMsg, GuiDatabaseUpdate, MelodyInfo,
+    Preference,
 };
 use musicserver1::runtime::{
-    replay_slider, send_recorded_melody, ChooserTable, MelodyRunStatus, SliderValue, SynthChoice,
-    VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER, make_synth_table, start_output_thread
+    make_synth_table, replay_slider, send_recorded_melody, start_output_thread, ChooserTable,
+    MelodyRunStatus, SliderValue, SynthChoice, VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER,
 };
 use std::cmp::{max, min};
 use std::ops::RangeInclusive;
@@ -26,8 +29,6 @@ use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
-use midi_fundsp::SynthFunc;
-use midi_fundsp::io::{start_input_thread, SynthMsg, Speaker};
 
 fn main() -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions::default();
@@ -54,7 +55,10 @@ impl MidiScenario {
                 midi_in.ignore(Ignore::None);
                 let in_ports = midi_in.ports();
                 match in_ports.len() {
-                    0 => MidiScenario::NoInputPorts("No MIDI devices found\nRestart program after MIDI device plugged in".to_string()),
+                    0 => MidiScenario::NoInputPorts(
+                        "No MIDI devices found\nRestart program after MIDI device plugged in"
+                            .to_string(),
+                    ),
                     1 => MidiScenario::InputPortSelected {
                         in_port: in_ports[0].clone(),
                     },
@@ -202,7 +206,6 @@ struct ReplayerApp {
     adjust_search_preferences: bool,
 }
 
-
 const MAIN_MELODY_SCALING: f32 = 0.8;
 const NO_MIDI_MELODY_SCALING: f32 = 0.4;
 const MIDDLE_C: MidiByte = 60;
@@ -335,10 +338,16 @@ impl ReplayerApp {
                 Self::radio_choice(ui, "Variation Synthesizer", &mut self.ai_synth);
                 Self::radio_choice(ui, "Variation Algorithm", &mut self.ai_algorithm);
                 if human_name != self.human_synth.name {
-                    self.ai2output.push(SynthMsg::SetSynth(self.human_synth.current_choice(), HUMAN_SPEAKER));
+                    self.ai2output.push(SynthMsg::SetSynth(
+                        self.human_synth.current_choice(),
+                        HUMAN_SPEAKER,
+                    ));
                 }
                 if ai_name != self.ai_synth.name {
-                    self.ai2output.push(SynthMsg::SetSynth(self.ai_synth.current_choice(), VARIATION_SPEAKER));
+                    self.ai2output.push(SynthMsg::SetSynth(
+                        self.ai_synth.current_choice(),
+                        VARIATION_SPEAKER,
+                    ));
                 }
             });
 
@@ -417,10 +426,7 @@ impl ReplayerApp {
             self.create_new_variation(&melody_info);
         }
 
-        let size = Vec2::new(
-            ui.available_width(),
-            ui.available_height() * staff_scaling,
-        );
+        let size = Vec2::new(ui.available_width(), ui.available_height() * staff_scaling);
         let melodies = vec![
             (melody_info.melody(), Color32::BLACK),
             (variation_info.melody(), Color32::RED),
@@ -600,13 +606,10 @@ impl ReplayerApp {
     }
 
     fn startup(&mut self) {
-        start_output_thread(
-            self.ai2output.clone(),
-            {
-                let table = self.human_synth.table.lock().unwrap();
-                table.current_choice().clone()
-            }
-        );
+        start_output_thread(self.ai2output.clone(), {
+            let table = self.human_synth.table.lock().unwrap();
+            table.current_choice().clone()
+        });
         start_ai_thread(
             self.ai_algorithm.table.clone(),
             self.input2ai.clone(),

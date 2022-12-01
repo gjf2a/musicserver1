@@ -1,9 +1,9 @@
 use crate::analyzer::Melody;
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
-use midi_fundsp::SynthFunc;
-use midi_fundsp::io::{SynthMsg, Speaker, StereoPlayer};
+use midi_fundsp::io::{Speaker, StereoPlayer, SynthMsg};
 use midi_fundsp::sounds::options;
+use midi_fundsp::SynthFunc;
 use read_input::prelude::input;
 use read_input::InputBuild;
 use std::collections::btree_map::BTreeMap;

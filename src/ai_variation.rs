@@ -1,8 +1,8 @@
 use crate::analyzer::{Melody, MelodyMaker, PendingNote};
 use crate::database::FromAiMsg;
 use crate::runtime::{
-    send_recorded_melody, ChooserTable, MelodyRunStatus, SliderValue,
-    VariationControls, VARIATION_SPEAKER, HUMAN_SPEAKER,
+    send_recorded_melody, ChooserTable, MelodyRunStatus, SliderValue, VariationControls,
+    HUMAN_SPEAKER, VARIATION_SPEAKER,
 };
 use crate::{analyzer, arc_vec};
 use crossbeam_queue::SegQueue;
@@ -151,7 +151,8 @@ impl PlayerRecorder {
                     _ => {}
                 }
             }
-            self.ai2output.push(synth_msg.speaker_swapped(HUMAN_SPEAKER));
+            self.ai2output
+                .push(synth_msg.speaker_swapped(HUMAN_SPEAKER));
         }
     }
 
