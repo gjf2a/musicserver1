@@ -786,6 +786,28 @@ impl MelodyMaker {
         // 4. Pick a new figure once we're done.
         // 5. p_go_back increases with each interval we pick. It resets when we get back to an original note.
         //   * Idea: Maybe p_go_back can be that interval, and it always just starts at zero.
+        let scale = original.best_scale_for();
+        let distro = self.make_figure_distribution(original);
+        let mut p_back = 0.0;
+        let mut variation = Melody::new();
+        let mut interval_queue = VecDeque::new();
+        for i in 0..original.len() {
+            match interval_queue.pop_front() {
+                None => {
+                    variation.add(original[i]);
+                    let mut figure = distro.random_pick();
+                    let direction = MelodyDirection::find(figure, original[i], &original, i);
+                    if !direction.agrees(p_back) {
+                        // Flip figure over.
+                    }
+                }
+                Some(interval) => {
+
+                }
+            }
+        }
+
+
         original.clone() // TODO: just to make it compile for now
     }
 
@@ -1092,6 +1114,42 @@ impl NoteLetter {
             NoteLetter::E => 4,
             NoteLetter::F => 5,
             NoteLetter::G => 7,
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Eq)]
+enum MelodyDirection {
+    Toward, Away
+}
+
+impl MelodyDirection {
+    fn find(figure: MelodicFigure, start_pitch: MidiByte, target_melody: &Melody, target_start: usize) -> Self {
+        let scale = target_melody.best_scale_for();
+        let mut figure_pitches = figure.make_pitches(start_pitch, &scale);
+        let final_pitch = figure_pitches.back().copied().unwrap();
+        let mut i = target_start;
+        loop {
+            if i == 0 || target_melody[i - 1].pitch() != target_melody[i].pitch() {
+                figure_pitches.pop_front();
+            }
+            if i + 1 == target_melody.len() || figure_pitches.len() == 0 {
+                break;
+            } else {
+                i += 1;
+            }
+        }
+        let target_pitch = target_melody[i].pitch();
+        let start_pitch_distance = (start_pitch - target_pitch).abs();
+        let figure_pitch_distance = (start_pitch - final_pitch).abs();
+        if start_pitch_distance > figure_pitch_distance {Self::Toward} else {Self::Away}
+    }
+
+    fn agrees(&self, p_back: f64) -> bool {
+        let go_back = rand::random::<f64>() < p_back;
+        match self {
+            Self::Away => !go_back,
+            Self::Toward => go_back
         }
     }
 }
