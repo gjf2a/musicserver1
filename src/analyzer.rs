@@ -790,13 +790,13 @@ impl MelodyMaker {
         let distro = self.make_figure_distribution(original);
         let mut p_back = 0.0;
         let mut variation = Melody::new();
-        let mut interval_queue = VecDeque::new();
+        let mut interval_queue: VecDeque<MidiByte> = VecDeque::new();
         for i in 0..original.len() {
             match interval_queue.pop_front() {
                 None => {
                     variation.add(original[i]);
                     let mut figure = distro.random_pick();
-                    let direction = MelodyDirection::find(figure, original[i], &original, i);
+                    let direction = MelodyDirection::find(figure, original[i].pitch(), &original, i);
                     if !direction.agrees(p_back) {
                         // Flip figure over.
                     }
@@ -2811,11 +2811,7 @@ mod tests {
     #[test]
     fn test_melody_sections() {
         let maker = MelodyMaker::new();
-        let mut melody = Melody::new();
-        for (pitch, duration, velocity) in LEAN_ON_ME.iter().copied() {
-            melody.add(Note::new(pitch, duration, velocity));
-        }
-        assert_eq!(melody.len(), LEAN_ON_ME.len());
+        let melody = lean_on_me_melody();
         let sections = maker.get_melody_sections(&melody);
         println!("{sections:?}");
         assert_eq!(4, sections.len());
@@ -2919,10 +2915,7 @@ mod tests {
     #[test]
     fn test_vary() {
         let mut maker = MelodyMaker::new();
-        let mut melody = Melody::new();
-        for (pitch, duration, velocity) in LEAN_ON_ME.iter().copied() {
-            melody.add(Note::new(pitch, duration, velocity));
-        }
+        let melody = lean_on_me_melody();
         let scale = melody.best_scale_for();
         let mut num_differ = 0;
         for _ in 0..NUM_RANDOM_TESTS {
@@ -2946,10 +2939,7 @@ mod tests {
 
     #[test]
     fn test_remelodize() {
-        let mut melody = Melody::new();
-        for (pitch, duration, velocity) in LEAN_ON_ME.iter().copied() {
-            melody.add(Note::new(pitch, duration, velocity));
-        }
+        let mut melody = lean_on_me_melody();
         let new_sections = vec![
             MelodySection {
                 intervals: vec![
@@ -3664,13 +3654,19 @@ mod tests {
         assert_eq!(melody.without_brief_notes(0.1), expected);
     }
 
-    #[test]
-    fn test_ornamentation() {
-        let maker = MelodyMaker::new();
+    fn lean_on_me_melody() -> Melody {
         let mut melody = Melody::new();
         for (pitch, duration, velocity) in LEAN_ON_ME.iter().copied() {
             melody.add(Note::new(pitch, duration, velocity));
         }
+        assert_eq!(melody.len(), LEAN_ON_ME.len());
+        melody
+    }
+
+    #[test]
+    fn test_ornamentation() {
+        let maker = MelodyMaker::new();
+        let melody = lean_on_me_melody();
         let scale = melody.best_scale_for();
         for _ in 0..NUM_RANDOM_TESTS {
             let ornamented = maker.ornamented(&scale, &melody, 1.0);
@@ -3692,10 +3688,7 @@ mod tests {
     #[test]
     fn test_whimsified_ending() {
         let maker = MelodyMaker::new();
-        let mut melody = Melody::new();
-        for (pitch, duration, velocity) in LEAN_ON_ME.iter().copied() {
-            melody.add(Note::new(pitch, duration, velocity));
-        }
+        let melody = lean_on_me_melody();
         let mut num_different = 0;
         for _ in 0..NUM_RANDOM_TESTS {
             let whimsified = maker.whimsified_ending(&melody);
@@ -3706,5 +3699,15 @@ mod tests {
             }
         }
         assert!(num_different >= NUM_RANDOM_TESTS - 1);
+    }
+
+    #[test]
+    fn test_melody_direction() {
+        let melody = lean_on_me_melody();
+        /*for (f, s, i) in [
+            (MelodicFigure)
+        ] {
+
+        }*/
     }
 }
