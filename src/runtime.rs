@@ -247,7 +247,7 @@ pub fn send_recorded_melody(
             }
         }
     }
-    ai2output.push(SynthMsg::Off(speaker));
+    ai2output.push(SynthMsg::all_notes_off(speaker));
     melody_run_status.report_stop();
     melody_progress.store(None);
 }
