@@ -174,11 +174,6 @@ impl<T: Clone> TableInfo<T> {
         self.index.store(table.current_index());
     }
 
-    fn current_choice(&self) -> T {
-        let table = self.table.lock().unwrap();
-        table.current_choice()
-    }
-
     fn current_index(&self) -> usize {
         let table = self.table.lock().unwrap();
         table.current_index()
@@ -339,32 +334,37 @@ impl ReplayerApp {
             let heading = format!("Replayer ({})", self.in_port_name.as_ref().unwrap());
             ui.heading(heading);
             ui.horizontal(|ui| {
-                let human_name = self.human_synth.name.clone();
-                let ai_name = self.ai_synth.name.clone();
-                Self::radio_choice(ui, "Human Synthesizer", &mut self.human_synth);
-                Self::radio_choice(ui, "Variation Synthesizer", &mut self.ai_synth);
-                Self::radio_choice(ui, "Variation Algorithm", &mut self.ai_algorithm);
-                if human_name != self.human_synth.name {
-                    let msg = SynthMsg::program_change(self.human_synth.current_index() as u8, HUMAN_SPEAKER);
-                    self.ai2output.push(msg);
-                }
-                if ai_name != self.ai_synth.name {
-                    let msg = SynthMsg::program_change(self.ai_synth.current_index() as u8, VARIATION_SPEAKER);
-                    self.ai2output.push(msg);
-                }
+                ui.horizontal(|ui| {
+                    let human_name = self.human_synth.name.clone();
+                    let ai_name = self.ai_synth.name.clone();
+                    Self::radio_choice(ui, "Human Synthesizer", &mut self.human_synth);
+                    Self::radio_choice(ui, "Variation Synthesizer", &mut self.ai_synth);
+                    Self::radio_choice(ui, "Variation Algorithm", &mut self.ai_algorithm);
+                    if human_name != self.human_synth.name {
+                        let msg = SynthMsg::program_change(self.human_synth.current_index() as u8, HUMAN_SPEAKER);
+                        self.ai2output.push(msg);
+                    }
+                    if ai_name != self.ai_synth.name {
+                        let msg = SynthMsg::program_change(self.ai_synth.current_index() as u8, VARIATION_SPEAKER);
+                        self.ai2output.push(msg);
+                    }
+                });
+    
+                ui.vertical(|ui| {
+                    ui.label("Variation Algorithm Controls");
+                    let p_random_slider = self.variation_controls.p_random_slider.clone();
+                    Self::insert_slider(ui, p_random_slider, "Probability of Randomization");
+                    let p_ornament_slider = self.variation_controls.p_ornament_slider.clone();
+                    Self::insert_slider(ui, p_ornament_slider, "Probability of Inserting Ornament");
+                    let replay_delay_slider = self.replay_delay_slider.clone();
+                    Self::insert_slider(ui, replay_delay_slider, "Replay Delay (seconds)");
+                    let shortest_note_slider = self.variation_controls.shortest_note_slider.clone();
+                    Self::insert_slider(ui, shortest_note_slider, "Shortest Playable Note (seconds)");
+                    let mut whimsify = self.variation_controls.whimsify.load();
+                    ui.checkbox(&mut whimsify, "Whimsify Suffix");
+                    self.variation_controls.whimsify.store(whimsify);    
+                });    
             });
-
-            let p_random_slider = self.variation_controls.p_random_slider.clone();
-            Self::insert_slider(ui, p_random_slider, "Probability of Randomization");
-            let p_ornament_slider = self.variation_controls.p_ornament_slider.clone();
-            Self::insert_slider(ui, p_ornament_slider, "Probability of Inserting Ornament");
-            let replay_delay_slider = self.replay_delay_slider.clone();
-            Self::insert_slider(ui, replay_delay_slider, "Replay Delay (seconds)");
-            let shortest_note_slider = self.variation_controls.shortest_note_slider.clone();
-            Self::insert_slider(ui, shortest_note_slider, "Shortest Playable Note (seconds)");
-            let mut whimsify = self.variation_controls.whimsify.load();
-            ui.checkbox(&mut whimsify, "Whimsify Suffix");
-            self.variation_controls.whimsify.store(whimsify);
 
             self.display_melody_section(ui, MAIN_MELODY_SCALING);
         });

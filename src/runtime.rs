@@ -2,7 +2,7 @@ use crate::analyzer::Melody;
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use midi_fundsp::io::{Speaker, SynthMsg};
-use midi_fundsp::sounds::options;
+use midi_fundsp::sounds::favorites;
 use midi_fundsp::SynthFunc;
 use read_input::prelude::input;
 use read_input::InputBuild;
@@ -34,7 +34,7 @@ impl SynthChoice {
 pub type SynthTable = ChooserTable<SynthFunc>;
 
 pub fn make_synth_table() -> SynthTable {
-    ChooserTable::from(&options())
+    ChooserTable::from(&favorites())
 }
 
 pub struct ChooserTable<T: Clone> {
