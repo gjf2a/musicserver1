@@ -8,7 +8,7 @@ use eframe::egui::{
 };
 use eframe::emath::Numeric;
 use enum_iterator::all;
-use midi_fundsp::io::{start_input_thread, Speaker, SynthMsg};
+use midi_fundsp::io::{start_input_thread, start_output_thread, Speaker, SynthMsg};
 use midi_fundsp::SynthFunc;
 use midir::{Ignore, InitError, MidiInput, MidiInputPort, MidiInputPorts};
 use musicserver1::ai_variation::{
@@ -20,7 +20,7 @@ use musicserver1::database::{
     Preference,
 };
 use musicserver1::runtime::{
-    make_synth_table, replay_slider, send_recorded_melody, start_output_thread, ChooserTable,
+    make_synth_table, replay_slider, send_recorded_melody, ChooserTable,
     MelodyRunStatus, SliderValue, SynthChoice, VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER,
 };
 use std::cmp::{max, min};
@@ -178,6 +178,11 @@ impl<T: Clone> TableInfo<T> {
         let table = self.table.lock().unwrap();
         table.current_choice()
     }
+
+    fn current_index(&self) -> usize {
+        let table = self.table.lock().unwrap();
+        table.current_index()
+    }
 }
 
 struct ReplayerApp {
@@ -204,6 +209,7 @@ struct ReplayerApp {
     melody_progress: Arc<AtomicCell<Option<f32>>>,
     melody_run_status: MelodyRunStatus,
     adjust_search_preferences: bool,
+    quit_threads: Arc<AtomicCell<bool>>,
 }
 
 const MAIN_MELODY_SCALING: f32 = 0.8;
@@ -289,6 +295,7 @@ impl ReplayerApp {
             melody_progress: Arc::new(AtomicCell::new(None)),
             melody_run_status,
             adjust_search_preferences: false,
+            quit_threads: Arc::new(AtomicCell::new(false)),
         };
         app.startup();
         Ok(app)
@@ -338,16 +345,12 @@ impl ReplayerApp {
                 Self::radio_choice(ui, "Variation Synthesizer", &mut self.ai_synth);
                 Self::radio_choice(ui, "Variation Algorithm", &mut self.ai_algorithm);
                 if human_name != self.human_synth.name {
-                    self.ai2output.push(SynthMsg::SetSynth(
-                        self.human_synth.current_choice(),
-                        HUMAN_SPEAKER,
-                    ));
+                    let msg = SynthMsg::program_change(self.human_synth.current_index() as u8, HUMAN_SPEAKER);
+                    self.ai2output.push(msg);
                 }
                 if ai_name != self.ai_synth.name {
-                    self.ai2output.push(SynthMsg::SetSynth(
-                        self.ai_synth.current_choice(),
-                        VARIATION_SPEAKER,
-                    ));
+                    let msg = SynthMsg::program_change(self.ai_synth.current_index() as u8, VARIATION_SPEAKER);
+                    self.ai2output.push(msg);
                 }
             });
 
@@ -606,10 +609,10 @@ impl ReplayerApp {
     }
 
     fn startup(&mut self) {
-        start_output_thread(self.ai2output.clone(), {
+        start_output_thread::<10>(self.ai2output.clone(), {
             let table = self.human_synth.table.lock().unwrap();
-            table.current_choice().clone()
-        });
+            Arc::new(Mutex::new(table.choice_vec()))
+        }, self.quit_threads.clone());
         start_ai_thread(
             self.ai_algorithm.table.clone(),
             self.input2ai.clone(),
@@ -701,6 +704,7 @@ impl ReplayerApp {
             self.input2ai.clone(),
             midi_in.unwrap(),
             self.in_port.as_ref().unwrap().clone(),
+            self.quit_threads.clone(),
         );
     }
 

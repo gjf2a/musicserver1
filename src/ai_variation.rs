@@ -19,7 +19,7 @@ pub const NO_AI_NAME: &str = "Bypass";
 pub const DEFAULT_AI_NAME: &str = "Motive Mapper";
 
 pub fn make_ai_table() -> AITable {
-    let ai_funcs: Vec<(&str, Arc<AIFuncType>)> = arc_vec![
+    let ai_funcs: Vec<(String, Arc<AIFuncType>)> = arc_vec![
         (NO_AI_NAME, |_, _, _| Melody::new()),
         (DEFAULT_AI_NAME, MelodyMaker::create_motive_variation)
     ];
@@ -123,8 +123,9 @@ impl PlayerRecorder {
             if let Some(melody) = self.gui2ai.pop() {
                 return melody;
             }
-            if let Some(msg) = self.input2ai.pop() {
-                self.handle_incoming(&msg);
+            if let Some(mut synth_msg) = self.input2ai.pop() {
+                synth_msg.speaker = HUMAN_SPEAKER;
+                self.handle_incoming(synth_msg);
             }
 
             if let Some(pending_note) = self.waiting {
@@ -137,23 +138,20 @@ impl PlayerRecorder {
         result
     }
 
-    fn handle_incoming(&mut self, synth_msg: &SynthMsg) {
-        if let SynthMsg::Midi(msg, _) = synth_msg {
-            if let MidiMsg::ChannelVoice { channel: _, msg } = msg {
-                match msg {
-                    ChannelVoiceMsg::NoteOff { note, velocity }
-                    | ChannelVoiceMsg::NoteOn { note, velocity } => {
-                        if let Some(pending_note) = self.waiting {
-                            self.player_melody.add(pending_note.into());
-                        }
-                        self.waiting = Some(PendingNote::new(*note, *velocity));
+    fn handle_incoming(&mut self, synth_msg: SynthMsg) {
+        if let MidiMsg::ChannelVoice { channel: _, msg } = synth_msg.msg {
+            match msg {
+                ChannelVoiceMsg::NoteOff { note, velocity }
+                | ChannelVoiceMsg::NoteOn { note, velocity } => {
+                    if let Some(pending_note) = self.waiting {
+                        self.player_melody.add(pending_note.into());
                     }
-                    _ => {}
+                    self.waiting = Some(PendingNote::new(note, velocity));
                 }
+                _ => {}
             }
-            self.ai2output
-                .push(synth_msg.speaker_swapped(HUMAN_SPEAKER));
         }
+        self.ai2output.push(synth_msg);
     }
 
     fn check_if_finished(&mut self, pending_note: PendingNote) -> bool {

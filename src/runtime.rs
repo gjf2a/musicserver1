@@ -1,7 +1,7 @@
 use crate::analyzer::Melody;
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
-use midi_fundsp::io::{Speaker, StereoPlayer, SynthMsg};
+use midi_fundsp::io::{Speaker, SynthMsg};
 use midi_fundsp::sounds::options;
 use midi_fundsp::SynthFunc;
 use read_input::prelude::input;
@@ -37,22 +37,15 @@ pub fn make_synth_table() -> SynthTable {
     ChooserTable::from(&options())
 }
 
-pub fn start_output_thread(ai2output: Arc<SegQueue<SynthMsg>>, start_func: SynthFunc) {
-    std::thread::spawn(move || {
-        let mut player = StereoPlayer::<10>::stereo(start_func.clone(), start_func.clone());
-        player.run_output(ai2output).unwrap();
-        loop {}
-    });
-}
-
 pub struct ChooserTable<T: Clone> {
+    choices: Vec<(String,T)>,
     name2choice: BTreeMap<String, T>,
     names: Vec<String>,
     current_name: String,
 }
 
 impl<T: Clone> ChooserTable<T> {
-    pub fn from(choices: &Vec<(&str, T)>) -> Self {
+    pub fn from(choices: &Vec<(String, T)>) -> Self {
         let current_name = choices.iter().next().unwrap().0.to_string();
         let mut name2choice = BTreeMap::new();
         for (name, choice) in choices.iter() {
@@ -60,6 +53,7 @@ impl<T: Clone> ChooserTable<T> {
         }
         let names: Vec<String> = choices.iter().map(|c| c.0.to_string()).collect();
         ChooserTable {
+            choices: choices.clone(),
             name2choice,
             names,
             current_name,
@@ -95,6 +89,10 @@ impl<T: Clone> ChooserTable<T> {
         self.names.clone()
     }
 
+    pub fn choice_vec(&self) -> Vec<(String,T)> {
+        self.choices.clone()
+    }
+
     pub fn console_pick(&mut self) {
         self.current_name = user_pick_element(self.names.iter().cloned(), |s| s.clone())
     }
@@ -102,7 +100,7 @@ impl<T: Clone> ChooserTable<T> {
 
 #[macro_export]
 macro_rules! arc_vec {
-    ($( ($s:expr, $f:expr)),* ) => {vec![$(($s, Arc::new($f)),)*]}
+    ($( ($s:expr, $f:expr)),* ) => {vec![$(($s.to_owned(), Arc::new($f)),)*]}
 }
 
 #[derive(Clone)]
@@ -237,7 +235,7 @@ pub fn send_recorded_melody(
     let total_duration = melody.duration() as f32;
     'outer: for note in melody.iter() {
         let (midi, duration) = note.to_midi();
-        ai2output.push(SynthMsg::Midi(midi, speaker));
+        ai2output.push(SynthMsg {msg: midi, speaker});
         let note_start = Instant::now();
         while note_start.elapsed().as_secs_f64() < duration {
             let progress = Some(total_start.elapsed().as_secs_f32() / total_duration);
