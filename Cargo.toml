@@ -9,8 +9,7 @@ edition = "2021"
 midi_fundsp = {git = "https://github.com/gjf2a/midi_fundsp"}
 distribution_select = {git = "https://github.com/gjf2a/distribution_select"}
 histogram_macros = {git = "https://github.com/gjf2a/histogram_macros"}
-#bare_metal_modulo = "1"
-bare_metal_modulo = {git = "https://github.com/gjf2a/bare_metal_modulo"}
+bare_metal_modulo = "1"
 ordered-float = "3"
 rand = "0.8"
 enum-iterator = "1"
