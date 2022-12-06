@@ -727,7 +727,7 @@ impl MelodyMaker {
 
     pub fn pick_figure(&self, figure: MelodicFigure) -> MelodicFigure {
         let figure_length = figure.len();
-        let jump = figure.total_change();
+        let jump = figure.total_diatonic_change();
         let table = self.figure_tables.get(&figure_length).unwrap();
         let options = table
             .get(&jump)
@@ -1118,7 +1118,7 @@ impl NoteLetter {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 enum MelodyDirection {
     Toward, Away
 }
@@ -1140,9 +1140,10 @@ impl MelodyDirection {
             }
         }
         let target_pitch = target_melody[i].pitch();
+        println!("target_pitch: {target_pitch} final_pitch: {final_pitch}");
         let start_pitch_distance = (start_pitch - target_pitch).abs();
-        let figure_pitch_distance = (start_pitch - final_pitch).abs();
-        if start_pitch_distance > figure_pitch_distance {Self::Toward} else {Self::Away}
+        let figure_pitch_distance = (target_pitch - final_pitch).abs();
+        if figure_pitch_distance < start_pitch_distance {Self::Toward} else {Self::Away}
     }
 
     fn agrees(&self, p_back: f64) -> bool {
@@ -1609,7 +1610,7 @@ impl MelodicFigure {
     }
 
     /// Returns the net change of diatonic steps from the start to the end of this `MelodicFigure`.
-    pub fn total_change(&self) -> MidiByte {
+    pub fn total_diatonic_change(&self) -> MidiByte {
         self.pattern().iter().sum()
     }
 
@@ -1665,7 +1666,7 @@ impl MelodicFigure {
         let mut result = BTreeMap::new();
         for m in all::<MelodicFigure>() {
             if m.len() == figure_length {
-                let interval = m.total_change();
+                let interval = m.total_diatonic_change();
                 match result.get_mut(&interval) {
                     None => {
                         result.insert(interval, vec![m]);
@@ -1774,9 +1775,10 @@ mod tests {
     use crate::analyzer::{
         flats_for, major_flats_for, major_sharps_for, sharps_for, Accidental, DiatonicInterval,
         FigureDirection, FigurePolarity, MelodicFigure, MelodicFigureShape, Melody, MelodyMaker,
-        MelodySection, MidiByte, MusicMode, Note, NoteLetter, DIATONIC_SCALE_SIZE,
+        MelodySection, MidiByte, MusicMode, Note, NoteLetter, DIATONIC_SCALE_SIZE, MelodyDirection,
     };
     use bare_metal_modulo::ModNumC;
+    use enum_iterator::all;
     use float_cmp::assert_approx_eq;
     use ordered_float::OrderedFloat;
     use std::cmp::{max, min};
@@ -3704,10 +3706,16 @@ mod tests {
     #[test]
     fn test_melody_direction() {
         let melody = lean_on_me_melody();
-        /*for (f, s, i) in [
-            (MelodicFigure)
+        for (f, s, i, expected) in [
+            (MelodicFigure { shape: MelodicFigureShape::Note3Scale, polarity: FigurePolarity::Positive, direction: FigureDirection::Forward }, 64, 0, MelodyDirection::Away),
+            (MelodicFigure { shape: MelodicFigureShape::Note3Scale, polarity: FigurePolarity::Positive, direction: FigureDirection::Forward }, 60, 0, MelodyDirection::Toward),
+            (MelodicFigure { shape: MelodicFigureShape::ReturnCrazyDriver, polarity: FigurePolarity::Positive, direction: FigureDirection::Forward }, 60, 0, MelodyDirection::Toward),
+            (MelodicFigure { shape: MelodicFigureShape::Arpeggio, polarity: FigurePolarity::Positive, direction: FigureDirection::Forward }, 60, 0, MelodyDirection::Toward),
+            (MelodicFigure { shape: MelodicFigureShape::Arch, polarity: FigurePolarity::Positive, direction: FigureDirection::Forward }, 60, 0, MelodyDirection::Toward),
+            (MelodicFigure { shape: MelodicFigureShape::Arch, polarity: FigurePolarity::Negative, direction: FigureDirection::Forward }, 60, 0, MelodyDirection::Away),
+          
         ] {
-
-        }*/
+            assert_eq!(expected, MelodyDirection::find(f, s, &melody, i));
+        }
     }
 }
