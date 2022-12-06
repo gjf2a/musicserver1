@@ -778,9 +778,7 @@ impl MelodyMaker {
         //
         // 1. Start at original pitch.
         // 2. For each pitch:
-        // * Roll the dice, based on p_go_back. 
-        //   * If we are going back, select an interval that moves us closer to the original pitch at the end of the interval.
-        //   * If not, select an interval that moves us away from the original pitch.
+        // * Resample our distribution based on whether we are going towards or away.
         // 3. Keep going until we have exhausted the figure.
         //   * Variation: Include a chance of picking a new figure that "fits" the current one.
         // 4. Pick a new figure once we're done.
