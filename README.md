@@ -29,6 +29,11 @@ cargo run --bin replayer_gui --release
 
 The `--release` is very important - sound quality often suffers if compiler optimizations aren't enabled.
 
+## Acknowledgements
+* Thank you to the authors of [fundsp](https://crates.io/crates/fundsp), [midir](https://crates.io/crates/midir), 
+[midi-msg](https://crates.io/crates/midi-msg), and [cpal](https://crates.io/crates/cpal), who made it possible and practical for me to create this crate. 
+* Thank you to [Mark Goadrich](https://github.com/mgoadric) and [Andy Morgan](https://www.hendrix.edu/academicaffairs/profile.aspx?id=70775) for numerous suggestions for improvements and helpful features.
+
 ## License
 
 Licensed under either of
