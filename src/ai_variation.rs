@@ -21,7 +21,8 @@ pub const DEFAULT_AI_NAME: &str = "Motive Mapper";
 pub fn make_ai_table() -> AITable {
     let ai_funcs: Vec<(String, Arc<AIFuncType>)> = arc_vec![
         (NO_AI_NAME, |_, _, _| Melody::new()),
-        (DEFAULT_AI_NAME, MelodyMaker::create_motive_variation)
+        (DEFAULT_AI_NAME, MelodyMaker::create_motive_variation),
+        ("Whimsifier", MelodyMaker::create_whimsical_variation)
     ];
     ChooserTable::from(&ai_funcs)
 }
