@@ -786,31 +786,35 @@ impl MelodyMaker {
         //   * Idea: Maybe p_go_back can be that interval, and it always just starts at zero.
         let scale = original.best_scale_for();
         let distro = self.make_figure_distribution(original);
-        let mut p_back = 0.0;
+        //let mut p_back = 0.0;
         let mut variation = Melody::new();
         let mut pitch_queue: VecDeque<MidiByte> = VecDeque::new();
         variation.add(original[0]);
         for i in 1..original.len() {
-            let popped = pitch_queue.pop_front().unwrap_or_else(|| {
-                let target_direction = if rand::random::<f64>() < p_back {
-                    MelodyDirection::Toward
-                } else {
-                    p_back += p_go_back;
-                    MelodyDirection::Away
-                };
+            if original[i].pitch() == original[i - 1].pitch() {
+                variation.add(original[i].repitched(variation.last_note().pitch()));
+            } else {
+                let popped = pitch_queue.pop_front().unwrap_or_else(|| {
+                    let target_direction = if rand::random::<f64>() < 0.5 {
+                        MelodyDirection::Toward
+                    } else {
+                        //p_back += p_go_back;
+                        MelodyDirection::Away
+                    };
 
-                let distro = distro.distro_with(|f| MelodyDirection::find(*f, original[i].pitch(), &original, i) == target_direction);
-                let figure = distro.random_pick();
-                let start_pitch = variation.last_note().pitch();
-                for pitch in figure.make_pitches(start_pitch, &scale).iter().skip(1) {
-                    pitch_queue.push_back(*pitch);
-                }
-                pitch_queue.pop_front().unwrap()
-            });
-            if popped == original[i].pitch() {
-                p_back = 0.0;
+                    let distro = distro.distro_with(|f| MelodyDirection::find(*f, original[i].pitch(), &original, i) == target_direction);
+                    let figure = distro.random_pick();
+                    let start_pitch = variation.last_note().pitch();
+                    for pitch in figure.make_pitches(start_pitch, &scale).iter().skip(1) {
+                        pitch_queue.push_back(*pitch);
+                    }
+                    pitch_queue.pop_front().unwrap()
+                });
+                /*if popped == original[i].pitch() {
+                    p_back = 0.0;
+                }*/
+                variation.add(original[i].repitched(popped));
             }
-            variation.add(original[i].repitched(popped));
         }
         variation
     }
