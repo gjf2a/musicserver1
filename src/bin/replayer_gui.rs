@@ -30,6 +30,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
+const NUM_OUTPUT_CHANNELS: usize = 2; // More than this, and it has occasional noise-clipping problems.
+
 fn main() -> anyhow::Result<()> {
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(
@@ -609,7 +611,7 @@ impl ReplayerApp {
     }
 
     fn startup(&mut self) {
-        start_output_thread::<10>(self.ai2output.clone(), {
+        start_output_thread::<NUM_OUTPUT_CHANNELS>(self.ai2output.clone(), {
             let table = self.human_synth.table.lock().unwrap();
             Arc::new(Mutex::new(table.choice_vec()))
         }, self.quit_threads.clone());
