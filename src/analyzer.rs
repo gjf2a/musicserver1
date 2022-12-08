@@ -786,7 +786,7 @@ impl MelodyMaker {
         //   * Idea: Maybe p_go_back can be that interval, and it always just starts at zero.
         let scale = original.best_scale_for();
         let distro = self.make_figure_distribution(original);
-        //let mut p_back = 0.0;
+        let mut p_back = 0.0;
         let mut variation = Melody::new();
         let mut pitch_queue: VecDeque<MidiByte> = VecDeque::new();
         variation.add(original[0]);
@@ -798,21 +798,21 @@ impl MelodyMaker {
                     let target_direction = if rand::random::<f64>() < 0.5 {
                         MelodyDirection::Toward
                     } else {
-                        //p_back += p_go_back;
+                        p_back += p_go_back;
                         MelodyDirection::Away
                     };
 
-                    let distro = distro.distro_with(|f| MelodyDirection::find(*f, original[i].pitch(), &original, i) == target_direction);
-                    let figure = distro.random_pick();
+                    let reduced_distro = distro.distro_with(|f| MelodyDirection::find(*f, original[i].pitch(), &original, i) == target_direction);
+                    let figure = (if reduced_distro.is_empty() {&distro} else {&reduced_distro}).random_pick();
                     let start_pitch = variation.last_note().pitch();
                     for pitch in figure.make_pitches(start_pitch, &scale).iter().skip(1) {
                         pitch_queue.push_back(*pitch);
                     }
                     pitch_queue.pop_front().unwrap()
                 });
-                /*if popped == original[i].pitch() {
+                if popped == original[i].pitch() {
                     p_back = 0.0;
-                }*/
+                }
                 variation.add(original[i].repitched(popped));
             }
         }
@@ -1148,7 +1148,6 @@ impl MelodyDirection {
             }
         }
         let target_pitch = target_melody[i].pitch();
-        println!("target_pitch: {target_pitch} final_pitch: {final_pitch}");
         let start_pitch_distance = (start_pitch - target_pitch).abs();
         let figure_pitch_distance = (target_pitch - final_pitch).abs();
         if figure_pitch_distance < start_pitch_distance {Self::Toward} else {Self::Away}
