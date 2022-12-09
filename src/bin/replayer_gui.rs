@@ -334,42 +334,46 @@ impl ReplayerApp {
     fn main_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
             let heading = format!("Replayer ({})", self.in_port_name.as_ref().unwrap());
-            ui.heading(heading);
+            self.control_screen(ui, heading);
+        });
+    }
+
+    fn control_screen(&mut self, ui: &mut Ui, heading: String) {
+        ui.heading(heading);
+        ui.horizontal(|ui| {
             ui.horizontal(|ui| {
-                ui.horizontal(|ui| {
-                    let human_name = self.human_synth.name.clone();
-                    let ai_name = self.ai_synth.name.clone();
-                    Self::radio_choice(ui, "Human Synthesizer", &mut self.human_synth);
-                    Self::radio_choice(ui, "Variation Synthesizer", &mut self.ai_synth);
-                    Self::radio_choice(ui, "Variation Algorithm", &mut self.ai_algorithm);
-                    if human_name != self.human_synth.name {
-                        let msg = SynthMsg::program_change(self.human_synth.current_index() as u8, HUMAN_SPEAKER);
-                        self.ai2output.push(msg);
-                    }
-                    if ai_name != self.ai_synth.name {
-                        let msg = SynthMsg::program_change(self.ai_synth.current_index() as u8, VARIATION_SPEAKER);
-                        self.ai2output.push(msg);
-                    }
-                });
-    
-                ui.vertical(|ui| {
-                    ui.label("Variation Algorithm Controls");
-                    let p_random_slider = self.variation_controls.p_random_slider.clone();
-                    Self::insert_slider(ui, p_random_slider, "Probability of Randomization");
-                    let p_ornament_slider = self.variation_controls.p_ornament_slider.clone();
-                    Self::insert_slider(ui, p_ornament_slider, "Probability of Inserting Ornament");
-                    let replay_delay_slider = self.replay_delay_slider.clone();
-                    Self::insert_slider(ui, replay_delay_slider, "Replay Delay (seconds)");
-                    let shortest_note_slider = self.variation_controls.shortest_note_slider.clone();
-                    Self::insert_slider(ui, shortest_note_slider, "Shortest Playable Note (seconds)");
-                    let mut whimsify = self.variation_controls.whimsify.load();
-                    ui.checkbox(&mut whimsify, "Whimsify Suffix");
-                    self.variation_controls.whimsify.store(whimsify);    
-                });    
+                let human_name = self.human_synth.name.clone();
+                let ai_name = self.ai_synth.name.clone();
+                Self::radio_choice(ui, "Human Synthesizer", &mut self.human_synth);
+                Self::radio_choice(ui, "Variation Synthesizer", &mut self.ai_synth);
+                Self::radio_choice(ui, "Variation Algorithm", &mut self.ai_algorithm);
+                if human_name != self.human_synth.name {
+                    let msg = SynthMsg::program_change(self.human_synth.current_index() as u8, HUMAN_SPEAKER);
+                    self.ai2output.push(msg);
+                }
+                if ai_name != self.ai_synth.name {
+                    let msg = SynthMsg::program_change(self.ai_synth.current_index() as u8, VARIATION_SPEAKER);
+                    self.ai2output.push(msg);
+                }
             });
 
-            self.display_melody_section(ui, MAIN_MELODY_SCALING);
+            ui.vertical(|ui| {
+                ui.label("Variation Algorithm Controls");
+                let p_random_slider = self.variation_controls.p_random_slider.clone();
+                Self::insert_slider(ui, p_random_slider, "Probability of Randomization");
+                let p_ornament_slider = self.variation_controls.p_ornament_slider.clone();
+                Self::insert_slider(ui, p_ornament_slider, "Probability of Inserting Ornament");
+                let replay_delay_slider = self.replay_delay_slider.clone();
+                Self::insert_slider(ui, replay_delay_slider, "Replay Delay (seconds)");
+                let shortest_note_slider = self.variation_controls.shortest_note_slider.clone();
+                Self::insert_slider(ui, shortest_note_slider, "Shortest Playable Note (seconds)");
+                let mut whimsify = self.variation_controls.whimsify.load();
+                ui.checkbox(&mut whimsify, "Whimsify Suffix");
+                self.variation_controls.whimsify.store(whimsify);    
+            });    
         });
+
+        self.display_melody_section(ui, MAIN_MELODY_SCALING);
     }
 
     fn display_melody_section(&mut self, ui: &mut Ui, staff_scaling: f32) {
@@ -652,10 +656,14 @@ impl ReplayerApp {
 
     fn no_midi_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame, message: &str) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("Replayer: No MIDI Devices Available");
+            let heading = format!("Replayer: No MIDI Devices Available\n{message}");
+            self.control_screen(ui, heading);
+            /* 
+            ui.heading("");
             ui.label(message);
             self.display_melody_section(ui, NO_MIDI_MELODY_SCALING);
             self.start_ui_listening_thread(ctx);
+            */
         });
     }
 
