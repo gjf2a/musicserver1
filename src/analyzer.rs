@@ -547,6 +547,18 @@ impl Melody {
         }
         result
     }
+
+    pub fn notes_ranked_by_duration(&self) -> Vec<(usize, Note)> {
+        let mut result = self
+            .notes
+            .iter()
+            .copied()
+            .enumerate()
+            .filter(|(_, n)| !n.is_rest())
+            .collect::<Vec<_>>();
+        result.sort_by(|(_, n1), (_, n2)| n2.duration.cmp(&n1.duration));
+        result
+    }
 }
 
 impl std::ops::IndexMut<usize> for Melody {
@@ -802,8 +814,16 @@ impl MelodyMaker {
                         MelodyDirection::Away
                     };
 
-                    let reduced_distro = distro.distro_with(|f| MelodyDirection::find(*f, original[i].pitch(), &original, i) == target_direction);
-                    let figure = (if reduced_distro.is_empty() {&distro} else {&reduced_distro}).random_pick();
+                    let reduced_distro = distro.distro_with(|f| {
+                        MelodyDirection::find(*f, original[i].pitch(), &original, i)
+                            == target_direction
+                    });
+                    let figure = (if reduced_distro.is_empty() {
+                        &distro
+                    } else {
+                        &reduced_distro
+                    })
+                    .random_pick();
                     let start_pitch = variation.last_note().pitch();
                     for pitch in figure.make_pitches(start_pitch, &scale).iter().skip(1) {
                         pitch_queue.push_back(*pitch);
@@ -1128,11 +1148,17 @@ impl NoteLetter {
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 enum MelodyDirection {
-    Toward, Away
+    Toward,
+    Away,
 }
 
 impl MelodyDirection {
-    fn find(figure: MelodicFigure, start_pitch: MidiByte, target_melody: &Melody, target_start: usize) -> Self {
+    fn find(
+        figure: MelodicFigure,
+        start_pitch: MidiByte,
+        target_melody: &Melody,
+        target_start: usize,
+    ) -> Self {
         let scale = target_melody.best_scale_for();
         let mut figure_pitches = figure.make_pitches(start_pitch, &scale);
         let final_pitch = figure_pitches.back().copied().unwrap();
@@ -1150,7 +1176,11 @@ impl MelodyDirection {
         let target_pitch = target_melody[i].pitch();
         let start_pitch_distance = (start_pitch - target_pitch).abs();
         let figure_pitch_distance = (target_pitch - final_pitch).abs();
-        if figure_pitch_distance < start_pitch_distance {Self::Toward} else {Self::Away}
+        if figure_pitch_distance < start_pitch_distance {
+            Self::Toward
+        } else {
+            Self::Away
+        }
     }
 }
 
@@ -1616,7 +1646,7 @@ impl MelodicFigure {
     // Proposed new version
     pub fn total_diatonic_change(&self) -> DiatonicInterval {
         DiatonicInterval::pure(self.pattern().iter().sum())
-    } 
+    }
     */
 
     /// Two `MelodicFigure` objects `interfere()` if they overlap anywhere except at their endpoints.
@@ -1779,8 +1809,9 @@ impl MelodicFigureShape {
 mod tests {
     use crate::analyzer::{
         flats_for, major_flats_for, major_sharps_for, sharps_for, Accidental, DiatonicInterval,
-        FigureDirection, FigurePolarity, MelodicFigure, MelodicFigureShape, Melody, MelodyMaker,
-        MelodySection, MidiByte, MusicMode, Note, NoteLetter, DIATONIC_SCALE_SIZE, MelodyDirection,
+        FigureDirection, FigurePolarity, MelodicFigure, MelodicFigureShape, Melody,
+        MelodyDirection, MelodyMaker, MelodySection, MidiByte, MusicMode, Note, NoteLetter,
+        DIATONIC_SCALE_SIZE,
     };
     use bare_metal_modulo::ModNumC;
     use float_cmp::assert_approx_eq;
@@ -3711,15 +3742,367 @@ mod tests {
     fn test_melody_direction() {
         let melody = lean_on_me_melody();
         for (f, s, i, expected) in [
-            (MelodicFigure { shape: MelodicFigureShape::Note3Scale, polarity: FigurePolarity::Positive, direction: FigureDirection::Forward }, 64, 0, MelodyDirection::Away),
-            (MelodicFigure { shape: MelodicFigureShape::Note3Scale, polarity: FigurePolarity::Positive, direction: FigureDirection::Forward }, 60, 0, MelodyDirection::Toward),
-            (MelodicFigure { shape: MelodicFigureShape::ReturnCrazyDriver, polarity: FigurePolarity::Positive, direction: FigureDirection::Forward }, 60, 0, MelodyDirection::Toward),
-            (MelodicFigure { shape: MelodicFigureShape::Arpeggio, polarity: FigurePolarity::Positive, direction: FigureDirection::Forward }, 60, 0, MelodyDirection::Toward),
-            (MelodicFigure { shape: MelodicFigureShape::Arch, polarity: FigurePolarity::Positive, direction: FigureDirection::Forward }, 60, 0, MelodyDirection::Toward),
-            (MelodicFigure { shape: MelodicFigureShape::Arch, polarity: FigurePolarity::Negative, direction: FigureDirection::Forward }, 60, 0, MelodyDirection::Away),
-          
+            (
+                MelodicFigure {
+                    shape: MelodicFigureShape::Note3Scale,
+                    polarity: FigurePolarity::Positive,
+                    direction: FigureDirection::Forward,
+                },
+                64,
+                0,
+                MelodyDirection::Away,
+            ),
+            (
+                MelodicFigure {
+                    shape: MelodicFigureShape::Note3Scale,
+                    polarity: FigurePolarity::Positive,
+                    direction: FigureDirection::Forward,
+                },
+                60,
+                0,
+                MelodyDirection::Toward,
+            ),
+            (
+                MelodicFigure {
+                    shape: MelodicFigureShape::ReturnCrazyDriver,
+                    polarity: FigurePolarity::Positive,
+                    direction: FigureDirection::Forward,
+                },
+                60,
+                0,
+                MelodyDirection::Toward,
+            ),
+            (
+                MelodicFigure {
+                    shape: MelodicFigureShape::Arpeggio,
+                    polarity: FigurePolarity::Positive,
+                    direction: FigureDirection::Forward,
+                },
+                60,
+                0,
+                MelodyDirection::Toward,
+            ),
+            (
+                MelodicFigure {
+                    shape: MelodicFigureShape::Arch,
+                    polarity: FigurePolarity::Positive,
+                    direction: FigureDirection::Forward,
+                },
+                60,
+                0,
+                MelodyDirection::Toward,
+            ),
+            (
+                MelodicFigure {
+                    shape: MelodicFigureShape::Arch,
+                    polarity: FigurePolarity::Negative,
+                    direction: FigureDirection::Forward,
+                },
+                60,
+                0,
+                MelodyDirection::Away,
+            ),
         ] {
             assert_eq!(expected, MelodyDirection::find(f, s, &melody, i));
         }
+    }
+
+    #[test]
+    fn test_melody_note_ranking() {
+        let melody = lean_on_me_melody();
+        let ranked = melody.notes_ranked_by_duration();
+        assert_eq!(
+            ranked,
+            [
+                (
+                    45,
+                    Note {
+                        pitch: 65,
+                        duration: OrderedFloat(1.4822801190000001),
+                        velocity: 78
+                    }
+                ),
+                (
+                    32,
+                    Note {
+                        pitch: 60,
+                        duration: OrderedFloat(1.323782698),
+                        velocity: 106
+                    }
+                ),
+                (
+                    52,
+                    Note {
+                        pitch: 57,
+                        duration: OrderedFloat(1.254315847),
+                        velocity: 92
+                    }
+                ),
+                (
+                    16,
+                    Note {
+                        pitch: 62,
+                        duration: OrderedFloat(1.126041184),
+                        velocity: 99
+                    }
+                ),
+                (
+                    29,
+                    Note {
+                        pitch: 62,
+                        duration: OrderedFloat(0.867493649),
+                        velocity: 117
+                    }
+                ),
+                (
+                    27,
+                    Note {
+                        pitch: 64,
+                        duration: OrderedFloat(0.699718069),
+                        velocity: 113
+                    }
+                ),
+                (
+                    60,
+                    Note {
+                        pitch: 60,
+                        duration: OrderedFloat(0.670999911),
+                        velocity: 111
+                    }
+                ),
+                (
+                    48,
+                    Note {
+                        pitch: 64,
+                        duration: OrderedFloat(0.651313167),
+                        velocity: 118
+                    }
+                ),
+                (
+                    54,
+                    Note {
+                        pitch: 64,
+                        duration: OrderedFloat(0.64096164),
+                        velocity: 117
+                    }
+                ),
+                (
+                    39,
+                    Note {
+                        pitch: 65,
+                        duration: OrderedFloat(0.60457732),
+                        velocity: 110
+                    }
+                ),
+                (
+                    19,
+                    Note {
+                        pitch: 60,
+                        duration: OrderedFloat(0.60045823),
+                        velocity: 117
+                    }
+                ),
+                (
+                    10,
+                    Note {
+                        pitch: 65,
+                        duration: OrderedFloat(0.582655121),
+                        velocity: 70
+                    }
+                ),
+                (
+                    17,
+                    Note {
+                        pitch: 64,
+                        duration: OrderedFloat(0.548192689),
+                        velocity: 99
+                    }
+                ),
+                (
+                    56,
+                    Note {
+                        pitch: 55,
+                        duration: OrderedFloat(0.530547672),
+                        velocity: 94
+                    }
+                ),
+                (
+                    0,
+                    Note {
+                        pitch: 60,
+                        duration: OrderedFloat(0.487445772),
+                        velocity: 92
+                    }
+                ),
+                (
+                    25,
+                    Note {
+                        pitch: 64,
+                        duration: OrderedFloat(0.382390025),
+                        velocity: 123
+                    }
+                ),
+                (
+                    46,
+                    Note {
+                        pitch: 64,
+                        duration: OrderedFloat(0.362781309),
+                        velocity: 78
+                    }
+                ),
+                (
+                    53,
+                    Note {
+                        pitch: 65,
+                        duration: OrderedFloat(0.321109969),
+                        velocity: 92
+                    }
+                ),
+                (
+                    8,
+                    Note {
+                        pitch: 65,
+                        duration: OrderedFloat(0.317320844),
+                        velocity: 4
+                    }
+                ),
+                (
+                    50,
+                    Note {
+                        pitch: 64,
+                        duration: OrderedFloat(0.315570477),
+                        velocity: 86
+                    }
+                ),
+                (
+                    35,
+                    Note {
+                        pitch: 62,
+                        duration: OrderedFloat(0.312539865),
+                        velocity: 30
+                    }
+                ),
+                (
+                    2,
+                    Note {
+                        pitch: 60,
+                        duration: OrderedFloat(0.289316858),
+                        velocity: 93
+                    }
+                ),
+                (
+                    18,
+                    Note {
+                        pitch: 62,
+                        duration: OrderedFloat(0.273066185),
+                        velocity: 99
+                    }
+                ),
+                (
+                    14,
+                    Note {
+                        pitch: 64,
+                        duration: OrderedFloat(0.272029135),
+                        velocity: 100
+                    }
+                ),
+                (
+                    41,
+                    Note {
+                        pitch: 65,
+                        duration: OrderedFloat(0.271879248),
+                        velocity: 113
+                    }
+                ),
+                (
+                    21,
+                    Note {
+                        pitch: 60,
+                        duration: OrderedFloat(0.269494265),
+                        velocity: 85
+                    }
+                ),
+                (
+                    31,
+                    Note {
+                        pitch: 64,
+                        duration: OrderedFloat(0.268483555),
+                        velocity: 106
+                    }
+                ),
+                (
+                    23,
+                    Note {
+                        pitch: 62,
+                        duration: OrderedFloat(0.267746147),
+                        velocity: 96
+                    }
+                ),
+                (
+                    37,
+                    Note {
+                        pitch: 64,
+                        duration: OrderedFloat(0.267542603),
+                        velocity: 100
+                    }
+                ),
+                (
+                    58,
+                    Note {
+                        pitch: 62,
+                        duration: OrderedFloat(0.263664442),
+                        velocity: 125
+                    }
+                ),
+                (
+                    6,
+                    Note {
+                        pitch: 64,
+                        duration: OrderedFloat(0.25962179),
+                        velocity: 113
+                    }
+                ),
+                (
+                    43,
+                    Note {
+                        pitch: 64,
+                        duration: OrderedFloat(0.253815119),
+                        velocity: 88
+                    }
+                ),
+                (
+                    12,
+                    Note {
+                        pitch: 65,
+                        duration: OrderedFloat(0.250825755),
+                        velocity: 106
+                    }
+                ),
+                (
+                    4,
+                    Note {
+                        pitch: 62,
+                        duration: OrderedFloat(0.248933836),
+                        velocity: 102
+                    }
+                ),
+                (
+                    33,
+                    Note {
+                        pitch: 60,
+                        duration: OrderedFloat(0.247095603),
+                        velocity: 100
+                    }
+                ),
+                (
+                    47,
+                    Note {
+                        pitch: 62,
+                        duration: OrderedFloat(0.202632925),
+                        velocity: 78
+                    }
+                )
+            ]
+        );
     }
 }

@@ -38,7 +38,7 @@ pub fn make_synth_table() -> SynthTable {
 }
 
 pub struct ChooserTable<T: Clone> {
-    choices: Vec<(String,T)>,
+    choices: Vec<(String, T)>,
     name2choice: BTreeMap<String, T>,
     names: Vec<String>,
     current_name: String,
@@ -89,7 +89,7 @@ impl<T: Clone> ChooserTable<T> {
         self.names.clone()
     }
 
-    pub fn choice_vec(&self) -> Vec<(String,T)> {
+    pub fn choice_vec(&self) -> Vec<(String, T)> {
         self.choices.clone()
     }
 
@@ -235,7 +235,7 @@ pub fn send_recorded_melody(
     let total_duration = melody.duration() as f32;
     'outer: for note in melody.iter() {
         let (midi, duration) = note.to_midi();
-        ai2output.push(SynthMsg {msg: midi, speaker});
+        ai2output.push(SynthMsg { msg: midi, speaker });
         let note_start = Instant::now();
         while note_start.elapsed().as_secs_f64() < duration {
             let progress = Some(total_start.elapsed().as_secs_f32() / total_duration);

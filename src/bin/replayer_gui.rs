@@ -20,8 +20,8 @@ use musicserver1::database::{
     Preference,
 };
 use musicserver1::runtime::{
-    make_synth_table, replay_slider, send_recorded_melody, ChooserTable,
-    MelodyRunStatus, SliderValue, SynthChoice, VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER,
+    make_synth_table, replay_slider, send_recorded_melody, ChooserTable, MelodyRunStatus,
+    SliderValue, SynthChoice, VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER,
 };
 use std::cmp::{max, min};
 use std::ops::RangeInclusive;
@@ -347,11 +347,17 @@ impl ReplayerApp {
                 Self::radio_choice(ui, "Variation Synthesizer", &mut self.ai_synth);
                 Self::radio_choice(ui, "Variation Algorithm", &mut self.ai_algorithm);
                 if human_name != self.human_synth.name {
-                    let msg = SynthMsg::program_change(self.human_synth.current_index() as u8, HUMAN_SPEAKER);
+                    let msg = SynthMsg::program_change(
+                        self.human_synth.current_index() as u8,
+                        HUMAN_SPEAKER,
+                    );
                     self.ai2output.push(msg);
                 }
                 if ai_name != self.ai_synth.name {
-                    let msg = SynthMsg::program_change(self.ai_synth.current_index() as u8, VARIATION_SPEAKER);
+                    let msg = SynthMsg::program_change(
+                        self.ai_synth.current_index() as u8,
+                        VARIATION_SPEAKER,
+                    );
                     self.ai2output.push(msg);
                 }
             });
@@ -368,8 +374,8 @@ impl ReplayerApp {
                 Self::insert_slider(ui, shortest_note_slider, "Shortest Playable Note (seconds)");
                 let mut whimsify = self.variation_controls.whimsify.load();
                 ui.checkbox(&mut whimsify, "Whimsify Suffix");
-                self.variation_controls.whimsify.store(whimsify);    
-            });    
+                self.variation_controls.whimsify.store(whimsify);
+            });
         });
 
         self.display_melody_section(ui, MAIN_MELODY_SCALING);
@@ -614,10 +620,14 @@ impl ReplayerApp {
     }
 
     fn startup(&mut self) {
-        start_output_thread::<NUM_OUTPUT_CHANNELS>(self.ai2output.clone(), {
-            let table = self.human_synth.table.lock().unwrap();
-            Arc::new(Mutex::new(table.choice_vec()))
-        }, self.quit_threads.clone());
+        start_output_thread::<NUM_OUTPUT_CHANNELS>(
+            self.ai2output.clone(),
+            {
+                let table = self.human_synth.table.lock().unwrap();
+                Arc::new(Mutex::new(table.choice_vec()))
+            },
+            self.quit_threads.clone(),
+        );
         start_ai_thread(
             self.ai_algorithm.table.clone(),
             self.input2ai.clone(),
