@@ -210,7 +210,6 @@ struct ReplayerApp {
 }
 
 const MAIN_MELODY_SCALING: f32 = 0.8;
-const NO_MIDI_MELODY_SCALING: f32 = 0.4;
 const MIDDLE_C: MidiByte = 60;
 const STAFF_PITCH_WIDTH: MidiByte = 19;
 const LOWEST_STAFF_PITCH: MidiByte = MIDDLE_C - STAFF_PITCH_WIDTH;
@@ -656,14 +655,8 @@ impl ReplayerApp {
 
     fn no_midi_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame, message: &str) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            let heading = format!("Replayer: No MIDI Devices Available\n{message}");
-            self.control_screen(ui, heading);
-            /* 
-            ui.heading("");
-            ui.label(message);
-            self.display_melody_section(ui, NO_MIDI_MELODY_SCALING);
+            self.control_screen(ui, message.to_owned());
             self.start_ui_listening_thread(ctx);
-            */
         });
     }
 
