@@ -11,6 +11,7 @@ use rand::prelude::SliceRandom;
 use std::cmp::{max, min};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter::Sum;
+use std::ops::RangeInclusive;
 use std::ops::{AddAssign, Neg};
 use std::time::Instant;
 
@@ -455,6 +456,22 @@ impl Melody {
         }
     }
 
+    pub fn distinct_consecutive_pitches_in(&self, mut range: RangeInclusive<usize>) -> usize {
+        if range.is_empty() {
+            return 0;
+        }
+        let mut count = 1;
+        let mut prev = self.notes[range.next().unwrap()];
+        for i in range {
+            let current = self.notes[i];
+            if prev.pitch != current.pitch {
+                count += 1;
+            }
+            prev = current;
+        }
+        count
+    }
+
     pub fn find_pause_indices(&self) -> Vec<usize> {
         let consolidated = self.get_consolidated_notes();
 
@@ -599,6 +616,14 @@ impl MelodyMaker {
     }
 
     pub fn make_figure_distribution(&self, melody: &Melody) -> Distribution<MelodicFigure> {
+        let mut result = self.make_uniform_figure_distribution();
+        for (_, figure, _) in self.all_figure_matches(melody) {
+            result.add(&figure, 1.0);
+        }
+        result
+    }
+
+    pub fn make_uniform_figure_distribution(&self) -> Distribution<MelodicFigure> {
         let mut result = Distribution::new();
         for table in self.figure_tables.values() {
             for figures in table.values() {
@@ -606,9 +631,6 @@ impl MelodyMaker {
                     result.add(figure, 1.0);
                 }
             }
-        }
-        for (_, figure, _) in self.all_figure_matches(melody) {
-            result.add(&figure, 1.0);
         }
         result
     }
@@ -835,6 +857,61 @@ impl MelodyMaker {
                 }
                 variation.add(original[i].repitched(popped));
             }
+        }
+        variation
+    }
+
+    pub fn randomize_subsection(&self, melody: &mut Melody, subrange: RangeInclusive<usize>) {
+        println!("randomizing {subrange:?}");
+        let scale = melody.best_scale_for();
+        let distro = self.make_figure_distribution(melody);
+        let mut start = *subrange.start();
+        let end = *subrange.end();
+        loop {
+            let pitches_left = melody.distinct_consecutive_pitches_in(start..=end);
+            println!("pitches_left: {pitches_left}");
+            let figure_len: usize = match pitches_left {
+                0..=2 => break,
+                3 | 5 => 3,
+                4 => 4,
+                _ => if rand::random::<f64>() < 0.33 {3} else {4}
+            };
+            let reduced_distro = distro.distro_with(|f| {
+                let mut matches = figure_len == f.len();
+                if figure_len <= 4 {
+                    let pitches = f.make_pitches(melody[start].pitch(), &scale);
+                    matches = matches && pitches.back().unwrap() % NOTES_PER_OCTAVE == melody[end].pitch() % NOTES_PER_OCTAVE;
+                } 
+                matches
+            });
+            println!("reduced empty? {}", reduced_distro.is_empty());
+            let figure = (if reduced_distro.is_empty() {&distro} else {&reduced_distro}).random_pick();
+            let mut pitches = figure.make_pitches(melody[start].pitch(), &scale);
+            while let Some(new_pitch) = pitches.pop_front() {
+                let original = melody[start].pitch();
+                while start < melody.len() && melody[start].pitch() == original {
+                    melody[start] = melody[start].repitched(new_pitch);
+                    start += 1;
+                }
+            }
+            start -= 1;
+        }
+    }
+
+    pub fn create_wandering_variation(&self, original: &Melody, p_eliminate: f64) -> Melody {
+        let mut ranking = original.notes_ranked_by_duration();
+        let target_len = (ranking.len() as f64 * (1.0 - p_eliminate)) as usize;
+        while ranking.len() > target_len {
+            ranking.pop();
+        }
+        let mut ranking: BTreeMap<usize,Note> = ranking.iter().copied().collect();
+        ranking.insert(0, original[0]);
+        ranking.insert(original.len() - 1, original[original.len() - 1]);
+        let mut variation = original.clone();
+        let mut prev = 0;
+        for i in ranking.keys() {
+            self.randomize_subsection(&mut variation, prev..=*i);
+            prev = *i;
         }
         variation
     }
@@ -1830,6 +1907,40 @@ mod tests {
         let notes = Melody::from(m);
         println!("{}", notes.view_notes());
         assert_eq!(format!("{:?}", notes), "Melody { notes: [Note { pitch: 69, duration: OrderedFloat(0.24), velocity: 127 }, Note { pitch: 69, duration: OrderedFloat(0.09), velocity: 0 }, Note { pitch: 72, duration: OrderedFloat(0.31), velocity: 127 }, Note { pitch: 72, duration: OrderedFloat(0.08), velocity: 0 }, Note { pitch: 71, duration: OrderedFloat(0.29), velocity: 87 }] }");
+    }
+
+    #[test]
+    fn test_distinct_consecutive_pitches_in() {
+        let melody = lean_on_me_melody();
+        let pitches: Vec<MidiByte> = melody.iter().map(|n| n.pitch()).collect();
+        println!("{pitches:?}");
+        for (start, end, count) in [
+            (0, 3, 1),
+            (0, 4, 2),
+            (0, 8, 4),
+            (0, 13, 4),
+            (0, 19, 9),
+            (0, 22, 9),
+            (22, 25, 3),
+            (22, 32, 6),
+        ] {
+            assert_eq!(count, melody.distinct_consecutive_pitches_in(start..=end));
+        }
+    }
+
+    #[test]
+    fn test_randomized_subsection() {
+        let maker = MelodyMaker::new();
+        let melody = lean_on_me_melody();
+        for _ in 0..2 {
+            let mut variant = melody.clone();
+            let start = 0;
+            let end = variant.len() - 1;
+            maker.randomize_subsection(&mut variant, start..=end);
+            assert_eq!(variant.len(), melody.len());
+            assert_eq!(variant[0], melody[0]);
+            assert_eq!(variant[variant.len() - 1].pitch() % 12, melody[variant.len() - 1].pitch() % 12);
+        }
     }
 
     fn test_natural_mode(root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>, notes: [MidiByte; 15]) {
