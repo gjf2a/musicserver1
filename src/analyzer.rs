@@ -862,14 +862,12 @@ impl MelodyMaker {
     }
 
     pub fn randomize_subsection(&self, melody: &mut Melody, subrange: RangeInclusive<usize>) {
-        println!("randomizing {subrange:?}");
         let scale = melody.best_scale_for();
         let distro = self.make_figure_distribution(melody);
         let mut start = *subrange.start();
         let end = *subrange.end();
         loop {
             let pitches_left = melody.distinct_consecutive_pitches_in(start..=end);
-            println!("pitches_left: {pitches_left}");
             let figure_len: usize = match pitches_left {
                 0..=2 => break,
                 3 | 5 => 3,
@@ -884,7 +882,6 @@ impl MelodyMaker {
                 } 
                 matches
             });
-            println!("reduced empty? {}", reduced_distro.is_empty());
             let figure = (if reduced_distro.is_empty() {&distro} else {&reduced_distro}).random_pick();
             let mut pitches = figure.make_pitches(melody[start].pitch(), &scale);
             while let Some(new_pitch) = pitches.pop_front() {
