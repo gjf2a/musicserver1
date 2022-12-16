@@ -1,0 +1,15 @@
+This folder contains research papers pertinent to this project.
+
+This file contains the URLs from which I obtained them.
+
+Continuator
+* https://www.francoispachet.fr/continuator/
+* Pachet, F. The Continuator: Musical Interaction with Style. Journal of New Music Research, 32(3):333-341, 2003
+* https://www.francoispachet.fr/wp-content/uploads/2021/01/pachet-03d.pdf
+
+BachProp
+* https://arxiv.org/abs/1802.05162
+* https://github.com/FlorianColombo/BachProp
+
+AI Methods in Algorithmic Composition: A Comprehensive Survey
+* https://www.jair.org/index.php/jair/article/view/10845
