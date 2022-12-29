@@ -9,6 +9,7 @@ use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use eframe::emath::Numeric;
 use midi_fundsp::io::SynthMsg;
+use midi_fundsp::{pitch_bend_factor, semitone_from};
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -148,6 +149,11 @@ impl PlayerRecorder {
                         self.player_melody.add(pending_note.into());
                     }
                     self.waiting = Some(PendingNote::new(note, velocity));
+                }
+                ChannelVoiceMsg::PitchBend { bend } => {
+                    let semitone = semitone_from(bend);
+                    let pitch_bend_factor = pitch_bend_factor(bend);
+                    println!("bend semitone: {semitone} ({pitch_bend_factor})");
                 }
                 _ => {}
             }

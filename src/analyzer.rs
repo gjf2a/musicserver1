@@ -99,6 +99,8 @@ pub struct Note {
     pitch: MidiByte,
     duration: OrderedFloat<f64>,
     velocity: MidiByte,
+    from_bend: bool,
+    pitch_tremolo: OrderedFloat<f64>,
 }
 
 impl ApproxEq for Note {
@@ -108,10 +110,15 @@ impl ApproxEq for Note {
         let margin = margin.into();
         self.pitch == other.pitch
             && self.velocity == other.velocity
+            && self.from_bend == other.from_bend
             && self
                 .duration
                 .into_inner()
                 .approx_eq(other.duration.into_inner(), margin)
+            && self
+                .pitch_tremolo
+                .into_inner()
+                .approx_eq(other.pitch_tremolo.into_inner(), margin)
     }
 }
 
@@ -121,6 +128,8 @@ impl Note {
             pitch,
             duration: OrderedFloat(duration),
             velocity,
+            from_bend: false,
+            pitch_tremolo: OrderedFloat(0.0),
         }
     }
 
@@ -161,6 +170,8 @@ impl Note {
             pitch: new_pitch,
             duration: self.duration,
             velocity: self.velocity,
+            from_bend: self.from_bend,
+            pitch_tremolo: self.pitch_tremolo,
         }
     }
 
@@ -227,6 +238,8 @@ impl PendingNote {
             pitch: self.pitch as MidiByte,
             duration: OrderedFloat(0.0),
             velocity: 0,
+            from_bend: false,
+            pitch_tremolo: OrderedFloat(0.0),
         }
     }
 }
@@ -237,6 +250,8 @@ impl From<PendingNote> for Note {
             pitch: pending_note.pitch as MidiByte,
             duration: OrderedFloat(pending_note.elapsed()),
             velocity: pending_note.velocity as MidiByte,
+            from_bend: false,
+            pitch_tremolo: OrderedFloat(0.0),
         }
     }
 }
@@ -356,6 +371,8 @@ impl Melody {
                 pitch: note,
                 duration,
                 velocity: intensity,
+                from_bend: false,
+                pitch_tremolo: OrderedFloat(0.0),
             });
         }
         Melody { notes }
@@ -872,17 +889,30 @@ impl MelodyMaker {
                 0..=2 => break,
                 3 | 5 => 3,
                 4 => 4,
-                _ => if rand::random::<f64>() < 0.33 {3} else {4}
+                _ => {
+                    if rand::random::<f64>() < 0.33 {
+                        3
+                    } else {
+                        4
+                    }
+                }
             };
             let reduced_distro = distro.distro_with(|f| {
                 let mut matches = figure_len == f.len();
                 if figure_len <= 4 {
                     let pitches = f.make_pitches(melody[start].pitch(), &scale);
-                    matches = matches && pitches.back().unwrap() % NOTES_PER_OCTAVE == melody[end].pitch() % NOTES_PER_OCTAVE;
-                } 
+                    matches = matches
+                        && pitches.back().unwrap() % NOTES_PER_OCTAVE
+                            == melody[end].pitch() % NOTES_PER_OCTAVE;
+                }
                 matches
             });
-            let figure = (if reduced_distro.is_empty() {&distro} else {&reduced_distro}).random_pick();
+            let figure = (if reduced_distro.is_empty() {
+                &distro
+            } else {
+                &reduced_distro
+            })
+            .random_pick();
             let mut pitches = figure.make_pitches(melody[start].pitch(), &scale);
             while let Some(new_pitch) = pitches.pop_front() {
                 let original = melody[start].pitch();
@@ -901,7 +931,7 @@ impl MelodyMaker {
         while ranking.len() > target_len {
             ranking.pop();
         }
-        let mut ranking: BTreeMap<usize,Note> = ranking.iter().copied().collect();
+        let mut ranking: BTreeMap<usize, Note> = ranking.iter().copied().collect();
         ranking.insert(0, original[0]);
         ranking.insert(original.len() - 1, original[original.len() - 1]);
         let mut variation = original.clone();
@@ -1936,7 +1966,10 @@ mod tests {
             maker.randomize_subsection(&mut variant, start..=end);
             assert_eq!(variant.len(), melody.len());
             assert_eq!(variant[0], melody[0]);
-            assert_eq!(variant[variant.len() - 1].pitch() % 12, melody[variant.len() - 1].pitch() % 12);
+            assert_eq!(
+                variant[variant.len() - 1].pitch() % 12,
+                melody[variant.len() - 1].pitch() % 12
+            );
         }
     }
 
@@ -2232,136 +2265,32 @@ mod tests {
     fn remelodize_countdown_bug() {
         let melody = Melody {
             notes: vec![
-                Note {
-                    pitch: 74,
-                    duration: OrderedFloat(0.56),
-                    velocity: 127,
-                },
-                Note {
-                    pitch: 74,
-                    duration: OrderedFloat(0.01),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 73,
-                    duration: OrderedFloat(1.09),
-                    velocity: 100,
-                },
-                Note {
-                    pitch: 73,
-                    duration: OrderedFloat(0.07),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 75,
-                    duration: OrderedFloat(0.16),
-                    velocity: 114,
-                },
-                Note {
-                    pitch: 75,
-                    duration: OrderedFloat(0.03),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 73,
-                    duration: OrderedFloat(0.16),
-                    velocity: 106,
-                },
-                Note {
-                    pitch: 73,
-                    duration: OrderedFloat(0.03),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 71,
-                    duration: OrderedFloat(0.18),
-                    velocity: 72,
-                },
-                Note {
-                    pitch: 71,
-                    duration: OrderedFloat(0.03),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 73,
-                    duration: OrderedFloat(0.78),
-                    velocity: 81,
-                },
-                Note {
-                    pitch: 73,
-                    duration: OrderedFloat(0.06),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 73,
-                    duration: OrderedFloat(0.14),
-                    velocity: 115,
-                },
-                Note {
-                    pitch: 73,
-                    duration: OrderedFloat(0.04),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 73,
-                    duration: OrderedFloat(0.14),
-                    velocity: 110,
-                },
-                Note {
-                    pitch: 73,
-                    duration: OrderedFloat(0.04),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 73,
-                    duration: OrderedFloat(0.26),
-                    velocity: 102,
-                },
-                Note {
-                    pitch: 73,
-                    duration: OrderedFloat(0.1),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 71,
-                    duration: OrderedFloat(0.23),
-                    velocity: 115,
-                },
-                Note {
-                    pitch: 71,
-                    duration: OrderedFloat(0.07),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 69,
-                    duration: OrderedFloat(0.19),
-                    velocity: 124,
-                },
-                Note {
-                    pitch: 69,
-                    duration: OrderedFloat(0.1),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 68,
-                    duration: OrderedFloat(0.23),
-                    velocity: 74,
-                },
-                Note {
-                    pitch: 68,
-                    duration: OrderedFloat(0.15),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 66,
-                    duration: OrderedFloat(1.22),
-                    velocity: 86,
-                },
-                Note {
-                    pitch: 66,
-                    duration: OrderedFloat(2.0),
-                    velocity: 0,
-                },
+                Note::new(74, 0.56, 127),
+                Note::new(74, 0.01, 0),
+                Note::new(73, 1.09, 100),
+                Note::new(73, 0.07, 0),
+                Note::new(75, 0.16, 114),
+                Note::new(75, 0.03, 0),
+                Note::new(73, 0.16, 106),
+                Note::new(73, 0.03, 0),
+                Note::new(71, 0.18, 72),
+                Note::new(71, 0.03, 0),
+                Note::new(73, 0.78, 81),
+                Note::new(73, 0.06, 0),
+                Note::new(73, 0.14, 115),
+                Note::new(73, 0.04, 0),
+                Note::new(73, 0.14, 110),
+                Note::new(73, 0.04, 0),
+                Note::new(73, 0.26, 102),
+                Note::new(73, 0.1, 0),
+                Note::new(71, 0.23, 115),
+                Note::new(71, 0.07, 0),
+                Note::new(69, 0.19, 124),
+                Note::new(69, 0.1, 0),
+                Note::new(68, 0.23, 74),
+                Note::new(68, 0.15, 0),
+                Note::new(66, 1.22, 86),
+                Note::new(66, 2.0, 0),
             ],
         };
         let scale = melody.best_scale_for();
@@ -2495,6 +2424,8 @@ mod tests {
                 pitch: n,
                 duration: OrderedFloat(d),
                 velocity: i,
+                from_bend: false,
+                pitch_tremolo: OrderedFloat(0.0),
             });
         }
         assert!(!m.all_rests_synchronized());
@@ -3134,316 +3065,68 @@ mod tests {
         }
         let expected = Melody {
             notes: vec![
-                Note {
-                    pitch: 60,
-                    duration: OrderedFloat(0.487445772),
-                    velocity: 92,
-                },
-                Note {
-                    pitch: 60,
-                    duration: OrderedFloat(0.377421752),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 60,
-                    duration: OrderedFloat(0.289316858),
-                    velocity: 93,
-                },
-                Note {
-                    pitch: 60,
-                    duration: OrderedFloat(0.005971111),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.248933836),
-                    velocity: 102,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.05767016),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 62,
-                    duration: OrderedFloat(0.25962179),
-                    velocity: 113,
-                },
-                Note {
-                    pitch: 62,
-                    duration: OrderedFloat(0.229479448),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 65,
-                    duration: OrderedFloat(0.317320844),
-                    velocity: 4,
-                },
-                Note {
-                    pitch: 65,
-                    duration: OrderedFloat(0.042830378),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 65,
-                    duration: OrderedFloat(0.582655121),
-                    velocity: 70,
-                },
-                Note {
-                    pitch: 65,
-                    duration: OrderedFloat(0.50379576),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 65,
-                    duration: OrderedFloat(0.250825755),
-                    velocity: 106,
-                },
-                Note {
-                    pitch: 65,
-                    duration: OrderedFloat(0.017210736),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.272029135),
-                    velocity: 100,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.027428442),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 65,
-                    duration: OrderedFloat(1.126041184),
-                    velocity: 99,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.548192689),
-                    velocity: 99,
-                },
-                Note {
-                    pitch: 65,
-                    duration: OrderedFloat(0.273066185),
-                    velocity: 99,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.60045823),
-                    velocity: 117,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.450277594),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.269494265),
-                    velocity: 85,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.003552609),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 62,
-                    duration: OrderedFloat(0.267746147),
-                    velocity: 96,
-                },
-                Note {
-                    pitch: 62,
-                    duration: OrderedFloat(0.016828202),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.382390025),
-                    velocity: 123,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.128571533),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.699718069),
-                    velocity: 113,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.126759354),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 62,
-                    duration: OrderedFloat(0.867493649),
-                    velocity: 117,
-                },
-                Note {
-                    pitch: 62,
-                    duration: OrderedFloat(0.46433006),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.268483555),
-                    velocity: 106,
-                },
-                Note {
-                    pitch: 60,
-                    duration: OrderedFloat(1.323782698),
-                    velocity: 106,
-                },
-                Note {
-                    pitch: 60,
-                    duration: OrderedFloat(0.247095603),
-                    velocity: 100,
-                },
-                Note {
-                    pitch: 60,
-                    duration: OrderedFloat(0.026361804),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.312539865),
-                    velocity: 30,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.008570104),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 62,
-                    duration: OrderedFloat(0.267542603),
-                    velocity: 100,
-                },
-                Note {
-                    pitch: 62,
-                    duration: OrderedFloat(0.05672056),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 65,
-                    duration: OrderedFloat(0.60457732),
-                    velocity: 110,
-                },
-                Note {
-                    pitch: 65,
-                    duration: OrderedFloat(0.537155291),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 65,
-                    duration: OrderedFloat(0.271879248),
-                    velocity: 113,
-                },
-                Note {
-                    pitch: 65,
-                    duration: OrderedFloat(0.06866826),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 67,
-                    duration: OrderedFloat(0.253815119),
-                    velocity: 88,
-                },
-                Note {
-                    pitch: 67,
-                    duration: OrderedFloat(0.10896619),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 65,
-                    duration: OrderedFloat(1.4822801190000001),
-                    velocity: 78,
-                },
-                Note {
-                    pitch: 67,
-                    duration: OrderedFloat(0.362781309),
-                    velocity: 78,
-                },
-                Note {
-                    pitch: 65,
-                    duration: OrderedFloat(0.202632925),
-                    velocity: 78,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.651313167),
-                    velocity: 118,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.412422427),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.315570477),
-                    velocity: 86,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.032453773),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 57,
-                    duration: OrderedFloat(1.254315847),
-                    velocity: 92,
-                },
-                Note {
-                    pitch: 65,
-                    duration: OrderedFloat(0.321109969),
-                    velocity: 92,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.64096164),
-                    velocity: 117,
-                },
-                Note {
-                    pitch: 64,
-                    duration: OrderedFloat(0.485079544),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 55,
-                    duration: OrderedFloat(0.530547672),
-                    velocity: 94,
-                },
-                Note {
-                    pitch: 55,
-                    duration: OrderedFloat(0.017645017),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 62,
-                    duration: OrderedFloat(0.263664442),
-                    velocity: 125,
-                },
-                Note {
-                    pitch: 62,
-                    duration: OrderedFloat(0.009401743),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 60,
-                    duration: OrderedFloat(0.670999911),
-                    velocity: 111,
-                },
-                Note {
-                    pitch: 60,
-                    duration: OrderedFloat(1.5000003039999998),
-                    velocity: 0,
-                },
+                Note::new(60, 0.487445772, 92),
+                Note::new(60, 0.377421752, 0),
+                Note::new(60, 0.289316858, 93),
+                Note::new(60, 0.005971111, 0),
+                Note::new(64, 0.248933836, 102),
+                Note::new(64, 0.05767016, 0),
+                Note::new(62, 0.25962179, 113),
+                Note::new(62, 0.229479448, 0),
+                Note::new(65, 0.317320844, 4),
+                Note::new(65, 0.042830378, 0),
+                Note::new(65, 0.582655121, 70),
+                Note::new(65, 0.50379576, 0),
+                Note::new(65, 0.250825755, 106),
+                Note::new(65, 0.017210736, 0),
+                Note::new(64, 0.272029135, 100),
+                Note::new(64, 0.027428442, 0),
+                Note::new(65, 1.126041184, 99),
+                Note::new(64, 0.548192689, 99),
+                Note::new(65, 0.273066185, 99),
+                Note::new(64, 0.60045823, 117),
+                Note::new(64, 0.450277594, 0),
+                Note::new(64, 0.269494265, 85),
+                Note::new(64, 0.003552609, 0),
+                Note::new(62, 0.267746147, 96),
+                Note::new(62, 0.016828202, 0),
+                Note::new(64, 0.382390025, 123),
+                Note::new(64, 0.128571533, 0),
+                Note::new(64, 0.699718069, 113),
+                Note::new(64, 0.126759354, 0),
+                Note::new(62, 0.867493649, 117),
+                Note::new(62, 0.46433006, 0),
+                Note::new(64, 0.268483555, 106),
+                Note::new(60, 1.323782698, 106),
+                Note::new(60, 0.247095603, 100),
+                Note::new(60, 0.026361804, 0),
+                Note::new(64, 0.312539865, 30),
+                Note::new(64, 0.008570104, 0),
+                Note::new(62, 0.267542603, 100),
+                Note::new(62, 0.05672056, 0),
+                Note::new(65, 0.60457732, 110),
+                Note::new(65, 0.537155291, 0),
+                Note::new(65, 0.271879248, 113),
+                Note::new(65, 0.06866826, 0),
+                Note::new(67, 0.253815119, 88),
+                Note::new(67, 0.10896619, 0),
+                Note::new(65, 1.4822801190000001, 78),
+                Note::new(67, 0.362781309, 78),
+                Note::new(65, 0.202632925, 78),
+                Note::new(64, 0.651313167, 118),
+                Note::new(64, 0.412422427, 0),
+                Note::new(64, 0.315570477, 86),
+                Note::new(64, 0.032453773, 0),
+                Note::new(57, 1.254315847, 92),
+                Note::new(65, 0.321109969, 92),
+                Note::new(64, 0.64096164, 117),
+                Note::new(64, 0.485079544, 0),
+                Note::new(55, 0.530547672, 94),
+                Note::new(55, 0.017645017, 0),
+                Note::new(62, 0.263664442, 125),
+                Note::new(62, 0.009401743, 0),
+                Note::new(60, 0.670999911, 111),
+                Note::new(60, 1.5000003039999998, 0),
             ],
         };
         assert_eq!(melody, expected);
@@ -3510,290 +3193,66 @@ mod tests {
     fn test_without_brief_notes() {
         let melody = Melody {
             notes: vec![
-                Note {
-                    pitch: 72,
-                    duration: OrderedFloat(0.369792827),
-                    velocity: 127,
-                },
-                Note {
-                    pitch: 72,
-                    duration: OrderedFloat(0.061621093),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 74,
-                    duration: OrderedFloat(0.329988672),
-                    velocity: 127,
-                },
-                Note {
-                    pitch: 74,
-                    duration: OrderedFloat(0.127228427),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 76,
-                    duration: OrderedFloat(0.3714564),
-                    velocity: 99,
-                },
-                Note {
-                    pitch: 76,
-                    duration: OrderedFloat(0.085686124),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 77,
-                    duration: OrderedFloat(0.330959396),
-                    velocity: 127,
-                },
-                Note {
-                    pitch: 77,
-                    duration: OrderedFloat(0.159859305),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 72,
-                    duration: OrderedFloat(0.314343867),
-                    velocity: 76,
-                },
-                Note {
-                    pitch: 72,
-                    duration: OrderedFloat(0.026874508),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 74,
-                    duration: OrderedFloat(0.037653197),
-                    velocity: 12,
-                },
-                Note {
-                    pitch: 74,
-                    duration: OrderedFloat(0.044087338),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 75,
-                    duration: OrderedFloat(0.024298299),
-                    velocity: 77,
-                },
-                Note {
-                    pitch: 75,
-                    duration: OrderedFloat(2.524e-6),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 74,
-                    duration: OrderedFloat(0.280279047),
-                    velocity: 80,
-                },
-                Note {
-                    pitch: 74,
-                    duration: OrderedFloat(0.178904154),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 76,
-                    duration: OrderedFloat(0.323056836),
-                    velocity: 89,
-                },
-                Note {
-                    pitch: 76,
-                    duration: OrderedFloat(0.1009156),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 77,
-                    duration: OrderedFloat(0.330098162),
-                    velocity: 127,
-                },
-                Note {
-                    pitch: 77,
-                    duration: OrderedFloat(0.10557298),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 72,
-                    duration: OrderedFloat(0.300934497),
-                    velocity: 80,
-                },
-                Note {
-                    pitch: 72,
-                    duration: OrderedFloat(2.87e-6),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 73,
-                    duration: OrderedFloat(0.022893581),
-                    velocity: 20,
-                },
-                Note {
-                    pitch: 73,
-                    duration: OrderedFloat(0.044463414),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 74,
-                    duration: OrderedFloat(0.394669786),
-                    velocity: 101,
-                },
-                Note {
-                    pitch: 74,
-                    duration: OrderedFloat(0.078055973),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 77,
-                    duration: OrderedFloat(0.025097277),
-                    velocity: 91,
-                },
-                Note {
-                    pitch: 77,
-                    duration: OrderedFloat(2.56e-6),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 76,
-                    duration: OrderedFloat(0.332283936),
-                    velocity: 92,
-                },
-                Note {
-                    pitch: 76,
-                    duration: OrderedFloat(0.113469215),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 77,
-                    duration: OrderedFloat(0.345122384),
-                    velocity: 127,
-                },
-                Note {
-                    pitch: 77,
-                    duration: OrderedFloat(1.5000002829999999),
-                    velocity: 0,
-                },
+                Note::new(72, 0.369792827, 127),
+                Note::new(72, 0.061621093, 0),
+                Note::new(74, 0.329988672, 127),
+                Note::new(74, 0.127228427, 0),
+                Note::new(76, 0.3714564, 99),
+                Note::new(76, 0.085686124, 0),
+                Note::new(77, 0.330959396, 127),
+                Note::new(77, 0.159859305, 0),
+                Note::new(72, 0.314343867, 76),
+                Note::new(72, 0.026874508, 0),
+                Note::new(74, 0.037653197, 12),
+                Note::new(74, 0.044087338, 0),
+                Note::new(75, 0.024298299, 77),
+                Note::new(75, 0.000002524, 0),
+                Note::new(74, 0.280279047, 80),
+                Note::new(74, 0.178904154, 0),
+                Note::new(76, 0.323056836, 89),
+                Note::new(76, 0.1009156, 0),
+                Note::new(77, 0.330098162, 127),
+                Note::new(77, 0.10557298, 0),
+                Note::new(72, 0.300934497, 80),
+                Note::new(72, 0.00000287, 0),
+                Note::new(73, 0.022893581, 20),
+                Note::new(73, 0.044463414, 0),
+                Note::new(74, 0.394669786, 101),
+                Note::new(74, 0.078055973, 0),
+                Note::new(77, 0.025097277, 91),
+                Note::new(77, 0.00000256, 0),
+                Note::new(76, 0.332283936, 92),
+                Note::new(76, 0.113469215, 0),
+                Note::new(77, 0.345122384, 127),
+                Note::new(77, 1.5000002829999999, 0),
             ],
         };
         let expected = Melody {
             notes: vec![
-                Note {
-                    pitch: 72,
-                    duration: OrderedFloat(0.369792827),
-                    velocity: 127,
-                },
-                Note {
-                    pitch: 72,
-                    duration: OrderedFloat(0.061621093),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 74,
-                    duration: OrderedFloat(0.329988672),
-                    velocity: 127,
-                },
-                Note {
-                    pitch: 74,
-                    duration: OrderedFloat(0.127228427),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 76,
-                    duration: OrderedFloat(0.3714564),
-                    velocity: 99,
-                },
-                Note {
-                    pitch: 76,
-                    duration: OrderedFloat(0.085686124),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 77,
-                    duration: OrderedFloat(0.330959396),
-                    velocity: 127,
-                },
-                Note {
-                    pitch: 77,
-                    duration: OrderedFloat(0.159859305),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 72,
-                    duration: OrderedFloat(0.314343867),
-                    velocity: 76,
-                },
-                Note {
-                    pitch: 72,
-                    duration: OrderedFloat(0.026874508),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 74,
-                    duration: OrderedFloat(0.280279047),
-                    velocity: 80,
-                },
-                Note {
-                    pitch: 74,
-                    duration: OrderedFloat(0.178904154),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 76,
-                    duration: OrderedFloat(0.323056836),
-                    velocity: 89,
-                },
-                Note {
-                    pitch: 76,
-                    duration: OrderedFloat(0.1009156),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 77,
-                    duration: OrderedFloat(0.330098162),
-                    velocity: 127,
-                },
-                Note {
-                    pitch: 77,
-                    duration: OrderedFloat(0.10557298),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 72,
-                    duration: OrderedFloat(0.300934497),
-                    velocity: 80,
-                },
-                Note {
-                    pitch: 72,
-                    duration: OrderedFloat(2.87e-6),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 74,
-                    duration: OrderedFloat(0.394669786),
-                    velocity: 101,
-                },
-                Note {
-                    pitch: 74,
-                    duration: OrderedFloat(0.078055973),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 76,
-                    duration: OrderedFloat(0.332283936),
-                    velocity: 92,
-                },
-                Note {
-                    pitch: 76,
-                    duration: OrderedFloat(0.113469215),
-                    velocity: 0,
-                },
-                Note {
-                    pitch: 77,
-                    duration: OrderedFloat(0.345122384),
-                    velocity: 127,
-                },
-                Note {
-                    pitch: 77,
-                    duration: OrderedFloat(1.5000002829999999),
-                    velocity: 0,
-                },
+                Note::new(72, 0.369792827, 127),
+                Note::new(72, 0.061621093, 0),
+                Note::new(74, 0.329988672, 127),
+                Note::new(74, 0.127228427, 0),
+                Note::new(76, 0.3714564, 99),
+                Note::new(76, 0.085686124, 0),
+                Note::new(77, 0.330959396, 127),
+                Note::new(77, 0.159859305, 0),
+                Note::new(72, 0.314343867, 76),
+                Note::new(72, 0.026874508, 0),
+                Note::new(74, 0.280279047, 80),
+                Note::new(74, 0.178904154, 0),
+                Note::new(76, 0.323056836, 89),
+                Note::new(76, 0.1009156, 0),
+                Note::new(77, 0.330098162, 127),
+                Note::new(77, 0.10557298, 0),
+                Note::new(72, 0.300934497, 80),
+                Note::new(72, 0.00000287, 0),
+                Note::new(74, 0.394669786, 101),
+                Note::new(74, 0.078055973, 0),
+                Note::new(76, 0.332283936, 92),
+                Note::new(76, 0.113469215, 0),
+                Note::new(77, 0.345122384, 127),
+                Note::new(77, 1.5000002829999999, 0),
             ],
         };
         assert_eq!(melody.without_brief_notes(0.1), expected);
@@ -3922,294 +3381,42 @@ mod tests {
         assert_eq!(
             ranked,
             [
-                (
-                    45,
-                    Note {
-                        pitch: 65,
-                        duration: OrderedFloat(1.4822801190000001),
-                        velocity: 78
-                    }
-                ),
-                (
-                    32,
-                    Note {
-                        pitch: 60,
-                        duration: OrderedFloat(1.323782698),
-                        velocity: 106
-                    }
-                ),
-                (
-                    52,
-                    Note {
-                        pitch: 57,
-                        duration: OrderedFloat(1.254315847),
-                        velocity: 92
-                    }
-                ),
-                (
-                    16,
-                    Note {
-                        pitch: 62,
-                        duration: OrderedFloat(1.126041184),
-                        velocity: 99
-                    }
-                ),
-                (
-                    29,
-                    Note {
-                        pitch: 62,
-                        duration: OrderedFloat(0.867493649),
-                        velocity: 117
-                    }
-                ),
-                (
-                    27,
-                    Note {
-                        pitch: 64,
-                        duration: OrderedFloat(0.699718069),
-                        velocity: 113
-                    }
-                ),
-                (
-                    60,
-                    Note {
-                        pitch: 60,
-                        duration: OrderedFloat(0.670999911),
-                        velocity: 111
-                    }
-                ),
-                (
-                    48,
-                    Note {
-                        pitch: 64,
-                        duration: OrderedFloat(0.651313167),
-                        velocity: 118
-                    }
-                ),
-                (
-                    54,
-                    Note {
-                        pitch: 64,
-                        duration: OrderedFloat(0.64096164),
-                        velocity: 117
-                    }
-                ),
-                (
-                    39,
-                    Note {
-                        pitch: 65,
-                        duration: OrderedFloat(0.60457732),
-                        velocity: 110
-                    }
-                ),
-                (
-                    19,
-                    Note {
-                        pitch: 60,
-                        duration: OrderedFloat(0.60045823),
-                        velocity: 117
-                    }
-                ),
-                (
-                    10,
-                    Note {
-                        pitch: 65,
-                        duration: OrderedFloat(0.582655121),
-                        velocity: 70
-                    }
-                ),
-                (
-                    17,
-                    Note {
-                        pitch: 64,
-                        duration: OrderedFloat(0.548192689),
-                        velocity: 99
-                    }
-                ),
-                (
-                    56,
-                    Note {
-                        pitch: 55,
-                        duration: OrderedFloat(0.530547672),
-                        velocity: 94
-                    }
-                ),
-                (
-                    0,
-                    Note {
-                        pitch: 60,
-                        duration: OrderedFloat(0.487445772),
-                        velocity: 92
-                    }
-                ),
-                (
-                    25,
-                    Note {
-                        pitch: 64,
-                        duration: OrderedFloat(0.382390025),
-                        velocity: 123
-                    }
-                ),
-                (
-                    46,
-                    Note {
-                        pitch: 64,
-                        duration: OrderedFloat(0.362781309),
-                        velocity: 78
-                    }
-                ),
-                (
-                    53,
-                    Note {
-                        pitch: 65,
-                        duration: OrderedFloat(0.321109969),
-                        velocity: 92
-                    }
-                ),
-                (
-                    8,
-                    Note {
-                        pitch: 65,
-                        duration: OrderedFloat(0.317320844),
-                        velocity: 4
-                    }
-                ),
-                (
-                    50,
-                    Note {
-                        pitch: 64,
-                        duration: OrderedFloat(0.315570477),
-                        velocity: 86
-                    }
-                ),
-                (
-                    35,
-                    Note {
-                        pitch: 62,
-                        duration: OrderedFloat(0.312539865),
-                        velocity: 30
-                    }
-                ),
-                (
-                    2,
-                    Note {
-                        pitch: 60,
-                        duration: OrderedFloat(0.289316858),
-                        velocity: 93
-                    }
-                ),
-                (
-                    18,
-                    Note {
-                        pitch: 62,
-                        duration: OrderedFloat(0.273066185),
-                        velocity: 99
-                    }
-                ),
-                (
-                    14,
-                    Note {
-                        pitch: 64,
-                        duration: OrderedFloat(0.272029135),
-                        velocity: 100
-                    }
-                ),
-                (
-                    41,
-                    Note {
-                        pitch: 65,
-                        duration: OrderedFloat(0.271879248),
-                        velocity: 113
-                    }
-                ),
-                (
-                    21,
-                    Note {
-                        pitch: 60,
-                        duration: OrderedFloat(0.269494265),
-                        velocity: 85
-                    }
-                ),
-                (
-                    31,
-                    Note {
-                        pitch: 64,
-                        duration: OrderedFloat(0.268483555),
-                        velocity: 106
-                    }
-                ),
-                (
-                    23,
-                    Note {
-                        pitch: 62,
-                        duration: OrderedFloat(0.267746147),
-                        velocity: 96
-                    }
-                ),
-                (
-                    37,
-                    Note {
-                        pitch: 64,
-                        duration: OrderedFloat(0.267542603),
-                        velocity: 100
-                    }
-                ),
-                (
-                    58,
-                    Note {
-                        pitch: 62,
-                        duration: OrderedFloat(0.263664442),
-                        velocity: 125
-                    }
-                ),
-                (
-                    6,
-                    Note {
-                        pitch: 64,
-                        duration: OrderedFloat(0.25962179),
-                        velocity: 113
-                    }
-                ),
-                (
-                    43,
-                    Note {
-                        pitch: 64,
-                        duration: OrderedFloat(0.253815119),
-                        velocity: 88
-                    }
-                ),
-                (
-                    12,
-                    Note {
-                        pitch: 65,
-                        duration: OrderedFloat(0.250825755),
-                        velocity: 106
-                    }
-                ),
-                (
-                    4,
-                    Note {
-                        pitch: 62,
-                        duration: OrderedFloat(0.248933836),
-                        velocity: 102
-                    }
-                ),
-                (
-                    33,
-                    Note {
-                        pitch: 60,
-                        duration: OrderedFloat(0.247095603),
-                        velocity: 100
-                    }
-                ),
-                (
-                    47,
-                    Note {
-                        pitch: 62,
-                        duration: OrderedFloat(0.202632925),
-                        velocity: 78
-                    }
-                )
+                (45, Note::new(65, 1.4822801190000001, 78)),
+                (32, Note::new(60, 1.323782698, 106)),
+                (52, Note::new(57, 1.254315847, 92)),
+                (16, Note::new(62, 1.126041184, 99)),
+                (29, Note::new(62, 0.867493649, 117)),
+                (27, Note::new(64, 0.699718069, 113)),
+                (60, Note::new(60, 0.670999911, 111)),
+                (48, Note::new(64, 0.651313167, 118)),
+                (54, Note::new(64, 0.64096164, 117)),
+                (39, Note::new(65, 0.60457732, 110)),
+                (19, Note::new(60, 0.60045823, 117)),
+                (10, Note::new(65, 0.582655121, 70)),
+                (17, Note::new(64, 0.548192689, 99)),
+                (56, Note::new(55, 0.530547672, 94)),
+                (0, Note::new(60, 0.487445772, 92)),
+                (25, Note::new(64, 0.382390025, 123)),
+                (46, Note::new(64, 0.362781309, 78)),
+                (53, Note::new(65, 0.321109969, 92)),
+                (8, Note::new(65, 0.317320844, 4)),
+                (50, Note::new(64, 0.315570477, 86)),
+                (35, Note::new(62, 0.312539865, 30)),
+                (2, Note::new(60, 0.289316858, 93)),
+                (18, Note::new(62, 0.273066185, 99)),
+                (14, Note::new(64, 0.272029135, 100)),
+                (41, Note::new(65, 0.271879248, 113)),
+                (21, Note::new(60, 0.269494265, 85)),
+                (31, Note::new(64, 0.268483555, 106)),
+                (23, Note::new(62, 0.267746147, 96)),
+                (37, Note::new(64, 0.267542603, 100)),
+                (58, Note::new(62, 0.263664442, 125)),
+                (6, Note::new(64, 0.25962179, 113)),
+                (43, Note::new(64, 0.253815119, 88)),
+                (12, Note::new(65, 0.250825755, 106)),
+                (4, Note::new(62, 0.248933836, 102)),
+                (33, Note::new(60, 0.247095603, 100)),
+                (47, Note::new(62, 0.202632925, 78))
             ]
         );
     }

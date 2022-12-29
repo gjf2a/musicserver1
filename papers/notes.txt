@@ -13,3 +13,9 @@ BachProp
 
 AI Methods in Algorithmic Composition: A Comprehensive Survey
 * https://www.jair.org/index.php/jair/article/view/10845
+
+Another implementation
+* https://github.com/valentinlageard/melodendron
+
+Noteworthy
+* https://www.riffusion.com/about
