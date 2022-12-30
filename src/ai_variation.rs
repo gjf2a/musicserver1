@@ -1,4 +1,4 @@
-use crate::analyzer::{Melody, MelodyMaker, PendingNote};
+use crate::analyzer::{Melody, MelodyMaker, MidiByte, Note};
 use crate::database::FromAiMsg;
 use crate::runtime::{
     send_recorded_melody, ChooserTable, MelodyRunStatus, SliderValue, VariationControls,
@@ -9,10 +9,11 @@ use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use eframe::emath::Numeric;
 use midi_fundsp::io::SynthMsg;
-use midi_fundsp::{pitch_bend_factor, semitone_from};
+use midi_fundsp::semitone_from;
 use midi_msg::{ChannelVoiceMsg, MidiMsg};
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 pub type AIFuncType = dyn Fn(&MelodyMaker, &Melody, f64) -> Melody + Send + Sync;
 pub type AITable = ChooserTable<Arc<AIFuncType>>;
@@ -97,7 +98,7 @@ struct PlayerRecorder {
     gui2ai: Arc<SegQueue<Melody>>,
     ai2output: Arc<SegQueue<SynthMsg>>,
     replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
-    waiting: Option<PendingNote>,
+    waiting: Option<PendingBendableNote>,
     player_melody: Melody,
 }
 
@@ -130,8 +131,11 @@ impl PlayerRecorder {
                 self.handle_incoming(synth_msg);
             }
 
-            if let Some(pending_note) = self.waiting {
+            if let Some(pending_note) = self.waiting.as_ref() {
                 player_finished = self.check_if_finished(pending_note);
+                if player_finished {
+                    self.add_pending_note();
+                }
             }
         }
         let mut result = Melody::new();
@@ -140,20 +144,25 @@ impl PlayerRecorder {
         result
     }
 
+    fn add_pending_note(&mut self) {
+        if let Some(pending_note) = self.waiting.as_ref() {
+            pending_note.add_notes_to(&mut self.player_melody);
+            pending_note.print_stats();
+        }
+    }
+
     fn handle_incoming(&mut self, synth_msg: SynthMsg) {
         if let MidiMsg::ChannelVoice { channel: _, msg } = synth_msg.msg {
             match msg {
                 ChannelVoiceMsg::NoteOff { note, velocity }
                 | ChannelVoiceMsg::NoteOn { note, velocity } => {
-                    if let Some(pending_note) = self.waiting {
-                        self.player_melody.add(pending_note.into());
-                    }
-                    self.waiting = Some(PendingNote::new(note, velocity));
+                    self.add_pending_note();
+                    self.waiting = Some(PendingBendableNote::new(note, velocity));
                 }
                 ChannelVoiceMsg::PitchBend { bend } => {
-                    let semitone = semitone_from(bend);
-                    let pitch_bend_factor = pitch_bend_factor(bend);
-                    println!("bend semitone: {semitone} ({pitch_bend_factor})");
+                    if let Some(pending_note) = self.waiting.as_mut() {
+                        pending_note.add_bend(bend);
+                    }
                 }
                 _ => {}
             }
@@ -161,14 +170,9 @@ impl PlayerRecorder {
         self.ai2output.push(synth_msg);
     }
 
-    fn check_if_finished(&mut self, pending_note: PendingNote) -> bool {
+    fn check_if_finished(&self, pending_note: &PendingBendableNote) -> bool {
         let replay_delay = self.replay_delay_slider.load();
-        if pending_note.is_rest() && pending_note.elapsed() > replay_delay.current() {
-            self.player_melody.add(pending_note.into());
-            true
-        } else {
-            false
-        }
+        pending_note.is_rest() && pending_note.elapsed() > replay_delay.current()
     }
 }
 
@@ -205,5 +209,71 @@ impl Performer {
         }
         self.maker
             .ornamented(&melody.best_scale_for(), &variation, p_ornament)
+    }
+}
+
+pub struct PendingBendableNote {
+    pitch: u8,
+    velocity: u8,
+    start: Instant,
+    bends: Vec<(u16, f64)>,
+}
+
+impl PendingBendableNote {
+    pub fn new(pitch: u8, velocity: u8) -> Self {
+        Self {
+            pitch,
+            velocity,
+            start: Instant::now(),
+            bends: vec![],
+        }
+    }
+
+    pub fn is_rest(&self) -> bool {
+        self.velocity == 0
+    }
+
+    pub fn elapsed(&self) -> f64 {
+        self.start.elapsed().as_secs_f64()
+    }
+
+    pub fn add_bend(&mut self, bend: u16) {
+        self.bends.push((bend, self.start.elapsed().as_secs_f64()))
+    }
+
+    pub fn add_notes_to(&self, melody: &mut Melody) {
+        melody.add(Note::new(
+            self.pitch as MidiByte,
+            self.elapsed(),
+            self.velocity as MidiByte,
+        ))
+    }
+
+    pub fn turns(&self) -> Vec<(u16, f64)> {
+        let mut result = vec![];
+        for i in 1..(self.bends.len() as isize - 1) {
+            let i = i as usize;
+            if self.bends[i].0 > self.bends[i - 1].0 && self.bends[i].0 > self.bends[i + 1].0 || self.bends[i].0 < self.bends[i - 1].0 && self.bends[i].0 < self.bends[i + 1].0 {
+                result.push(self.bends[i]);
+            }
+        }
+        result
+    }
+
+    pub fn print_stats(&self) {
+        let num_bends = self.bends.len();
+        let max_bend = self
+            .bends
+            .iter()
+            .map(|(b, _)| *b)
+            .max()
+            .map(|bend| semitone_from(bend));
+        let min_bend = self
+            .bends
+            .iter()
+            .map(|(b, _)| *b)
+            .min()
+            .map(|bend| semitone_from(bend));
+        println!("pitch: {}; {num_bends} bends; ({min_bend:?}, {max_bend:?}); {} turns", self.pitch, self.turns().len());
     }
 }

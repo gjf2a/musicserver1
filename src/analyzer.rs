@@ -100,7 +100,7 @@ pub struct Note {
     duration: OrderedFloat<f64>,
     velocity: MidiByte,
     from_bend: bool,
-    pitch_tremolo: OrderedFloat<f64>,
+    step_bend: OrderedFloat<f64>,
 }
 
 impl ApproxEq for Note {
@@ -116,9 +116,9 @@ impl ApproxEq for Note {
                 .into_inner()
                 .approx_eq(other.duration.into_inner(), margin)
             && self
-                .pitch_tremolo
+                .step_bend
                 .into_inner()
-                .approx_eq(other.pitch_tremolo.into_inner(), margin)
+                .approx_eq(other.step_bend.into_inner(), margin)
     }
 }
 
@@ -129,7 +129,7 @@ impl Note {
             duration: OrderedFloat(duration),
             velocity,
             from_bend: false,
-            pitch_tremolo: OrderedFloat(0.0),
+            step_bend: OrderedFloat(0.0),
         }
     }
 
@@ -171,7 +171,7 @@ impl Note {
             duration: self.duration,
             velocity: self.velocity,
             from_bend: self.from_bend,
-            pitch_tremolo: self.pitch_tremolo,
+            step_bend: self.step_bend,
         }
     }
 
@@ -239,7 +239,7 @@ impl PendingNote {
             duration: OrderedFloat(0.0),
             velocity: 0,
             from_bend: false,
-            pitch_tremolo: OrderedFloat(0.0),
+            step_bend: OrderedFloat(0.0),
         }
     }
 }
@@ -251,7 +251,7 @@ impl From<PendingNote> for Note {
             duration: OrderedFloat(pending_note.elapsed()),
             velocity: pending_note.velocity as MidiByte,
             from_bend: false,
-            pitch_tremolo: OrderedFloat(0.0),
+            step_bend: OrderedFloat(0.0),
         }
     }
 }
@@ -372,7 +372,7 @@ impl Melody {
                 duration,
                 velocity: intensity,
                 from_bend: false,
-                pitch_tremolo: OrderedFloat(0.0),
+                step_bend: OrderedFloat(0.0),
             });
         }
         Melody { notes }
@@ -2425,7 +2425,7 @@ mod tests {
                 duration: OrderedFloat(d),
                 velocity: i,
                 from_bend: false,
-                pitch_tremolo: OrderedFloat(0.0),
+                step_bend: OrderedFloat(0.0),
             });
         }
         assert!(!m.all_rests_synchronized());
