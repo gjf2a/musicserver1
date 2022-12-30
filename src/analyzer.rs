@@ -13,7 +13,6 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter::Sum;
 use std::ops::RangeInclusive;
 use std::ops::{AddAssign, Neg};
-use std::time::Instant;
 
 pub type MidiByte = i16;
 
@@ -99,8 +98,6 @@ pub struct Note {
     pitch: MidiByte,
     duration: OrderedFloat<f64>,
     velocity: MidiByte,
-    from_bend: bool,
-    step_bend: OrderedFloat<f64>,
 }
 
 impl ApproxEq for Note {
@@ -110,15 +107,10 @@ impl ApproxEq for Note {
         let margin = margin.into();
         self.pitch == other.pitch
             && self.velocity == other.velocity
-            && self.from_bend == other.from_bend
             && self
                 .duration
                 .into_inner()
                 .approx_eq(other.duration.into_inner(), margin)
-            && self
-                .step_bend
-                .into_inner()
-                .approx_eq(other.step_bend.into_inner(), margin)
     }
 }
 
@@ -128,8 +120,6 @@ impl Note {
             pitch,
             duration: OrderedFloat(duration),
             velocity,
-            from_bend: false,
-            step_bend: OrderedFloat(0.0),
         }
     }
 
@@ -170,8 +160,6 @@ impl Note {
             pitch: new_pitch,
             duration: self.duration,
             velocity: self.velocity,
-            from_bend: self.from_bend,
-            step_bend: self.step_bend,
         }
     }
 
@@ -205,56 +193,6 @@ fn dotify_float(f: OrderedFloat<f64>) -> String {
     result
 }
 
-#[derive(Copy, Clone)]
-pub struct PendingNote {
-    pitch: u8,
-    timestamp: Instant,
-    velocity: u8,
-}
-
-impl PendingNote {
-    pub fn new(pitch: u8, velocity: u8) -> Self {
-        PendingNote {
-            pitch,
-            timestamp: Instant::now(),
-            velocity,
-        }
-    }
-
-    pub fn pitch(&self) -> u8 {
-        self.pitch
-    }
-
-    pub fn elapsed(&self) -> f64 {
-        self.timestamp.elapsed().as_secs_f64()
-    }
-
-    pub fn is_rest(&self) -> bool {
-        self.velocity == 0
-    }
-
-    pub fn instant_rest_from(&self) -> Note {
-        Note {
-            pitch: self.pitch as MidiByte,
-            duration: OrderedFloat(0.0),
-            velocity: 0,
-            from_bend: false,
-            step_bend: OrderedFloat(0.0),
-        }
-    }
-}
-
-impl From<PendingNote> for Note {
-    fn from(pending_note: PendingNote) -> Self {
-        Note {
-            pitch: pending_note.pitch as MidiByte,
-            duration: OrderedFloat(pending_note.elapsed()),
-            velocity: pending_note.velocity as MidiByte,
-            from_bend: false,
-            step_bend: OrderedFloat(0.0),
-        }
-    }
-}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Melody {
@@ -367,13 +305,7 @@ impl Melody {
             let duration = nums.next().unwrap().parse().unwrap();
             let f_intensity: OrderedFloat<f64> = nums.next().unwrap().parse().unwrap();
             let intensity = (f_intensity.into_inner() * MAX_MIDI_VALUE as f64) as MidiByte;
-            notes.push(Note {
-                pitch: note,
-                duration,
-                velocity: intensity,
-                from_bend: false,
-                step_bend: OrderedFloat(0.0),
-            });
+            notes.push(Note::new(note, duration, intensity));
         }
         Melody { notes }
     }
@@ -2420,13 +2352,7 @@ mod tests {
             (62, 0.00, 0),
             (65, 0.08, 0),
         ] {
-            m.add(Note {
-                pitch: n,
-                duration: OrderedFloat(d),
-                velocity: i,
-                from_bend: false,
-                step_bend: OrderedFloat(0.0),
-            });
+            m.add(Note::new(n, d, i));
         }
         assert!(!m.all_rests_synchronized());
         m.synchronize_rests();
