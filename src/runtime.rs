@@ -1,4 +1,5 @@
 use crate::analyzer::Melody;
+use crate::database::VariationStats;
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use midi_fundsp::io::{Speaker, SynthMsg};
@@ -118,6 +119,16 @@ impl VariationControls {
             p_ornament_slider: Arc::new(AtomicCell::new(prob_slider(0.2))),
             whimsify: Arc::new(AtomicCell::new(false)),
             shortest_note_slider: Arc::new(AtomicCell::new(SliderValue::new(0.1, 0.0, 0.2))),
+        }
+    }
+
+    pub fn stats(&self, algorithm_name: String) -> VariationStats {
+        VariationStats { 
+            algorithm_name, 
+            random_prob: self.p_random_slider.load().current, 
+            ornament_prob: self.p_ornament_slider.load().current, 
+            min_note_duration: self.shortest_note_slider.load().current, 
+            whimsify: self.whimsify.load() 
         }
     }
 }

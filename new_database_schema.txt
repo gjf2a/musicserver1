@@ -17,4 +17,4 @@ melody_index (timestamp INTEGER, rating TEXT)
 tags (melody_row INTEGER, tag TEXT) # Index both fields
 melody_variation (melody_row INTEGER, variation_row INTEGER)
 melodies (row INTEGER, pitch INTEGER, duration FLOAT, velocity INTEGER)
-variation_info (melody_row INTEGER, source_row INTEGER, algorithm_name TEXT, random_prob FLOAT, ornament_prob FLOAT, MIN_NOTE_DURATION FLOAT)
+variation_info (melody_row INTEGER, source_row INTEGER, algorithm_name TEXT, random_prob FLOAT, ornament_prob FLOAT, min_note_duration FLOAT)

@@ -64,10 +64,8 @@ pub fn start_ai_thread(
                     min_melody_pitches,
                     replay_delay_slider.load().current(),
                 ) {
-                    ai2dbase.push(FromAiMsg {
-                        melody,
-                        variation: variation.clone(),
-                    });
+                    let stats = variation_controls.stats(performer.current_name());
+                    ai2dbase.push(FromAiMsg::MelodyVariation { melody, variation: variation.clone(), stats } );
                     melody_run_status.send_stop();
                     while melody_run_status.is_stopping() {}
                     send_recorded_melody(
@@ -184,6 +182,11 @@ impl Performer {
 
     fn from_slider<N: FromStr + Numeric>(slider: &Arc<AtomicCell<SliderValue<N>>>) -> N {
         slider.load().current()
+    }
+
+    fn current_name(&self) -> String {
+        let ai_table = self.ai_table.lock().unwrap();
+        ai_table.current_name().to_owned()
     }
 
     fn create_variation(&self, melody: &Melody) -> Melody {
