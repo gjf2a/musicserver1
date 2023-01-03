@@ -196,6 +196,7 @@ struct ReplayerApp {
     today_search_pref: Arc<AtomicCell<Preference>>,
     older_search_pref: Arc<AtomicCell<Preference>>,
     melody_var_info: Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo, VariationStats)>>>,
+    melody_var_update_needed: Arc<AtomicCell<bool>>,
     database: Option<Database>,
     input2ai: Arc<SegQueue<SynthMsg>>,
     ai2dbase: Arc<SegQueue<FromAiMsg>>,
@@ -281,6 +282,7 @@ impl ReplayerApp {
             today_search_pref: Arc::new(AtomicCell::new(Preference::Neutral)),
             older_search_pref: Arc::new(AtomicCell::new(Preference::Favorite)),
             melody_var_info,
+            melody_var_update_needed: Arc::new(AtomicCell::new(true)),
             database: Some(database),
             input2ai: Arc::new(SegQueue::new()),
             ai2dbase: Arc::new(SegQueue::new()),
@@ -427,9 +429,12 @@ impl ReplayerApp {
             self.melody_variation_selector(ui, &mut melody_var_info);
             melody_var_info.get().cloned().unwrap()
         };
-        self.variation_controls.update_from(&stats);
-        self.ai_algorithm.name = stats.algorithm_name;
-        self.ai_algorithm.update_choice();
+        if self.melody_var_update_needed.load() {
+            self.variation_controls.update_from(&stats);
+            self.ai_algorithm.name = stats.algorithm_name;
+            self.ai_algorithm.update_choice();
+            self.melody_var_update_needed.store(false);
+        }
 
         ui.horizontal(|ui| {
             ui.label(melody_info.date_time_stamp());
@@ -519,6 +524,7 @@ impl ReplayerApp {
             mover(melody_var_info);
             let (_, variation_info, _) = melody_var_info.get().unwrap();
             self.variation_pref.store(variation_info.rating());
+            self.melody_var_update_needed.store(true);
         }
     }
 
@@ -729,9 +735,11 @@ impl ReplayerApp {
         let variation_pref = self.variation_pref.clone();
         let melody_var_info = self.melody_var_info.clone();
         let melody_progress = self.melody_progress.clone();
+        let update_needed = self.melody_var_update_needed.clone();
         thread::spawn(move || loop {
             if let Some(msg) = dbase2gui.pop() {
                 Self::handle_database_msg(msg, variation_pref.clone(), melody_var_info.clone());
+                update_needed.store(true);
                 ctx.request_repaint();
             }
             if let Some(_) = melody_progress.load() {

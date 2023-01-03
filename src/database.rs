@@ -269,7 +269,7 @@ impl Database {
     pub fn update_info(&mut self, rowid: i64, rating: Preference) -> anyhow::Result<()> {
         let connection = self.get_connection()?;
         let mut statement =
-            connection.prepare("UPDATE melody_index SET rating = ?, tag = ? WHERE rowid = ?")?;
+            connection.prepare("UPDATE melody_index SET rating = ? WHERE rowid = ?")?;
         statement.bind((1, rating.to_string().as_str()))?;
         statement.bind((2, rowid))?;
         statement.next()?;
