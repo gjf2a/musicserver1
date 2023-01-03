@@ -13,13 +13,21 @@ use std::{
 
 #[derive(Clone, Debug)]
 pub struct VariationStats {
-    pub algorithm_name: String, pub random_prob: f64, pub ornament_prob: f64, pub min_note_duration: f64, pub whimsify: bool
+    pub algorithm_name: String,
+    pub random_prob: f64,
+    pub ornament_prob: f64,
+    pub min_note_duration: f64,
+    pub whimsify: bool,
 }
 
 #[derive(Clone, Debug)]
 pub enum FromAiMsg {
     MelodyOnly(Melody),
-    MelodyVariation {melody: Melody, variation: Melody, stats: VariationStats}
+    MelodyVariation {
+        melody: Melody,
+        variation: Melody,
+        stats: VariationStats,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -39,8 +47,9 @@ pub enum DatabaseGuiUpdate {
     Info {
         melody: MelodyInfo,
         variation: MelodyInfo,
+        stats: VariationStats,
     },
-    AllPairs(Vec<(MelodyInfo, MelodyInfo)>),
+    AllPairs(Vec<(MelodyInfo, MelodyInfo, VariationStats)>),
 }
 
 pub fn start_database_thread(
@@ -70,15 +79,20 @@ pub fn start_database_thread(
         if let Some(msg) = ai2dbase.pop() {
             match msg {
                 FromAiMsg::MelodyOnly(_) => todo!("Not implemented yet"),
-                FromAiMsg::MelodyVariation { melody, variation, stats } => {
+                FromAiMsg::MelodyVariation {
+                    melody,
+                    variation,
+                    stats,
+                } => {
                     let info = database
-                    .add_melody_and_variation(&melody, &variation, &stats)
-                    .unwrap();
+                        .add_melody_and_variation(&melody, &variation, &stats)
+                        .unwrap();
                     dbase2gui.push(DatabaseGuiUpdate::Info {
                         melody: info.0,
                         variation: info.1,
+                        stats,
                     });
-                },
+                }
             }
         }
     });
@@ -96,7 +110,8 @@ impl Database {
     fn get_connection(&self) -> anyhow::Result<Connection> {
         // Good overview of indexing in SQLite: https://medium.com/@JasonWyatt/squeezing-performance-from-sqlite-indexes-indexes-c4e175f3c346
         let connection = sqlite::open(self.filename.as_str()).unwrap();
-        connection.execute("CREATE TABLE IF NOT EXISTS melody_index (timestamp INTEGER, rating TEXT);")?;
+        connection
+            .execute("CREATE TABLE IF NOT EXISTS melody_index (timestamp INTEGER, rating TEXT);")?;
         connection.execute("CREATE TABLE IF NOT EXISTS tags (melody_row INTEGER, tag TEXT);")?;
         connection.execute("CREATE TABLE IF NOT EXISTS melodies (melody_row INTEGER, pitch INTEGER, duration FLOAT, velocity INTEGER);")?;
         connection.execute("CREATE TABLE IF NOT EXISTS variation_info (variation_row INTEGER, original_row INTEGER, algorithm_name TEXT, random_prob FLOAT, ornament_prob FLOAT, min_note_duration FLOAT, whimsify INTEGER);")?;
@@ -111,7 +126,9 @@ impl Database {
         connection.execute("CREATE INDEX IF NOT EXISTS ratings ON melody_index (rating)")?;
         connection.execute("CREATE INDEX IF NOT EXISTS melody_tags ON tags (melody_row)")?;
         connection.execute("CREATE INDEX IF NOT EXISTS tagged ON tags (tag)")?;
-        connection.execute("CREATE INDEX IF NOT EXISTS variation_algorithms ON variation_info (algorithm_name)")?;
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS variation_algorithms ON variation_info (algorithm_name)",
+        )?;
         Ok(connection)
     }
 
@@ -134,17 +151,19 @@ impl Database {
         &mut self,
         min_today_pref: Preference,
         min_older_pref: Preference,
-    ) -> anyhow::Result<Vec<(MelodyInfo, MelodyInfo)>> {
+    ) -> anyhow::Result<Vec<(MelodyInfo, MelodyInfo, VariationStats)>> {
         let mut result = vec![];
         let connection = self.get_connection()?;
-        let melody_variation_ids = Self::get_variation_info_ids(&connection, min_today_pref, min_older_pref)?;
+        let melody_variation_ids =
+            Self::get_variation_info_ids(&connection, min_today_pref, min_older_pref)?;
         for (original_id, variation_id) in melody_variation_ids {
             let original = self.melody(&connection, original_id)?;
             let variation = self.melody(&connection, variation_id)?;
             let variation_info = Self::info_for(&connection, variation_id, variation)?;
             let mut original_info = Self::info_for(&connection, original_id, original)?;
             original_info.rating = variation_info.rating;
-            result.push((original_info, variation_info));
+            let stats = self.stats(&connection, variation_id)?;
+            result.push((original_info, variation_info, stats));
         }
         Ok(result)
     }
@@ -153,7 +172,7 @@ impl Database {
         connection: &Connection,
         min_today_pref: Preference,
         min_older_pref: Preference,
-    ) -> anyhow::Result<Vec<(i64,i64)>> {
+    ) -> anyhow::Result<Vec<(i64, i64)>> {
         let mut result = vec![];
         let cutoff = Self::one_day_ago();
         Self::add_variation_info_ids(connection, "<=", cutoff, min_older_pref, &mut result)?;
@@ -166,7 +185,7 @@ impl Database {
         comparison: &str,
         cutoff: i64,
         min_pref: Preference,
-        result: &mut Vec<(i64,i64)>,
+        result: &mut Vec<(i64, i64)>,
     ) -> anyhow::Result<()> {
         let template = String::from("SELECT original_row, variation_row FROM variation_info INNER JOIN melody_index ON variation_info.variation_row = melody_index.rowid");
         let statement_str = format!(
@@ -184,9 +203,8 @@ impl Database {
     }
 
     fn info_for(connection: &Connection, rowid: i64, melody: Melody) -> anyhow::Result<MelodyInfo> {
-        let mut statement = connection.prepare(
-            "SELECT rowid, timestamp, rating FROM melody_index WHERE rowid = ?",
-        )?;
+        let mut statement = connection
+            .prepare("SELECT rowid, timestamp, rating FROM melody_index WHERE rowid = ?")?;
         statement.bind((1, rowid))?;
         if let State::Row = statement.next()? {
             let timestamp = statement.read::<i64, usize>(1)?;
@@ -208,7 +226,7 @@ impl Database {
             Ok(cached.map(|m| m.clone()).unwrap())
         } else {
             let mut statement = connection
-                .prepare("SELECT pitch, duration, velocity from melodies WHERE melody_row = ?")?;
+                .prepare("SELECT pitch, duration, velocity FROM melodies WHERE melody_row = ?")?;
             statement.bind((1, rowid))?;
             let mut melody = Melody::new();
             while let State::Row = statement.next()? {
@@ -220,6 +238,31 @@ impl Database {
             }
             self.melody_cache.insert(rowid, melody.clone());
             Ok(melody)
+        }
+    }
+
+    pub fn stats(
+        &self,
+        connection: &Connection,
+        variation_id: i64,
+    ) -> anyhow::Result<VariationStats> {
+        let mut statement = connection.prepare("SELECT algorithm_name, random_prob, ornament_prob, min_note_duration, whimsify FROM variation_info WHERE variation_row = ?")?;
+        statement.bind((1, variation_id))?;
+        if let State::Row = statement.next()? {
+            let algorithm_name = statement.read::<String, usize>(0)?;
+            let random_prob = statement.read::<f64, usize>(1)?;
+            let ornament_prob = statement.read::<f64, usize>(2)?;
+            let min_note_duration = statement.read::<f64, usize>(3)?;
+            let whimsify = statement.read::<i64, usize>(4)? != 0;
+            Ok(VariationStats {
+                algorithm_name,
+                random_prob,
+                ornament_prob,
+                min_note_duration,
+                whimsify,
+            })
+        } else {
+            bail!("{variation_id} not in database.")
         }
     }
 
@@ -243,13 +286,14 @@ impl Database {
         let variation_info = self.store_melody(variation)?;
         let connection = self.get_connection()?;
         let mut statement = connection
-            .prepare("INSERT INTO variation_info (variation_row, original_row, algorithm_name, random_prob, ornament_prob, min_note_duration) VALUES (?,?,?,?,?,?)")?;
+            .prepare("INSERT INTO variation_info (variation_row, original_row, algorithm_name, random_prob, ornament_prob, min_note_duration, whimsify) VALUES (?,?,?,?,?,?,?)")?;
         statement.bind((1, variation_info.rowid))?;
         statement.bind((2, player_info.rowid))?;
         statement.bind((3, stats.algorithm_name.as_str()))?;
         statement.bind((4, stats.random_prob))?;
         statement.bind((5, stats.ornament_prob))?;
         statement.bind((6, stats.min_note_duration))?;
+        statement.bind((7, if stats.whimsify { 1 } else { 0 }))?;
         statement.next().unwrap();
         Ok((player_info, variation_info))
     }
@@ -258,9 +302,8 @@ impl Database {
         let timestamp = Utc::now().timestamp();
         let rating = Preference::Neutral;
         let connection = self.get_connection()?;
-        let mut statement = connection.prepare(
-            "INSERT INTO melody_index (timestamp, rating) VALUES (?, ?)",
-        )?;
+        let mut statement =
+            connection.prepare("INSERT INTO melody_index (timestamp, rating) VALUES (?, ?)")?;
         statement.bind((1, timestamp))?;
         statement.bind((2, rating.to_string().as_str()))?;
         statement.next().unwrap();
@@ -322,7 +365,7 @@ impl MelodyInfo {
     }
 
     pub fn scale_name(&self) -> String {
-       self.melody.best_scale_for().name()
+        self.melody.best_scale_for().name()
     }
 
     pub fn rating(&self) -> Preference {

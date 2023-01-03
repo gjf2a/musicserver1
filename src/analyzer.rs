@@ -193,7 +193,6 @@ fn dotify_float(f: OrderedFloat<f64>) -> String {
     result
 }
 
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Melody {
     notes: Vec<Note>,

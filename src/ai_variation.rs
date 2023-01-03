@@ -1,4 +1,4 @@
-use crate::analyzer::{Melody, MelodyMaker, Note, MidiByte};
+use crate::analyzer::{Melody, MelodyMaker, MidiByte, Note};
 use crate::database::FromAiMsg;
 use crate::runtime::{
     send_recorded_melody, ChooserTable, MelodyRunStatus, SliderValue, VariationControls,
@@ -65,7 +65,11 @@ pub fn start_ai_thread(
                     replay_delay_slider.load().current(),
                 ) {
                     let stats = variation_controls.stats(performer.current_name());
-                    ai2dbase.push(FromAiMsg::MelodyVariation { melody, variation: variation.clone(), stats } );
+                    ai2dbase.push(FromAiMsg::MelodyVariation {
+                        melody,
+                        variation: variation.clone(),
+                        stats,
+                    });
                     melody_run_status.send_stop();
                     while melody_run_status.is_stopping() {}
                     send_recorded_melody(
@@ -241,6 +245,10 @@ impl PendingNote {
 
 impl From<PendingNote> for Note {
     fn from(pending_note: PendingNote) -> Self {
-        Note::new(pending_note.pitch as MidiByte, pending_note.elapsed(), pending_note.velocity as MidiByte)
+        Note::new(
+            pending_note.pitch as MidiByte,
+            pending_note.elapsed(),
+            pending_note.velocity as MidiByte,
+        )
     }
 }

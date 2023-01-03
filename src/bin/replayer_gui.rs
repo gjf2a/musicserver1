@@ -17,7 +17,7 @@ use musicserver1::ai_variation::{
 use musicserver1::analyzer::{Accidental, KeySignature, Melody, MidiByte, MusicMode};
 use musicserver1::database::{
     start_database_thread, Database, DatabaseGuiUpdate, FromAiMsg, GuiDatabaseUpdate, MelodyInfo,
-    Preference,
+    Preference, VariationStats,
 };
 use musicserver1::runtime::{
     make_synth_table, replay_slider, send_recorded_melody, ChooserTable, MelodyRunStatus,
@@ -195,7 +195,7 @@ struct ReplayerApp {
     variation_pref: Arc<AtomicCell<Preference>>,
     today_search_pref: Arc<AtomicCell<Preference>>,
     older_search_pref: Arc<AtomicCell<Preference>>,
-    melody_var_info: Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo)>>>,
+    melody_var_info: Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo, VariationStats)>>>,
     database: Option<Database>,
     input2ai: Arc<SegQueue<SynthMsg>>,
     ai2dbase: Arc<SegQueue<FromAiMsg>>,
@@ -302,7 +302,7 @@ impl ReplayerApp {
         min_today_pref: Preference,
         min_older_pref: Preference,
     ) -> (
-        Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo)>>>,
+        Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo, VariationStats)>>>,
         Arc<AtomicCell<Preference>>,
     ) {
         let (melody_var_info, variation_pref) =
@@ -317,7 +317,10 @@ impl ReplayerApp {
         database: &mut Database,
         min_today_pref: Preference,
         min_older_pref: Preference,
-    ) -> (VecTracker<(MelodyInfo, MelodyInfo)>, Preference) {
+    ) -> (
+        VecTracker<(MelodyInfo, MelodyInfo, VariationStats)>,
+        Preference,
+    ) {
         let mut melody_var_info = VecTracker::new(
             database
                 .get_melody_pairs(min_today_pref, min_older_pref)
@@ -326,7 +329,7 @@ impl ReplayerApp {
         melody_var_info.go_to_end();
         let variation_pref = melody_var_info
             .get()
-            .map_or(Preference::Neutral, |(_, v)| v.rating());
+            .map_or(Preference::Neutral, |(_, v, _)| v.rating());
         (melody_var_info, variation_pref)
     }
 
@@ -382,16 +385,14 @@ impl ReplayerApp {
     }
 
     fn display_melody_section(&mut self, ui: &mut Ui, staff_scaling: f32) {
-        if self.displaying_melody_var_info() {
-            ui.checkbox(
-                &mut self.adjust_search_preferences,
-                "Set Search Preferences",
-            );
-            if self.adjust_search_preferences {
-                self.search_preference_screen(ui);
-            } else {
-                self.display_melody_info(ui, staff_scaling);
-            }
+        ui.checkbox(
+            &mut self.adjust_search_preferences,
+            "Set Search Preferences",
+        );
+        if self.adjust_search_preferences {
+            self.search_preference_screen(ui);
+        } else if self.displaying_melody_var_info() {
+            self.display_melody_info(ui, staff_scaling);
         }
     }
 
@@ -421,11 +422,14 @@ impl ReplayerApp {
     }
 
     fn display_melody_info(&mut self, ui: &mut Ui, staff_scaling: f32) {
-        let (melody_info, variation_info) = {
+        let (melody_info, variation_info, stats) = {
             let mut melody_var_info = self.melody_var_info.lock().unwrap();
             self.melody_variation_selector(ui, &mut melody_var_info);
             melody_var_info.get().cloned().unwrap()
         };
+        self.variation_controls.update_from(&stats);
+        self.ai_algorithm.name = stats.algorithm_name;
+        self.ai_algorithm.update_choice();
 
         ui.horizontal(|ui| {
             ui.label(melody_info.date_time_stamp());
@@ -469,7 +473,7 @@ impl ReplayerApp {
     fn melody_variation_selector(
         &self,
         ui: &mut Ui,
-        melody_var_info: &mut VecTracker<(MelodyInfo, MelodyInfo)>,
+        melody_var_info: &mut VecTracker<(MelodyInfo, MelodyInfo, VariationStats)>,
     ) {
         ui.horizontal(|ui| {
             self.melody_arrow(
@@ -500,35 +504,33 @@ impl ReplayerApp {
     }
 
     fn melody_arrow<
-        F: Fn(&VecTracker<(MelodyInfo, MelodyInfo)>) -> bool,
-        M: FnMut(&mut VecTracker<(MelodyInfo, MelodyInfo)>),
+        F: Fn(&VecTracker<(MelodyInfo, MelodyInfo, VariationStats)>) -> bool,
+        M: FnMut(&mut VecTracker<(MelodyInfo, MelodyInfo, VariationStats)>),
     >(
         &self,
         arrow: &str,
         ui: &mut Ui,
-        melody_var_info: &mut VecTracker<(MelodyInfo, MelodyInfo)>,
+        melody_var_info: &mut VecTracker<(MelodyInfo, MelodyInfo, VariationStats)>,
         filter: F,
         mut mover: M,
     ) {
         if !filter(melody_var_info) && ui.button(arrow).clicked() {
             self.melody_run_status.send_stop();
             mover(melody_var_info);
-            let (_, variation_info) = melody_var_info.get().unwrap();
+            let (_, variation_info, _) = melody_var_info.get().unwrap();
             self.variation_pref.store(variation_info.rating());
         }
     }
 
     fn update_database_preferences(
         &self,
-        melody_var_info: &mut VecTracker<(MelodyInfo, MelodyInfo)>,
+        melody_var_info: &mut VecTracker<(MelodyInfo, MelodyInfo, VariationStats)>,
     ) {
         {
-            let (m, v) = melody_var_info.get_mut().unwrap();
-            m.set_rating(self.variation_pref.load());
+            let (_, v, _) = melody_var_info.get_mut().unwrap();
             v.set_rating(self.variation_pref.load());
         }
-        let (m, v) = melody_var_info.get().unwrap();
-        self.gui2dbase.push(m.update());
+        let (_, v, _) = melody_var_info.get().unwrap();
         self.gui2dbase.push(v.update());
     }
 
@@ -742,31 +744,32 @@ impl ReplayerApp {
     fn handle_database_msg(
         msg: DatabaseGuiUpdate,
         variation_pref: Arc<AtomicCell<Preference>>,
-        melody_var_info: Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo)>>>,
+        melody_var_info: Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo, VariationStats)>>>,
     ) {
         match msg {
             DatabaseGuiUpdate::Info {
                 melody: player_info,
                 variation: variation_info,
+                stats,
             } => {
                 variation_pref.store(variation_info.rating());
                 let mut melody_var_info = melody_var_info.lock().unwrap();
-                melody_var_info.add((player_info, variation_info));
+                melody_var_info.add((player_info, variation_info, stats));
             }
             DatabaseGuiUpdate::AllPairs(pairs) => {
                 let mut melody_var_info = melody_var_info.lock().unwrap();
-                let current_timestamp = melody_var_info.get().map(|(m, _)| m.timestamp());
+                let current_timestamp = melody_var_info.get().map(|(m, _, _)| m.timestamp());
                 melody_var_info.replace_vec(pairs);
                 if let Some(current_timestamp) = current_timestamp {
                     while !melody_var_info.at_start()
                         && melody_var_info
                             .get()
-                            .map_or(false, |(m, _)| m.timestamp() > current_timestamp)
+                            .map_or(false, |(m, _, _)| m.timestamp() > current_timestamp)
                     {
                         melody_var_info.go_left();
                     }
                 }
-                if let Some((_, v)) = melody_var_info.get() {
+                if let Some((_, v, _)) = melody_var_info.get() {
                     variation_pref.store(v.rating());
                 }
             }

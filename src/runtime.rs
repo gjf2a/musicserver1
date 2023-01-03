@@ -123,13 +123,24 @@ impl VariationControls {
     }
 
     pub fn stats(&self, algorithm_name: String) -> VariationStats {
-        VariationStats { 
-            algorithm_name, 
-            random_prob: self.p_random_slider.load().current, 
-            ornament_prob: self.p_ornament_slider.load().current, 
-            min_note_duration: self.shortest_note_slider.load().current, 
-            whimsify: self.whimsify.load() 
+        VariationStats {
+            algorithm_name,
+            random_prob: self.p_random_slider.load().current,
+            ornament_prob: self.p_ornament_slider.load().current,
+            min_note_duration: self.shortest_note_slider.load().current,
+            whimsify: self.whimsify.load(),
         }
+    }
+
+    pub fn update_from(&mut self, stats: &VariationStats) {
+        self.p_random_slider.load().set_current(stats.random_prob);
+        self.p_ornament_slider
+            .load()
+            .set_current(stats.ornament_prob);
+        self.shortest_note_slider
+            .load()
+            .set_current(stats.min_note_duration);
+        self.whimsify.store(stats.whimsify);
     }
 }
 
