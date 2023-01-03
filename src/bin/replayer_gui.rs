@@ -438,8 +438,16 @@ impl ReplayerApp {
         }
 
         ui.horizontal(|ui| {
-            ui.label(melody_info.date_time_stamp());
-            ui.label(melody_info.scale_name());
+            /*ui.label(variation_info.date_time_stamp());
+            ui.label(variation_info.scale_name());*/
+            let start_variation_pref = self.variation_pref.load();
+            Self::preference_buttons(ui, self.variation_pref.clone());
+            if start_variation_pref != self.variation_pref.load() {
+                self.melody_run_status.send_stop();
+                let mut melody_var_info = self.melody_var_info.lock().unwrap();
+                self.update_database_preferences(&mut melody_var_info);
+                self.request_refresh();
+            }
         });
 
         ui.horizontal(|ui| {
@@ -490,8 +498,13 @@ impl ReplayerApp {
                 |mvi| mvi.go_left(),
             );
 
-            let start_variation_pref = self.variation_pref.load();
-            Self::preference_buttons(ui, self.variation_pref.clone());
+            if let Some((_,variation_info,_)) = melody_var_info.get() {
+                ui.label(variation_info.date_time_stamp());
+                ui.label(variation_info.scale_name());
+            }
+
+            /*let start_variation_pref = self.variation_pref.load();
+            Self::preference_buttons(ui, self.variation_pref.clone());*/
 
             self.melody_arrow(
                 ">",
@@ -501,11 +514,11 @@ impl ReplayerApp {
                 |mvi| mvi.go_right(),
             );
 
-            if start_variation_pref != self.variation_pref.load() {
+            /*if start_variation_pref != self.variation_pref.load() {
                 self.melody_run_status.send_stop();
                 self.update_database_preferences(melody_var_info);
                 self.request_refresh();
-            }
+            }*/
         });
     }
 
