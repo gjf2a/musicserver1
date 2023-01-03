@@ -133,14 +133,16 @@ impl VariationControls {
     }
 
     pub fn update_from(&mut self, stats: &VariationStats) {
-        self.p_random_slider.load().set_current(stats.random_prob);
-        self.p_ornament_slider
-            .load()
-            .set_current(stats.ornament_prob);
-        self.shortest_note_slider
-            .load()
-            .set_current(stats.min_note_duration);
+        Self::update_slider(self.p_random_slider.clone(), stats.random_prob);
+        Self::update_slider(self.p_ornament_slider.clone(), stats.ornament_prob);
+        Self::update_slider(self.shortest_note_slider.clone(), stats.min_note_duration);
         self.whimsify.store(stats.whimsify);
+    }
+
+    fn update_slider(slider: Arc<AtomicCell<SliderValue<f64>>>, new_val: f64) {
+        let mut inner = slider.load();
+        inner.set_current(new_val);
+        slider.store(inner);
     }
 }
 

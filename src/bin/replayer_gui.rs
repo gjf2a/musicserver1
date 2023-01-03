@@ -24,6 +24,7 @@ use musicserver1::runtime::{
     SliderValue, SynthChoice, VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER,
 };
 use std::cmp::{max, min};
+use std::fmt::Display;
 use std::ops::RangeInclusive;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
@@ -609,7 +610,7 @@ impl ReplayerApp {
         info.update_choice();
     }
 
-    fn insert_slider<N: FromStr + Numeric>(
+    fn insert_slider<N: FromStr + Numeric + Display>(
         ui: &mut Ui,
         slider: Arc<AtomicCell<SliderValue<N>>>,
         text: &str,
