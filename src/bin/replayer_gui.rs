@@ -193,6 +193,7 @@ struct ReplayerApp {
     replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
     in_port: Option<MidiInputPort>,
     in_port_name: Option<String>,
+    melody_pref: Arc<AtomicCell<Preference>>,
     variation_pref: Arc<AtomicCell<Preference>>,
     today_search_pref: Arc<AtomicCell<Preference>>,
     older_search_pref: Arc<AtomicCell<Preference>>,
@@ -208,6 +209,7 @@ struct ReplayerApp {
     melody_progress: Arc<AtomicCell<Option<f32>>>,
     melody_run_status: MelodyRunStatus,
     adjust_search_preferences: bool,
+    show_variation: bool,
     quit_threads: Arc<AtomicCell<bool>>,
 }
 
@@ -263,7 +265,7 @@ impl ReplayerApp {
         let replay_delay_slider = Arc::new(AtomicCell::new(replay_slider()));
         let mut database = Database::new();
         let database_timer = Instant::now();
-        let (melody_var_info, variation_pref) =
+        let (melody_var_info, melody_pref, variation_pref) =
             Self::wrapped_melody_info(&mut database, Preference::Neutral, Preference::Favorite);
         let database_load_time = database_timer.elapsed().as_secs_f64();
         println!("Database load time: {database_load_time}s");
@@ -279,6 +281,7 @@ impl ReplayerApp {
             ai_synth,
             in_port: None,
             in_port_name: None,
+            melody_pref,
             variation_pref,
             today_search_pref: Arc::new(AtomicCell::new(Preference::Neutral)),
             older_search_pref: Arc::new(AtomicCell::new(Preference::Favorite)),
@@ -294,6 +297,7 @@ impl ReplayerApp {
             melody_progress: Arc::new(AtomicCell::new(None)),
             melody_run_status,
             adjust_search_preferences: false,
+            show_variation: true,
             quit_threads: Arc::new(AtomicCell::new(false)),
         };
         app.startup();
@@ -307,11 +311,13 @@ impl ReplayerApp {
     ) -> (
         Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo, VariationStats)>>>,
         Arc<AtomicCell<Preference>>,
+        Arc<AtomicCell<Preference>>,
     ) {
-        let (melody_var_info, variation_pref) =
+        let (melody_var_info, melody_pref, variation_pref) =
             Self::retrieve_melody_info(database, min_today_pref, min_older_pref);
         (
             Arc::new(Mutex::new(melody_var_info)),
+            Arc::new(AtomicCell::new(melody_pref)),
             Arc::new(AtomicCell::new(variation_pref)),
         )
     }
@@ -323,6 +329,7 @@ impl ReplayerApp {
     ) -> (
         VecTracker<(MelodyInfo, MelodyInfo, VariationStats)>,
         Preference,
+        Preference,
     ) {
         let mut melody_var_info = VecTracker::new(
             database
@@ -330,10 +337,10 @@ impl ReplayerApp {
                 .unwrap(),
         );
         melody_var_info.go_to_end();
-        let variation_pref = melody_var_info
+        let (melody_pref, variation_pref) = melody_var_info
             .get()
-            .map_or(Preference::Neutral, |(_, v, _)| v.rating());
-        (melody_var_info, variation_pref)
+            .map_or((Preference::Neutral, Preference::Neutral), |(m, v, _)| (m.rating(), v.rating()));
+        (melody_var_info, melody_pref, variation_pref)
     }
 
     fn main_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -425,6 +432,8 @@ impl ReplayerApp {
     }
 
     fn display_melody_info(&mut self, ui: &mut Ui, staff_scaling: f32) {
+        ui.checkbox(&mut self.show_variation, "Show Variation");
+
         let (melody_info, variation_info, stats) = {
             let mut melody_var_info = self.melody_var_info.lock().unwrap();
             self.melody_variation_selector(ui, &mut melody_var_info);
@@ -438,16 +447,8 @@ impl ReplayerApp {
         }
 
         ui.horizontal(|ui| {
-            /*ui.label(variation_info.date_time_stamp());
-            ui.label(variation_info.scale_name());*/
-            let start_variation_pref = self.variation_pref.load();
-            Self::preference_buttons(ui, self.variation_pref.clone());
-            if start_variation_pref != self.variation_pref.load() {
-                self.melody_run_status.send_stop();
-                let mut melody_var_info = self.melody_var_info.lock().unwrap();
-                self.update_database_preferences(&mut melody_var_info);
-                self.request_refresh();
-            }
+            ui.label(if self.show_variation {"Variation Preference"} else {"Melody Preference"});
+            self.select_pref(ui, if self.show_variation {self.variation_pref.clone()} else {self.melody_pref.clone()});
         });
 
         ui.horizontal(|ui| {
@@ -459,11 +460,20 @@ impl ReplayerApp {
         }
 
         let size = Vec2::new(ui.available_width(), ui.available_height() * staff_scaling);
-        let melodies = vec![
-            (melody_info.melody(), Color32::BLACK),
-            (variation_info.melody(), Color32::RED),
-        ];
+        let mut melodies = vec![(melody_info.melody(), Color32::BLACK)];
+        if self.show_variation {melodies.push((variation_info.melody(), Color32::RED));}
         MelodyRenderer::render(ui, size, &melodies, self.melody_progress.clone());
+    }
+
+    fn select_pref(&mut self, ui: &mut Ui, pref: Arc<AtomicCell<Preference>>) {
+        let start_pref = pref.load();
+        Self::preference_buttons(ui, pref.clone());
+        if start_pref != pref.load() {
+            self.melody_run_status.send_stop();
+            let mut melody_var_info = self.melody_var_info.lock().unwrap();
+            self.update_database_preferences(&mut melody_var_info);
+            self.request_refresh();
+        }
     }
 
     fn melody_play_stop_buttons(
@@ -473,9 +483,11 @@ impl ReplayerApp {
         variation_info: &MelodyInfo,
     ) {
         self.melody_buttons(ui, &melody_info, SynthChoice::Original);
-        self.melody_buttons(ui, &variation_info, SynthChoice::Variation);
-        if ui.button("Play Both").clicked() {
-            self.play_both(melody_info, variation_info);
+        if self.show_variation {
+            self.melody_buttons(ui, &variation_info, SynthChoice::Variation);
+            if ui.button("Play Both").clicked() {
+                self.play_both(melody_info, variation_info);
+            }
         }
         if self.melody_progress.load().is_some() {
             if ui.button("Stop").clicked() {
@@ -498,13 +510,11 @@ impl ReplayerApp {
                 |mvi| mvi.go_left(),
             );
 
-            if let Some((_,variation_info,_)) = melody_var_info.get() {
-                ui.label(variation_info.date_time_stamp());
-                ui.label(variation_info.scale_name());
+            if let Some((melody_info,variation_info,_)) = melody_var_info.get() {
+                let info_choice = if self.show_variation {variation_info} else {melody_info};
+                ui.label(info_choice.date_time_stamp());
+                ui.label(info_choice.scale_name());
             }
-
-            /*let start_variation_pref = self.variation_pref.load();
-            Self::preference_buttons(ui, self.variation_pref.clone());*/
 
             self.melody_arrow(
                 ">",
@@ -513,12 +523,6 @@ impl ReplayerApp {
                 |mvi| mvi.at_end(),
                 |mvi| mvi.go_right(),
             );
-
-            /*if start_variation_pref != self.variation_pref.load() {
-                self.melody_run_status.send_stop();
-                self.update_database_preferences(melody_var_info);
-                self.request_refresh();
-            }*/
         });
     }
 
@@ -547,10 +551,12 @@ impl ReplayerApp {
         melody_var_info: &mut VecTracker<(MelodyInfo, MelodyInfo, VariationStats)>,
     ) {
         {
-            let (_, v, _) = melody_var_info.get_mut().unwrap();
+            let (m, v, _) = melody_var_info.get_mut().unwrap();
+            m.set_rating(self.melody_pref.load());
             v.set_rating(self.variation_pref.load());
         }
-        let (_, v, _) = melody_var_info.get().unwrap();
+        let (m, v, _) = melody_var_info.get().unwrap();
+        self.gui2dbase.push(m.update());
         self.gui2dbase.push(v.update());
     }
 
