@@ -32,7 +32,7 @@ pub enum FromAiMsg {
         melody_id: i64,
         variation: Melody,
         stats: VariationStats,
-    }
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -112,10 +112,20 @@ pub fn start_database_thread(
                         stats,
                     });
                 }
-                FromAiMsg::AlternateVariation { melody_id, variation, stats } => {
-                    let variation_info = database.add_variation(melody_id, &variation, &stats).unwrap();
+                FromAiMsg::AlternateVariation {
+                    melody_id,
+                    variation,
+                    stats,
+                } => {
+                    let variation_info = database
+                        .add_variation(melody_id, &variation, &stats)
+                        .unwrap();
                     let melody_info = database.melody_and_info_for(melody_id).unwrap();
-                    dbase2gui.push(DatabaseGuiUpdate::Info { melody: melody_info, variation: variation_info, stats });
+                    dbase2gui.push(DatabaseGuiUpdate::Info {
+                        melody: melody_info,
+                        variation: variation_info,
+                        stats,
+                    });
                 }
             }
         }
@@ -365,7 +375,12 @@ impl Database {
         Ok((player_info, variation_info))
     }
 
-    fn add_variation(&mut self, melody_id: i64, variation: &Melody, stats: &VariationStats) -> anyhow::Result<MelodyInfo> {
+    fn add_variation(
+        &mut self,
+        melody_id: i64,
+        variation: &Melody,
+        stats: &VariationStats,
+    ) -> anyhow::Result<MelodyInfo> {
         let variation_info = self.store_melody(variation)?;
         let connection = self.get_connection()?;
         let mut statement = connection

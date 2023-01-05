@@ -56,7 +56,8 @@ pub fn start_ai_thread(
                 min_melody_pitches,
                 replay_delay_slider.load().current(),
             ) {
-                let melody = incoming.melody()
+                let melody = incoming
+                    .melody()
                     .without_brief_notes(variation_controls.shortest_note_slider.load().current());
                 let variation = performer.create_variation(&melody);
                 if long_enough(
@@ -252,7 +253,7 @@ impl From<PendingNote> for Note {
 #[derive(Clone)]
 enum IncomingMelody {
     New(Melody),
-    Preexisting(MelodyInfo)
+    Preexisting(MelodyInfo),
 }
 
 impl IncomingMelody {
@@ -266,12 +267,15 @@ impl IncomingMelody {
     fn database_msg(&self, variation: &Melody, stats: VariationStats) -> FromAiMsg {
         match self {
             IncomingMelody::New(melody) => FromAiMsg::MelodyVariation {
-                    melody: melody.clone(),
-                    variation: variation.clone(),
-                    stats,
-                },
-            IncomingMelody::Preexisting(info) => FromAiMsg::AlternateVariation { 
-                melody_id: info.row_id(), variation: variation.clone(), stats }
+                melody: melody.clone(),
+                variation: variation.clone(),
+                stats,
+            },
+            IncomingMelody::Preexisting(info) => FromAiMsg::AlternateVariation {
+                melody_id: info.row_id(),
+                variation: variation.clone(),
+                stats,
+            },
         }
     }
 }
