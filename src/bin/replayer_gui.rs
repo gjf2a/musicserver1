@@ -339,7 +339,9 @@ impl ReplayerApp {
         melody_var_info.go_to_end();
         let (melody_pref, variation_pref) = melody_var_info
             .get()
-            .map_or((Preference::Neutral, Preference::Neutral), |(m, v, _)| (m.rating(), v.rating()));
+            .map_or((Preference::Neutral, Preference::Neutral), |(m, v, _)| {
+                (m.rating(), v.rating())
+            });
         (melody_var_info, melody_pref, variation_pref)
     }
 
@@ -401,8 +403,15 @@ impl ReplayerApp {
         );
         if self.adjust_search_preferences {
             self.search_preference_screen(ui);
-        } else if self.displaying_melody_var_info() {
-            self.display_melody_info(ui, staff_scaling);
+        } else {
+            let before = self.show_variation;
+            ui.checkbox(&mut self.show_variation, "Show Variation");
+            if before != self.show_variation {
+                self.request_refresh();
+            }
+            if self.displaying_melody_var_info() {
+                self.display_melody_info(ui, staff_scaling);
+            }
         }
     }
 
@@ -425,15 +434,24 @@ impl ReplayerApp {
     }
 
     fn request_refresh(&self) {
-        self.gui2dbase.push(GuiDatabaseUpdate::RefreshAll {
-            min_today_pref: self.today_search_pref.load(),
-            min_older_pref: self.older_search_pref.load(),
-        });
+        let min_today_pref = self.today_search_pref.load();
+        let min_older_pref = self.older_search_pref.load();
+        let refresh = if self.show_variation {
+            GuiDatabaseUpdate::RefreshAllPairs {
+                min_today_pref,
+                min_older_pref,
+            }
+        } else {
+            GuiDatabaseUpdate::RefreshAllMelodies {
+                min_today_pref,
+                min_older_pref,
+            }
+        };
+        println!("Sending update: {refresh:?}");
+        self.gui2dbase.push(refresh);
     }
 
     fn display_melody_info(&mut self, ui: &mut Ui, staff_scaling: f32) {
-        ui.checkbox(&mut self.show_variation, "Show Variation");
-
         let (melody_info, variation_info, stats) = {
             let mut melody_var_info = self.melody_var_info.lock().unwrap();
             self.melody_variation_selector(ui, &mut melody_var_info);
@@ -447,8 +465,19 @@ impl ReplayerApp {
         }
 
         ui.horizontal(|ui| {
-            ui.label(if self.show_variation {"Variation Preference"} else {"Melody Preference"});
-            self.select_pref(ui, if self.show_variation {self.variation_pref.clone()} else {self.melody_pref.clone()});
+            ui.label(if self.show_variation {
+                "Variation Preference"
+            } else {
+                "Melody Preference"
+            });
+            self.select_pref(
+                ui,
+                if self.show_variation {
+                    self.variation_pref.clone()
+                } else {
+                    self.melody_pref.clone()
+                },
+            );
         });
 
         ui.horizontal(|ui| {
@@ -461,7 +490,9 @@ impl ReplayerApp {
 
         let size = Vec2::new(ui.available_width(), ui.available_height() * staff_scaling);
         let mut melodies = vec![(melody_info.melody(), Color32::BLACK)];
-        if self.show_variation {melodies.push((variation_info.melody(), Color32::RED));}
+        if self.show_variation {
+            melodies.push((variation_info.melody(), Color32::RED));
+        }
         MelodyRenderer::render(ui, size, &melodies, self.melody_progress.clone());
     }
 
@@ -510,8 +541,12 @@ impl ReplayerApp {
                 |mvi| mvi.go_left(),
             );
 
-            if let Some((melody_info,variation_info,_)) = melody_var_info.get() {
-                let info_choice = if self.show_variation {variation_info} else {melody_info};
+            if let Some((melody_info, variation_info, _)) = melody_var_info.get() {
+                let info_choice = if self.show_variation {
+                    variation_info
+                } else {
+                    melody_info
+                };
                 ui.label(info_choice.date_time_stamp());
                 ui.label(info_choice.scale_name());
             }
@@ -752,13 +787,19 @@ impl ReplayerApp {
     fn start_ui_listening_thread(&self, ctx: &egui::Context) {
         let ctx = ctx.clone();
         let dbase2gui = self.dbase2gui.clone();
+        let melody_pref = self.melody_pref.clone();
         let variation_pref = self.variation_pref.clone();
         let melody_var_info = self.melody_var_info.clone();
         let melody_progress = self.melody_progress.clone();
         let update_needed = self.melody_var_update_needed.clone();
         thread::spawn(move || loop {
             if let Some(msg) = dbase2gui.pop() {
-                Self::handle_database_msg(msg, variation_pref.clone(), melody_var_info.clone());
+                Self::handle_database_msg(
+                    msg,
+                    melody_pref.clone(),
+                    variation_pref.clone(),
+                    melody_var_info.clone(),
+                );
                 update_needed.store(true);
                 ctx.request_repaint();
             }
@@ -771,6 +812,7 @@ impl ReplayerApp {
 
     fn handle_database_msg(
         msg: DatabaseGuiUpdate,
+        melody_pref: Arc<AtomicCell<Preference>>,
         variation_pref: Arc<AtomicCell<Preference>>,
         melody_var_info: Arc<Mutex<VecTracker<(MelodyInfo, MelodyInfo, VariationStats)>>>,
     ) {
@@ -786,21 +828,50 @@ impl ReplayerApp {
             }
             DatabaseGuiUpdate::AllPairs(pairs) => {
                 let mut melody_var_info = melody_var_info.lock().unwrap();
-                let current_timestamp = melody_var_info.get().map(|(m, _, _)| m.timestamp());
-                melody_var_info.replace_vec(pairs);
-                if let Some(current_timestamp) = current_timestamp {
-                    while !melody_var_info.at_start()
-                        && melody_var_info
-                            .get()
-                            .map_or(false, |(m, _, _)| m.timestamp() > current_timestamp)
-                    {
-                        melody_var_info.go_left();
-                    }
-                }
+                Self::update_melody_var_info(&mut melody_var_info, pairs);
                 if let Some((_, v, _)) = melody_var_info.get() {
                     variation_pref.store(v.rating());
                 }
             }
+            DatabaseGuiUpdate::Melodies(melodies) => {
+                let mut melody_var_info = melody_var_info.lock().unwrap();
+                let stats = melody_var_info.get().map_or(
+                    VariationControls::new().stats(NO_AI_NAME.to_owned()),
+                    |(_, _, stats)| stats.clone(),
+                );
+                let replacement = melodies
+                    .iter()
+                    .map(|m| (m.clone(), m.clone(), stats.clone()))
+                    .collect();
+                Self::update_melody_var_info(&mut melody_var_info, replacement);
+                if let Some((m, _, _)) = melody_var_info.get() {
+                    melody_pref.store(m.rating());
+                }
+            }
+        }
+    }
+
+    fn update_melody_var_info(
+        melody_var_info: &mut VecTracker<(MelodyInfo, MelodyInfo, VariationStats)>,
+        replacement: Vec<(MelodyInfo, MelodyInfo, VariationStats)>,
+    ) {
+        let current_timestamp = melody_var_info.get().map(|(m, _, _)| m.timestamp());
+        melody_var_info.replace_vec(replacement);
+        if let Some(current_timestamp) = current_timestamp {
+            Self::align_to_timestamp(current_timestamp, melody_var_info);
+        }
+    }
+
+    fn align_to_timestamp(
+        current_timestamp: i64,
+        melody_var_info: &mut VecTracker<(MelodyInfo, MelodyInfo, VariationStats)>,
+    ) {
+        while !melody_var_info.at_start()
+            && melody_var_info
+                .get()
+                .map_or(false, |(m, _, _)| m.timestamp() > current_timestamp)
+        {
+            melody_var_info.go_left();
         }
     }
 

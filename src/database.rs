@@ -36,7 +36,11 @@ pub enum GuiDatabaseUpdate {
         rowid: i64,
         rating: Preference,
     },
-    RefreshAll {
+    RefreshAllMelodies {
+        min_today_pref: Preference,
+        min_older_pref: Preference,
+    },
+    RefreshAllPairs {
         min_today_pref: Preference,
         min_older_pref: Preference,
     },
@@ -50,6 +54,7 @@ pub enum DatabaseGuiUpdate {
         stats: VariationStats,
     },
     AllPairs(Vec<(MelodyInfo, MelodyInfo, VariationStats)>),
+    Melodies(Vec<MelodyInfo>),
 }
 
 pub fn start_database_thread(
@@ -64,7 +69,7 @@ pub fn start_database_thread(
                 GuiDatabaseUpdate::Info { rowid, rating } => {
                     database.update_info(rowid, rating).unwrap()
                 }
-                GuiDatabaseUpdate::RefreshAll {
+                GuiDatabaseUpdate::RefreshAllPairs {
                     min_today_pref,
                     min_older_pref,
                 } => {
@@ -72,6 +77,15 @@ pub fn start_database_thread(
                         .get_melody_pairs(min_today_pref, min_older_pref)
                         .unwrap();
                     dbase2gui.push(DatabaseGuiUpdate::AllPairs(pairs));
+                }
+                GuiDatabaseUpdate::RefreshAllMelodies {
+                    min_today_pref,
+                    min_older_pref,
+                } => {
+                    let melodies = database
+                        .get_melodies_only(min_today_pref, min_older_pref)
+                        .unwrap();
+                    dbase2gui.push(DatabaseGuiUpdate::Melodies(melodies));
                 }
             }
         }
@@ -160,12 +174,60 @@ impl Database {
             let original = self.melody(&connection, original_id)?;
             let variation = self.melody(&connection, variation_id)?;
             let variation_info = Self::info_for(&connection, variation_id, variation)?;
-            let mut original_info = Self::info_for(&connection, original_id, original)?;
-            original_info.rating = variation_info.rating;
+            let original_info = Self::info_for(&connection, original_id, original)?;
             let stats = self.stats(&connection, variation_id)?;
             result.push((original_info, variation_info, stats));
         }
         Ok(result)
+    }
+
+    pub fn get_melodies_only(
+        &mut self,
+        min_today_pref: Preference,
+        min_older_pref: Preference,
+    ) -> anyhow::Result<Vec<MelodyInfo>> {
+        let mut result = vec![];
+        let connection = self.get_connection()?;
+        let melody_ids = Self::get_melody_ids(&connection, min_today_pref, min_older_pref)?;
+        for melody_id in melody_ids {
+            let melody = self.melody(&connection, melody_id)?;
+            let melody_info = Self::info_for(&connection, melody_id, melody)?;
+            result.push(melody_info);
+        }
+        Ok(result)
+    }
+
+    fn get_melody_ids(
+        connection: &Connection,
+        min_today_pref: Preference,
+        min_older_pref: Preference,
+    ) -> anyhow::Result<Vec<i64>> {
+        let mut result = vec![];
+        let cutoff = Self::one_day_ago();
+        Self::add_melody_ids(connection, "<=", cutoff, min_older_pref, &mut result)?;
+        Self::add_melody_ids(connection, ">", cutoff, min_today_pref, &mut result)?;
+        Ok(result)
+    }
+
+    fn add_melody_ids(
+        connection: &Connection,
+        comparison: &str,
+        cutoff: i64,
+        min_pref: Preference,
+        result: &mut Vec<i64>,
+    ) -> anyhow::Result<()> {
+        let template = "SELECT DISTINCT original_row FROM variation_info INNER JOIN melody_index ON variation_info.original_row = melody_index.rowid";
+        let statement_str = format!(
+            "{template} WHERE timestamp {comparison} ? AND {}",
+            min_pref.sql_choice_str()
+        );
+        let mut statement = connection.prepare(statement_str)?;
+        statement.bind((1, cutoff))?;
+        while let State::Row = statement.next()? {
+            let original_row = statement.read::<i64, usize>(0)?;
+            result.push(original_row);
+        }
+        Ok(())
     }
 
     fn get_variation_info_ids(
@@ -187,7 +249,7 @@ impl Database {
         min_pref: Preference,
         result: &mut Vec<(i64, i64)>,
     ) -> anyhow::Result<()> {
-        let template = String::from("SELECT original_row, variation_row FROM variation_info INNER JOIN melody_index ON variation_info.variation_row = melody_index.rowid");
+        let template = "SELECT original_row, variation_row FROM variation_info INNER JOIN melody_index ON variation_info.variation_row = melody_index.rowid";
         let statement_str = format!(
             "{template} WHERE timestamp {comparison} ? AND {}",
             min_pref.sql_choice_str()
