@@ -1,5 +1,5 @@
 use crate::analyzer::{Melody, MelodyMaker, MidiByte, Note};
-use crate::database::FromAiMsg;
+use crate::database::{FromAiMsg, MelodyInfo, VariationStats};
 use crate::runtime::{
     send_recorded_melody, ChooserTable, MelodyRunStatus, SliderValue, VariationControls,
     HUMAN_SPEAKER, VARIATION_SPEAKER,
@@ -31,7 +31,7 @@ pub fn make_ai_table() -> AITable {
 pub fn start_ai_thread(
     ai_table: Arc<Mutex<AITable>>,
     input2ai: Arc<SegQueue<SynthMsg>>,
-    gui2ai: Arc<SegQueue<Melody>>,
+    gui2ai: Arc<SegQueue<MelodyInfo>>,
     ai2output: Arc<SegQueue<SynthMsg>>,
     ai2dbase: Arc<SegQueue<FromAiMsg>>,
     variation_controls: VariationControls,
@@ -50,13 +50,13 @@ pub fn start_ai_thread(
         let min_melody_pitches = *analyzer::FIGURE_LENGTHS.iter().max().unwrap();
 
         loop {
-            let melody = recorder.record();
+            let incoming = recorder.record();
             if long_enough(
-                &melody,
+                incoming.melody(),
                 min_melody_pitches,
                 replay_delay_slider.load().current(),
             ) {
-                let melody = melody
+                let melody = incoming.melody()
                     .without_brief_notes(variation_controls.shortest_note_slider.load().current());
                 let variation = performer.create_variation(&melody);
                 if long_enough(
@@ -65,11 +65,7 @@ pub fn start_ai_thread(
                     replay_delay_slider.load().current(),
                 ) {
                     let stats = variation_controls.stats(performer.current_name());
-                    ai2dbase.push(FromAiMsg::MelodyVariation {
-                        melody,
-                        variation: variation.clone(),
-                        stats,
-                    });
+                    ai2dbase.push(incoming.database_msg(&variation, stats));
                     melody_run_status.send_stop();
                     while melody_run_status.is_stopping() {}
                     send_recorded_melody(
@@ -96,7 +92,7 @@ fn long_enough(melody: &Melody, min_melody_pitches: usize, min_duration: f64) ->
 
 struct PlayerRecorder {
     input2ai: Arc<SegQueue<SynthMsg>>,
-    gui2ai: Arc<SegQueue<Melody>>,
+    gui2ai: Arc<SegQueue<MelodyInfo>>,
     ai2output: Arc<SegQueue<SynthMsg>>,
     replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
     waiting: Option<PendingNote>,
@@ -106,7 +102,7 @@ struct PlayerRecorder {
 impl PlayerRecorder {
     fn new(
         input2ai: Arc<SegQueue<SynthMsg>>,
-        gui2ai: Arc<SegQueue<Melody>>,
+        gui2ai: Arc<SegQueue<MelodyInfo>>,
         ai2output: Arc<SegQueue<SynthMsg>>,
         replay_delay_slider: Arc<AtomicCell<SliderValue<f64>>>,
     ) -> Self {
@@ -120,12 +116,12 @@ impl PlayerRecorder {
         }
     }
 
-    fn record(&mut self) -> Melody {
+    fn record(&mut self) -> IncomingMelody {
         self.waiting = None;
         let mut player_finished = false;
         while !player_finished {
             if let Some(melody) = self.gui2ai.pop() {
-                return melody;
+                return IncomingMelody::Preexisting(melody);
             }
             if let Some(mut synth_msg) = self.input2ai.pop() {
                 synth_msg.speaker = HUMAN_SPEAKER;
@@ -139,7 +135,7 @@ impl PlayerRecorder {
         let mut result = Melody::new();
         std::mem::swap(&mut result, &mut self.player_melody);
         result.synchronize_rests();
-        result
+        IncomingMelody::New(result)
     }
 
     fn handle_incoming(&mut self, synth_msg: SynthMsg) {
@@ -250,5 +246,32 @@ impl From<PendingNote> for Note {
             pending_note.elapsed(),
             pending_note.velocity as MidiByte,
         )
+    }
+}
+
+#[derive(Clone)]
+enum IncomingMelody {
+    New(Melody),
+    Preexisting(MelodyInfo)
+}
+
+impl IncomingMelody {
+    fn melody(&self) -> &Melody {
+        match self {
+            IncomingMelody::New(melody) => melody,
+            IncomingMelody::Preexisting(info) => info.melody(),
+        }
+    }
+
+    fn database_msg(&self, variation: &Melody, stats: VariationStats) -> FromAiMsg {
+        match self {
+            IncomingMelody::New(melody) => FromAiMsg::MelodyVariation {
+                    melody: melody.clone(),
+                    variation: variation.clone(),
+                    stats,
+                },
+            IncomingMelody::Preexisting(info) => FromAiMsg::AlternateVariation { 
+                melody_id: info.row_id(), variation: variation.clone(), stats }
+        }
     }
 }

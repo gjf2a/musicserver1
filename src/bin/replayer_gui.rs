@@ -204,7 +204,7 @@ struct ReplayerApp {
     ai2dbase: Arc<SegQueue<FromAiMsg>>,
     dbase2gui: Arc<SegQueue<DatabaseGuiUpdate>>,
     gui2dbase: Arc<SegQueue<GuiDatabaseUpdate>>,
-    gui2ai: Arc<SegQueue<Melody>>,
+    gui2ai: Arc<SegQueue<MelodyInfo>>,
     ai2output: Arc<SegQueue<SynthMsg>>,
     melody_progress: Arc<AtomicCell<Option<f32>>>,
     melody_run_status: MelodyRunStatus,
@@ -447,7 +447,6 @@ impl ReplayerApp {
                 min_older_pref,
             }
         };
-        println!("Sending update: {refresh:?}");
         self.gui2dbase.push(refresh);
     }
 
@@ -464,21 +463,10 @@ impl ReplayerApp {
             self.melody_var_update_needed.store(false);
         }
 
-        ui.horizontal(|ui| {
-            ui.label(if self.show_variation {
-                "Variation Preference"
-            } else {
-                "Melody Preference"
-            });
-            self.select_pref(
-                ui,
-                if self.show_variation {
-                    self.variation_pref.clone()
-                } else {
-                    self.melody_pref.clone()
-                },
-            );
-        });
+        self.show_pref_selector(ui, "Melody", self.melody_pref.clone());
+        if self.show_variation {
+            self.show_pref_selector(ui, "Variation", self.variation_pref.clone());
+        }
 
         ui.horizontal(|ui| {
             self.melody_play_stop_buttons(ui, &melody_info, &variation_info);
@@ -494,6 +482,13 @@ impl ReplayerApp {
             melodies.push((variation_info.melody(), Color32::RED));
         }
         MelodyRenderer::render(ui, size, &melodies, self.melody_progress.clone());
+    }
+
+    fn show_pref_selector(&mut self, ui: &mut Ui, label: &str, pref: Arc<AtomicCell<Preference>>) {
+        ui.horizontal(|ui| {
+            ui.label(format!("{label} Preference"));
+            self.select_pref(ui, pref);
+        });
     }
 
     fn select_pref(&mut self, ui: &mut Ui, pref: Arc<AtomicCell<Preference>>) {
@@ -575,7 +570,8 @@ impl ReplayerApp {
         if !filter(melody_var_info) && ui.button(arrow).clicked() {
             self.melody_run_status.send_stop();
             mover(melody_var_info);
-            let (_, variation_info, _) = melody_var_info.get().unwrap();
+            let (melody_info, variation_info, _) = melody_var_info.get().unwrap();
+            self.melody_pref.store(melody_info.rating());
             self.variation_pref.store(variation_info.rating());
             self.melody_var_update_needed.store(true);
         }
@@ -603,7 +599,7 @@ impl ReplayerApp {
                 self.ai_algorithm.name = String::from(DEFAULT_AI_NAME);
             }
         }
-        self.gui2ai.push(melody_info.melody().clone());
+        self.gui2ai.push(melody_info.clone());
     }
 
     fn play_both(&self, melody_info: &MelodyInfo, variation_info: &MelodyInfo) {
@@ -822,6 +818,7 @@ impl ReplayerApp {
                 variation: variation_info,
                 stats,
             } => {
+                melody_pref.store(player_info.rating());
                 variation_pref.store(variation_info.rating());
                 let mut melody_var_info = melody_var_info.lock().unwrap();
                 melody_var_info.add((player_info, variation_info, stats));

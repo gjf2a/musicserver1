@@ -28,6 +28,11 @@ pub enum FromAiMsg {
         variation: Melody,
         stats: VariationStats,
     },
+    AlternateVariation {
+        melody_id: i64,
+        variation: Melody,
+        stats: VariationStats,
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -106,6 +111,11 @@ pub fn start_database_thread(
                         variation: info.1,
                         stats,
                     });
+                }
+                FromAiMsg::AlternateVariation { melody_id, variation, stats } => {
+                    let variation_info = database.add_variation(melody_id, &variation, &stats).unwrap();
+                    let melody_info = database.melody_and_info_for(melody_id).unwrap();
+                    dbase2gui.push(DatabaseGuiUpdate::Info { melody: melody_info, variation: variation_info, stats });
                 }
             }
         }
@@ -264,6 +274,12 @@ impl Database {
         Ok(())
     }
 
+    pub fn melody_and_info_for(&mut self, rowid: i64) -> anyhow::Result<MelodyInfo> {
+        let connection = self.get_connection()?;
+        let melody = self.melody(&connection, rowid)?;
+        Self::info_for(&connection, rowid, melody)
+    }
+
     fn info_for(connection: &Connection, rowid: i64, melody: Melody) -> anyhow::Result<MelodyInfo> {
         let mut statement = connection
             .prepare("SELECT rowid, timestamp, rating FROM melody_index WHERE rowid = ?")?;
@@ -345,19 +361,24 @@ impl Database {
         stats: &VariationStats,
     ) -> anyhow::Result<(MelodyInfo, MelodyInfo)> {
         let player_info = self.store_melody(melody)?;
+        let variation_info = self.add_variation(player_info.row_id(), variation, stats)?;
+        Ok((player_info, variation_info))
+    }
+
+    fn add_variation(&mut self, melody_id: i64, variation: &Melody, stats: &VariationStats) -> anyhow::Result<MelodyInfo> {
         let variation_info = self.store_melody(variation)?;
         let connection = self.get_connection()?;
         let mut statement = connection
             .prepare("INSERT INTO variation_info (variation_row, original_row, algorithm_name, random_prob, ornament_prob, min_note_duration, whimsify) VALUES (?,?,?,?,?,?,?)")?;
         statement.bind((1, variation_info.rowid))?;
-        statement.bind((2, player_info.rowid))?;
+        statement.bind((2, melody_id))?;
         statement.bind((3, stats.algorithm_name.as_str()))?;
         statement.bind((4, stats.random_prob))?;
         statement.bind((5, stats.ornament_prob))?;
         statement.bind((6, stats.min_note_duration))?;
         statement.bind((7, if stats.whimsify { 1 } else { 0 }))?;
         statement.next().unwrap();
-        Ok((player_info, variation_info))
+        Ok(variation_info)
     }
 
     fn store_melody(&mut self, melody: &Melody) -> anyhow::Result<MelodyInfo> {
