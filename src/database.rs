@@ -41,6 +41,7 @@ pub enum GuiDatabaseUpdate {
         rowid: i64,
         rating: Preference,
     },
+    VariationsOf(i64),
     RefreshAllMelodies {
         min_today_pref: Preference,
         min_older_pref: Preference,
@@ -71,6 +72,10 @@ pub fn start_database_thread(
     std::thread::spawn(move || loop {
         if let Some(info) = gui2dbase.pop() {
             match info {
+                GuiDatabaseUpdate::VariationsOf(rowid) => {
+                    let pairs = database.get_single_melody_variations(rowid).unwrap();
+                    dbase2gui.push(DatabaseGuiUpdate::AllPairs(pairs));
+                }
                 GuiDatabaseUpdate::Info { rowid, rating } => {
                     database.update_info(rowid, rating).unwrap()
                 }
@@ -197,6 +202,24 @@ impl Database {
             let original_info = Self::info_for(&connection, original_id, original)?;
             let stats = self.stats(&connection, variation_id)?;
             result.push((original_info, variation_info, stats));
+        }
+        Ok(result)
+    }
+
+    pub fn get_single_melody_variations(&mut self, melody_id: i64) -> anyhow::Result<Vec<(MelodyInfo, MelodyInfo, VariationStats)>> {
+        let connection = self.get_connection()?;
+        let original = self.melody(&connection, melody_id)?;
+        let original_info = Self::info_for(&connection, melody_id, original)?;
+        let cmd = "SELECT variation_row FROM variation_info WHERE original_row = ?";
+        let mut statement = connection.prepare(cmd)?;
+        statement.bind((1, melody_id))?;
+        let mut result = vec![];
+        while let State::Row = statement.next()? {
+            let variation_id = statement.read::<i64, usize>(0)?;
+            let variation = self.melody(&connection, variation_id)?;
+            let variation_info = Self::info_for(&connection, variation_id, variation)?;
+            let stats = self.stats(&connection, variation_id)?;
+            result.push((original_info.clone(), variation_info, stats));
         }
         Ok(result)
     }
