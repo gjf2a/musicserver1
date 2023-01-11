@@ -1,7 +1,7 @@
 use bare_metal_modulo::*;
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
-use eframe::egui;
+use eframe::egui::{self, Key, TextEdit};
 use eframe::egui::{
     Align2, Color32, FontData, FontDefinitions, FontFamily, FontId, Painter, Pos2, Sense, Stroke,
     Ui, Vec2, Visuals,
@@ -211,6 +211,7 @@ struct ReplayerApp {
     adjust_search_preferences: bool,
     variations_of_current_melody: bool,
     show_variation: bool,
+    new_tags: [String; 2],
     quit_threads: Arc<AtomicCell<bool>>,
 }
 
@@ -300,6 +301,7 @@ impl ReplayerApp {
             adjust_search_preferences: false,
             variations_of_current_melody: false,
             show_variation: true,
+            new_tags: [String::new(), String::new()],
             quit_threads: Arc::new(AtomicCell::new(false)),
         };
         app.startup();
@@ -407,7 +409,10 @@ impl ReplayerApp {
             self.search_preference_screen(ui);
         } else {
             let before = self.variations_of_current_melody;
-            ui.checkbox(&mut self.variations_of_current_melody, "Variations of Current Melody");
+            ui.checkbox(
+                &mut self.variations_of_current_melody,
+                "Variations of Current Melody",
+            );
             if self.variations_of_current_melody {
                 if !before {
                     self.request_refresh();
@@ -447,10 +452,11 @@ impl ReplayerApp {
     }
 
     fn request_refresh(&self) {
-        if self.variations_of_current_melody { 
+        if self.variations_of_current_melody {
             let melody_var_info = self.melody_var_info.lock().unwrap();
-            if let Some((info,_,_)) = melody_var_info.get() {
-                self.gui2dbase.push(GuiDatabaseUpdate::VariationsOf(info.row_id()));
+            if let Some((info, _, _)) = melody_var_info.get() {
+                self.gui2dbase
+                    .push(GuiDatabaseUpdate::VariationsOf(info.row_id()));
             }
         } else {
             let min_today_pref = self.today_search_pref.load();
@@ -484,8 +490,10 @@ impl ReplayerApp {
         }
 
         self.show_pref_selector(ui, "Melody", self.melody_pref.clone());
+        self.tags(ui, &melody_info, 0);
         if self.show_variation {
             self.show_pref_selector(ui, "Variation", self.variation_pref.clone());
+            self.tags(ui, &variation_info, 1);
         }
 
         ui.horizontal(|ui| {
@@ -508,6 +516,27 @@ impl ReplayerApp {
         ui.horizontal(|ui| {
             ui.label(format!("{label} Preference"));
             self.select_pref(ui, pref);
+        });
+    }
+
+    fn tags(&mut self, ui: &mut Ui, info: &MelodyInfo, new_tag_index: usize) {
+        ui.horizontal(|ui| {
+            for tag in info.tags().iter() {
+                ui.label(format!("#{tag}"));
+            }
+            ui.label("New tag");
+            let response = ui.add(TextEdit::singleline(&mut self.new_tags[new_tag_index]));
+            if response.lost_focus() && ui.input().key_pressed(Key::Enter) {
+                if self.new_tags[new_tag_index].starts_with('#') {
+                    self.new_tags[new_tag_index] = self.new_tags[new_tag_index][1..].to_owned();
+                }
+                self.gui2dbase.push(GuiDatabaseUpdate::NewTag {
+                    rowid: info.row_id(),
+                    tag: self.new_tags[new_tag_index].clone(),
+                });
+                self.new_tags[new_tag_index] = String::new();
+                self.request_refresh();
+            }
         });
     }
 
@@ -607,8 +636,8 @@ impl ReplayerApp {
             v.set_rating(self.variation_pref.load());
         }
         let (m, v, _) = melody_var_info.get().unwrap();
-        self.gui2dbase.push(m.update());
-        self.gui2dbase.push(v.update());
+        self.gui2dbase.push(m.update_preference());
+        self.gui2dbase.push(v.update_preference());
     }
 
     fn create_new_variation(&mut self, melody_info: &MelodyInfo) {

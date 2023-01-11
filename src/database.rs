@@ -4,7 +4,7 @@ use chrono::{Local, NaiveDate, NaiveTime, TimeZone, Utc};
 use crossbeam_queue::SegQueue;
 use enum_iterator::Sequence;
 use sqlite::{Connection, State};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 use std::{
     fmt::{Display, Formatter},
@@ -40,6 +40,10 @@ pub enum GuiDatabaseUpdate {
     Info {
         rowid: i64,
         rating: Preference,
+    },
+    NewTag {
+        rowid: i64,
+        tag: String,
     },
     VariationsOf(i64),
     RefreshAllMelodies {
@@ -77,7 +81,10 @@ pub fn start_database_thread(
                     dbase2gui.push(DatabaseGuiUpdate::AllPairs(pairs));
                 }
                 GuiDatabaseUpdate::Info { rowid, rating } => {
-                    database.update_info(rowid, rating).unwrap()
+                    database.update_info(rowid, rating).unwrap();
+                }
+                GuiDatabaseUpdate::NewTag { rowid, tag } => {
+                    database.add_tag_for(rowid, tag).unwrap();
                 }
                 GuiDatabaseUpdate::RefreshAllPairs {
                     min_today_pref,
@@ -171,6 +178,27 @@ impl Database {
         Ok(connection)
     }
 
+    pub fn tags_for(connection: &Connection, melody_id: i64) -> anyhow::Result<BTreeSet<String>> {
+        let cmd = "SELECT tag FROM tags WHERE melody_row = ?";
+        let mut statement = connection.prepare(cmd)?;
+        statement.bind((1, melody_id))?;
+        let mut result = BTreeSet::new();
+        while let State::Row = statement.next()? {
+            result.insert(statement.read::<String, usize>(0)?);
+        }
+        Ok(result)
+    }
+
+    pub fn add_tag_for(&self, melody_id: i64, tag: String) -> anyhow::Result<()> {
+        let connection = self.get_connection()?;
+        let mut statement =
+            connection.prepare("INSERT INTO tags (melody_row, tag) VALUES (?, ?)")?;
+        statement.bind((1, melody_id))?;
+        statement.bind((2, tag.as_str()))?;
+        statement.next()?;
+        Ok(())
+    }
+
     pub fn new() -> Self {
         Database {
             filename: DATABASE_FILENAME.to_string(),
@@ -206,7 +234,10 @@ impl Database {
         Ok(result)
     }
 
-    pub fn get_single_melody_variations(&mut self, melody_id: i64) -> anyhow::Result<Vec<(MelodyInfo, MelodyInfo, VariationStats)>> {
+    pub fn get_single_melody_variations(
+        &mut self,
+        melody_id: i64,
+    ) -> anyhow::Result<Vec<(MelodyInfo, MelodyInfo, VariationStats)>> {
         let connection = self.get_connection()?;
         let original = self.melody(&connection, melody_id)?;
         let original_info = Self::info_for(&connection, melody_id, original)?;
@@ -320,10 +351,12 @@ impl Database {
         if let State::Row = statement.next()? {
             let timestamp = statement.read::<i64, usize>(1)?;
             let rating = statement.read::<String, usize>(2)?.parse::<Preference>()?;
+            let tags = Self::tags_for(connection, rowid)?;
             Ok(MelodyInfo {
                 rowid,
                 timestamp,
                 rating,
+                tags,
                 melody,
             })
         } else {
@@ -415,7 +448,7 @@ impl Database {
         statement.bind((5, stats.ornament_prob))?;
         statement.bind((6, stats.min_note_duration))?;
         statement.bind((7, if stats.whimsify { 1 } else { 0 }))?;
-        statement.next().unwrap();
+        statement.next()?;
         Ok(variation_info)
     }
 
@@ -449,6 +482,7 @@ impl Database {
             rowid,
             timestamp,
             rating,
+            tags: BTreeSet::new(),
             melody: melody.clone(),
         };
         self.melody_cache.insert(info.rowid, melody.clone());
@@ -461,6 +495,7 @@ pub struct MelodyInfo {
     rowid: i64,
     timestamp: i64,
     rating: Preference,
+    tags: BTreeSet<String>,
     melody: Melody,
 }
 
@@ -471,6 +506,10 @@ impl MelodyInfo {
 
     pub fn timestamp(&self) -> i64 {
         self.timestamp
+    }
+
+    pub fn tags(&self) -> &BTreeSet<String> {
+        &self.tags
     }
 
     pub fn date(&self) -> NaiveDate {
@@ -497,7 +536,7 @@ impl MelodyInfo {
         self.rating = pref;
     }
 
-    pub fn update(&self) -> GuiDatabaseUpdate {
+    pub fn update_preference(&self) -> GuiDatabaseUpdate {
         GuiDatabaseUpdate::Info {
             rowid: self.rowid,
             rating: self.rating,
