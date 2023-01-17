@@ -21,7 +21,7 @@ use musicserver1::database::{
 };
 use musicserver1::runtime::{
     make_synth_table, replay_slider, send_recorded_melody, ChooserTable, MelodyRunStatus,
-    SliderValue, SynthChoice, VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER,
+    SliderValue, SynthChoice, VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER, send_two_melodies,
 };
 use std::cmp::{max, min};
 use std::fmt::Display;
@@ -653,8 +653,15 @@ impl ReplayerApp {
 
     fn play_both(&self, melody_info: &MelodyInfo, variation_info: &MelodyInfo) {
         self.melody_run_status.send_stop();
-        self.play_melody_thread(melody_info.melody().clone(), HUMAN_SPEAKER);
-        self.play_melody_thread(variation_info.melody().clone(), VARIATION_SPEAKER);
+        let human_melody = melody_info.melody().clone();
+        let computer_melody = variation_info.melody().clone();
+        let ai2output = self.ai2output.clone();
+        let melody_progress = self.melody_progress.clone();
+        let melody_run_status = self.melody_run_status.clone();
+        thread::spawn(move || {
+            while melody_run_status.is_stopping() {}
+            send_two_melodies(&human_melody, &computer_melody, ai2output, melody_progress, melody_run_status);
+        });
     }
 
     fn font_id(size: f32) -> FontId {
