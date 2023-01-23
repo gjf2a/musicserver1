@@ -4,7 +4,7 @@ use chrono::{Local, NaiveDate, NaiveTime, TimeZone, Utc};
 use crossbeam_queue::SegQueue;
 use enum_iterator::Sequence;
 use sqlite::{Connection, State};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::str::FromStr;
 use std::{
     fmt::{Display, Formatter},
@@ -28,6 +28,11 @@ pub enum FromAiMsg {
         variation: Melody,
         stats: VariationStats,
     },
+    AlternateVariation {
+        melody_id: i64,
+        variation: Melody,
+        stats: VariationStats,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -36,7 +41,16 @@ pub enum GuiDatabaseUpdate {
         rowid: i64,
         rating: Preference,
     },
-    RefreshAll {
+    NewTag {
+        rowid: i64,
+        tag: String,
+    },
+    VariationsOf(i64),
+    RefreshAllMelodies {
+        min_today_pref: Preference,
+        min_older_pref: Preference,
+    },
+    RefreshAllPairs {
         min_today_pref: Preference,
         min_older_pref: Preference,
     },
@@ -50,6 +64,7 @@ pub enum DatabaseGuiUpdate {
         stats: VariationStats,
     },
     AllPairs(Vec<(MelodyInfo, MelodyInfo, VariationStats)>),
+    Melodies(Vec<MelodyInfo>),
 }
 
 pub fn start_database_thread(
@@ -61,10 +76,17 @@ pub fn start_database_thread(
     std::thread::spawn(move || loop {
         if let Some(info) = gui2dbase.pop() {
             match info {
-                GuiDatabaseUpdate::Info { rowid, rating } => {
-                    database.update_info(rowid, rating).unwrap()
+                GuiDatabaseUpdate::VariationsOf(rowid) => {
+                    let pairs = database.get_single_melody_variations(rowid).unwrap();
+                    dbase2gui.push(DatabaseGuiUpdate::AllPairs(pairs));
                 }
-                GuiDatabaseUpdate::RefreshAll {
+                GuiDatabaseUpdate::Info { rowid, rating } => {
+                    database.update_info(rowid, rating).unwrap();
+                }
+                GuiDatabaseUpdate::NewTag { rowid, tag } => {
+                    database.add_tag_for(rowid, tag).unwrap();
+                }
+                GuiDatabaseUpdate::RefreshAllPairs {
                     min_today_pref,
                     min_older_pref,
                 } => {
@@ -72,6 +94,15 @@ pub fn start_database_thread(
                         .get_melody_pairs(min_today_pref, min_older_pref)
                         .unwrap();
                     dbase2gui.push(DatabaseGuiUpdate::AllPairs(pairs));
+                }
+                GuiDatabaseUpdate::RefreshAllMelodies {
+                    min_today_pref,
+                    min_older_pref,
+                } => {
+                    let melodies = database
+                        .get_melodies_only(min_today_pref, min_older_pref)
+                        .unwrap();
+                    dbase2gui.push(DatabaseGuiUpdate::Melodies(melodies));
                 }
             }
         }
@@ -90,6 +121,21 @@ pub fn start_database_thread(
                     dbase2gui.push(DatabaseGuiUpdate::Info {
                         melody: info.0,
                         variation: info.1,
+                        stats,
+                    });
+                }
+                FromAiMsg::AlternateVariation {
+                    melody_id,
+                    variation,
+                    stats,
+                } => {
+                    let variation_info = database
+                        .add_variation(melody_id, &variation, &stats)
+                        .unwrap();
+                    let melody_info = database.melody_and_info_for(melody_id).unwrap();
+                    dbase2gui.push(DatabaseGuiUpdate::Info {
+                        melody: melody_info,
+                        variation: variation_info,
                         stats,
                     });
                 }
@@ -132,6 +178,27 @@ impl Database {
         Ok(connection)
     }
 
+    pub fn tags_for(connection: &Connection, melody_id: i64) -> anyhow::Result<BTreeSet<String>> {
+        let cmd = "SELECT tag FROM tags WHERE melody_row = ?";
+        let mut statement = connection.prepare(cmd)?;
+        statement.bind((1, melody_id))?;
+        let mut result = BTreeSet::new();
+        while let State::Row = statement.next()? {
+            result.insert(statement.read::<String, usize>(0)?);
+        }
+        Ok(result)
+    }
+
+    pub fn add_tag_for(&self, melody_id: i64, tag: String) -> anyhow::Result<()> {
+        let connection = self.get_connection()?;
+        let mut statement =
+            connection.prepare("INSERT INTO tags (melody_row, tag) VALUES (?, ?)")?;
+        statement.bind((1, melody_id))?;
+        statement.bind((2, tag.as_str()))?;
+        statement.next()?;
+        Ok(())
+    }
+
     pub fn new() -> Self {
         Database {
             filename: DATABASE_FILENAME.to_string(),
@@ -160,12 +227,81 @@ impl Database {
             let original = self.melody(&connection, original_id)?;
             let variation = self.melody(&connection, variation_id)?;
             let variation_info = Self::info_for(&connection, variation_id, variation)?;
-            let mut original_info = Self::info_for(&connection, original_id, original)?;
-            original_info.rating = variation_info.rating;
+            let original_info = Self::info_for(&connection, original_id, original)?;
             let stats = self.stats(&connection, variation_id)?;
             result.push((original_info, variation_info, stats));
         }
         Ok(result)
+    }
+
+    pub fn get_single_melody_variations(
+        &mut self,
+        melody_id: i64,
+    ) -> anyhow::Result<Vec<(MelodyInfo, MelodyInfo, VariationStats)>> {
+        let connection = self.get_connection()?;
+        let original = self.melody(&connection, melody_id)?;
+        let original_info = Self::info_for(&connection, melody_id, original)?;
+        let cmd = "SELECT variation_row FROM variation_info WHERE original_row = ?";
+        let mut statement = connection.prepare(cmd)?;
+        statement.bind((1, melody_id))?;
+        let mut result = vec![];
+        while let State::Row = statement.next()? {
+            let variation_id = statement.read::<i64, usize>(0)?;
+            let variation = self.melody(&connection, variation_id)?;
+            let variation_info = Self::info_for(&connection, variation_id, variation)?;
+            let stats = self.stats(&connection, variation_id)?;
+            result.push((original_info.clone(), variation_info, stats));
+        }
+        Ok(result)
+    }
+
+    pub fn get_melodies_only(
+        &mut self,
+        min_today_pref: Preference,
+        min_older_pref: Preference,
+    ) -> anyhow::Result<Vec<MelodyInfo>> {
+        let mut result = vec![];
+        let connection = self.get_connection()?;
+        let melody_ids = Self::get_melody_ids(&connection, min_today_pref, min_older_pref)?;
+        for melody_id in melody_ids {
+            let melody = self.melody(&connection, melody_id)?;
+            let melody_info = Self::info_for(&connection, melody_id, melody)?;
+            result.push(melody_info);
+        }
+        Ok(result)
+    }
+
+    fn get_melody_ids(
+        connection: &Connection,
+        min_today_pref: Preference,
+        min_older_pref: Preference,
+    ) -> anyhow::Result<Vec<i64>> {
+        let mut result = vec![];
+        let cutoff = Self::one_day_ago();
+        Self::add_melody_ids(connection, "<=", cutoff, min_older_pref, &mut result)?;
+        Self::add_melody_ids(connection, ">", cutoff, min_today_pref, &mut result)?;
+        Ok(result)
+    }
+
+    fn add_melody_ids(
+        connection: &Connection,
+        comparison: &str,
+        cutoff: i64,
+        min_pref: Preference,
+        result: &mut Vec<i64>,
+    ) -> anyhow::Result<()> {
+        let template = "SELECT DISTINCT original_row FROM variation_info INNER JOIN melody_index ON variation_info.original_row = melody_index.rowid";
+        let statement_str = format!(
+            "{template} WHERE timestamp {comparison} ? AND {}",
+            min_pref.sql_choice_str()
+        );
+        let mut statement = connection.prepare(statement_str)?;
+        statement.bind((1, cutoff))?;
+        while let State::Row = statement.next()? {
+            let original_row = statement.read::<i64, usize>(0)?;
+            result.push(original_row);
+        }
+        Ok(())
     }
 
     fn get_variation_info_ids(
@@ -187,7 +323,7 @@ impl Database {
         min_pref: Preference,
         result: &mut Vec<(i64, i64)>,
     ) -> anyhow::Result<()> {
-        let template = String::from("SELECT original_row, variation_row FROM variation_info INNER JOIN melody_index ON variation_info.variation_row = melody_index.rowid");
+        let template = "SELECT original_row, variation_row FROM variation_info INNER JOIN melody_index ON variation_info.variation_row = melody_index.rowid";
         let statement_str = format!(
             "{template} WHERE timestamp {comparison} ? AND {}",
             min_pref.sql_choice_str()
@@ -202,6 +338,12 @@ impl Database {
         Ok(())
     }
 
+    pub fn melody_and_info_for(&mut self, rowid: i64) -> anyhow::Result<MelodyInfo> {
+        let connection = self.get_connection()?;
+        let melody = self.melody(&connection, rowid)?;
+        Self::info_for(&connection, rowid, melody)
+    }
+
     fn info_for(connection: &Connection, rowid: i64, melody: Melody) -> anyhow::Result<MelodyInfo> {
         let mut statement = connection
             .prepare("SELECT rowid, timestamp, rating FROM melody_index WHERE rowid = ?")?;
@@ -209,10 +351,12 @@ impl Database {
         if let State::Row = statement.next()? {
             let timestamp = statement.read::<i64, usize>(1)?;
             let rating = statement.read::<String, usize>(2)?.parse::<Preference>()?;
+            let tags = Self::tags_for(connection, rowid)?;
             Ok(MelodyInfo {
                 rowid,
                 timestamp,
                 rating,
+                tags,
                 melody,
             })
         } else {
@@ -283,19 +427,29 @@ impl Database {
         stats: &VariationStats,
     ) -> anyhow::Result<(MelodyInfo, MelodyInfo)> {
         let player_info = self.store_melody(melody)?;
+        let variation_info = self.add_variation(player_info.row_id(), variation, stats)?;
+        Ok((player_info, variation_info))
+    }
+
+    fn add_variation(
+        &mut self,
+        melody_id: i64,
+        variation: &Melody,
+        stats: &VariationStats,
+    ) -> anyhow::Result<MelodyInfo> {
         let variation_info = self.store_melody(variation)?;
         let connection = self.get_connection()?;
         let mut statement = connection
             .prepare("INSERT INTO variation_info (variation_row, original_row, algorithm_name, random_prob, ornament_prob, min_note_duration, whimsify) VALUES (?,?,?,?,?,?,?)")?;
         statement.bind((1, variation_info.rowid))?;
-        statement.bind((2, player_info.rowid))?;
+        statement.bind((2, melody_id))?;
         statement.bind((3, stats.algorithm_name.as_str()))?;
         statement.bind((4, stats.random_prob))?;
         statement.bind((5, stats.ornament_prob))?;
         statement.bind((6, stats.min_note_duration))?;
         statement.bind((7, if stats.whimsify { 1 } else { 0 }))?;
-        statement.next().unwrap();
-        Ok((player_info, variation_info))
+        statement.next()?;
+        Ok(variation_info)
     }
 
     fn store_melody(&mut self, melody: &Melody) -> anyhow::Result<MelodyInfo> {
@@ -328,6 +482,7 @@ impl Database {
             rowid,
             timestamp,
             rating,
+            tags: BTreeSet::new(),
             melody: melody.clone(),
         };
         self.melody_cache.insert(info.rowid, melody.clone());
@@ -340,6 +495,7 @@ pub struct MelodyInfo {
     rowid: i64,
     timestamp: i64,
     rating: Preference,
+    tags: BTreeSet<String>,
     melody: Melody,
 }
 
@@ -350,6 +506,10 @@ impl MelodyInfo {
 
     pub fn timestamp(&self) -> i64 {
         self.timestamp
+    }
+
+    pub fn tags(&self) -> &BTreeSet<String> {
+        &self.tags
     }
 
     pub fn date(&self) -> NaiveDate {
@@ -376,7 +536,7 @@ impl MelodyInfo {
         self.rating = pref;
     }
 
-    pub fn update(&self) -> GuiDatabaseUpdate {
+    pub fn update_preference(&self) -> GuiDatabaseUpdate {
         GuiDatabaseUpdate::Info {
             rowid: self.rowid,
             rating: self.rating,
