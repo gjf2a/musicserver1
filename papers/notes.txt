@@ -7,6 +7,14 @@ Continuator
 * Pachet, F. The Continuator: Musical Interaction with Style. Journal of New Music Research, 32(3):333-341, 2003
 * https://www.francoispachet.fr/wp-content/uploads/2021/01/pachet-03d.pdf
 
+More recent Pachet
+* Sakellariou, J., Tria, F., Loreto, V. and Pachet, F. Maximum entropy models capture melodic styles. Scientific Reports, 7(9172), August 2017
+  * https://www.nature.com/articles/s41598-017-08028-4#:~:text=Abstract,of%20a%20given%20musical%20corpus.
+  * I'm struggling to understand the algorithm, but the paper has the following insights:
+    * "In this paper, we show that, for musical data, enforcing pairwise consistency across different time-distances restricts the space of solutions enough for higher-order patterns to emerge. That way, we capture long range musical patterns while avoiding the over-fitting issues of high-order models. This approach cannot be implemented as an extension of Markov models, and a different framework is needed."
+    * "Musical style imitation is a difficult concept to grasp and formalize. However, most musicians would agree that it involves two things: creatively rearranging existing material from the musical corpus one wants to imitate and developing the existing ideas into new ones that resemble the original material. We shall call these two activities imitation and innovation. Concerning imitation, we don’t look for an arbitrary reshuffling of substrings of notes, or melodic patterns as we will call them. In the new sequence, these patterns must follow “naturally” one another just as in the corpus. Concerning innovation, the new material cannot be random. One could argue that it should be statistically consistent with the corpus, by emphasizing the same notes and note pairs for example. A model that aims at imitating a given musical style should therefore be able to create music using existing melodic patterns and invented new ones in a way consistent with the corpus."
+    * Wiemar Jazz Database: https://jazzomat.hfm-weimar.de/dbformat/dboverview.html
+
 BachProp
 * https://arxiv.org/abs/1802.05162
 * https://github.com/FlorianColombo/BachProp

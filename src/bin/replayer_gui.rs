@@ -33,14 +33,13 @@ use std::time::{Duration, Instant};
 
 const NUM_OUTPUT_CHANNELS: usize = 2; // More than this, and it has occasional noise-clipping problems.
 
-fn main() -> anyhow::Result<()> {
+fn main() {
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(
         "Replayer",
         native_options,
         Box::new(|cc| Box::new(ReplayerApp::new(cc).unwrap())),
-    );
-    Ok(())
+    ).unwrap();
 }
 
 #[derive(Clone)]
@@ -526,7 +525,7 @@ impl ReplayerApp {
             }
             ui.label("New tag");
             let response = ui.add(TextEdit::singleline(&mut self.new_tags[new_tag_index]));
-            if response.lost_focus() && ui.input().key_pressed(Key::Enter) {
+            if response.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
                 if self.new_tags[new_tag_index].starts_with('#') {
                     self.new_tags[new_tag_index] = self.new_tags[new_tag_index][1..].to_owned();
                 }
