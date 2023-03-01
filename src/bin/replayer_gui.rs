@@ -603,6 +603,7 @@ impl ReplayerApp {
             );
         });
     }
+    
 
     fn melody_arrow<
         F: Fn(&VecTracker<(MelodyInfo, MelodyInfo, VariationStats)>) -> bool,
