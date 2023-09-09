@@ -210,6 +210,7 @@ struct ReplayerApp {
     adjust_search_preferences: bool,
     variations_of_current_melody: bool,
     show_variation: bool,
+    show_synth_choices: bool,
     new_tags: [String; 2],
     quit_threads: Arc<AtomicCell<bool>>,
 }
@@ -300,6 +301,7 @@ impl ReplayerApp {
             adjust_search_preferences: false,
             variations_of_current_melody: false,
             show_variation: true,
+            show_synth_choices: true,
             new_tags: [String::new(), String::new()],
             quit_threads: Arc::new(AtomicCell::new(false)),
         };
@@ -357,12 +359,20 @@ impl ReplayerApp {
 
     fn control_screen(&mut self, ui: &mut Ui, heading: String) {
         ui.heading(heading);
+        ui.checkbox(&mut self.show_synth_choices, "Show Synthesizer Options");
+        let human_name = self.human_synth.name.clone();
+        let ai_name = self.ai_synth.name.clone();
         ui.horizontal(|ui| {
             ui.horizontal(|ui| {
-                let human_name = self.human_synth.name.clone();
-                let ai_name = self.ai_synth.name.clone();
-                Self::radio_choice(ui, "Human Synthesizer", &mut self.human_synth);
-                Self::radio_choice(ui, "Variation Synthesizer", &mut self.ai_synth);
+                if self.show_synth_choices {
+                    Self::radio_choice(ui, "Human Synthesizer", &mut self.human_synth);
+                    Self::radio_choice(ui, "Variation Synthesizer", &mut self.ai_synth);
+                } else {
+                    ui.vertical(|ui| {
+                        ui.label(format!("Human synth: {human_name}"));
+                        ui.label(format!("AI synth: {ai_name}"));
+                    });
+                }
                 Self::radio_choice(ui, "Variation Algorithm", &mut self.ai_algorithm);
                 if human_name != self.human_synth.name {
                     let msg = SynthMsg::program_change(
