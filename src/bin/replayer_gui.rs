@@ -372,31 +372,39 @@ impl ReplayerApp {
         ui.horizontal(|ui| {
             let human_name = self.human_synth.name.clone();
             let ai_name = self.ai_synth.name.clone();
-            if self.show_synth_choices {
-                Self::radio_choice(ui, "Human Synthesizer", &mut self.human_synth);
-                Self::radio_choice(ui, "Variation Synthesizer", &mut self.ai_synth);
-            } else {
-                ui.vertical(|ui| {
-                    ui.label(format!("Human synth: {human_name}"));
-                    ui.label(format!("AI synth: {ai_name}"));
-                });
-            }
+            self.show_synths(ui, human_name.as_str(), ai_name.as_str());
             Self::radio_choice(ui, "Variation Algorithm", &mut self.ai_algorithm);
-            if human_name != self.human_synth.name {
-                let msg = SynthMsg::program_change(
-                    self.human_synth.current_index() as u8,
-                    HUMAN_SPEAKER,
-                );
-                self.ai2output.push(msg);
-            }
-            if ai_name != self.ai_synth.name {
-                let msg = SynthMsg::program_change(
-                    self.ai_synth.current_index() as u8,
-                    VARIATION_SPEAKER,
-                );
-                self.ai2output.push(msg);
-            }
+            self.update_synths(human_name.as_str(), ai_name.as_str());
         });
+    }
+
+    fn show_synths(&mut self, ui: &mut Ui, human_name: &str, ai_name: &str) {
+        if self.show_synth_choices {
+            Self::radio_choice(ui, "Human Synthesizer", &mut self.human_synth);
+            Self::radio_choice(ui, "Variation Synthesizer", &mut self.ai_synth);
+        } else {
+            ui.vertical(|ui| {
+                ui.label(format!("Human synth: {human_name}"));
+                ui.label(format!("AI synth: {ai_name}"));
+            });
+        }
+    }
+
+    fn update_synths(&mut self, human_name: &str, ai_name: &str) {
+        if human_name != self.human_synth.name {
+            let msg = SynthMsg::program_change(
+                self.human_synth.current_index() as u8,
+                HUMAN_SPEAKER,
+            );
+            self.ai2output.push(msg);
+        }
+        if ai_name != self.ai_synth.name {
+            let msg = SynthMsg::program_change(
+                self.ai_synth.current_index() as u8,
+                VARIATION_SPEAKER,
+            );
+            self.ai2output.push(msg);
+        }
     }
 
     fn variation_parameter_settings(&mut self, ui: &mut Ui) {
