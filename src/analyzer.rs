@@ -1840,6 +1840,13 @@ impl MelodicFigureShape {
     }
 }
 
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, Ord, PartialOrd)]
+pub enum NoteAnnotation {
+    InMotive(usize),
+    InFigure(MelodicFigure),
+    Ornamentation,
+}
+
 #[cfg(test)]
 mod tests {
     use crate::analyzer::{

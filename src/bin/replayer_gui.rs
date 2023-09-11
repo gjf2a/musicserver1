@@ -210,6 +210,7 @@ struct ReplayerApp {
     adjust_search_preferences: bool,
     variations_of_current_melody: bool,
     show_variation: bool,
+    show_synth_choices: bool,
     new_tags: [String; 2],
     quit_threads: Arc<AtomicCell<bool>>,
 }
@@ -300,6 +301,7 @@ impl ReplayerApp {
             adjust_search_preferences: false,
             variations_of_current_melody: false,
             show_variation: true,
+            show_synth_choices: true,
             new_tags: [String::new(), String::new()],
             quit_threads: Arc::new(AtomicCell::new(false)),
         };
@@ -357,46 +359,69 @@ impl ReplayerApp {
 
     fn control_screen(&mut self, ui: &mut Ui, heading: String) {
         ui.heading(heading);
+        ui.checkbox(&mut self.show_synth_choices, "Show Synthesizer Options");
         ui.horizontal(|ui| {
-            ui.horizontal(|ui| {
-                let human_name = self.human_synth.name.clone();
-                let ai_name = self.ai_synth.name.clone();
-                Self::radio_choice(ui, "Human Synthesizer", &mut self.human_synth);
-                Self::radio_choice(ui, "Variation Synthesizer", &mut self.ai_synth);
-                Self::radio_choice(ui, "Variation Algorithm", &mut self.ai_algorithm);
-                if human_name != self.human_synth.name {
-                    let msg = SynthMsg::program_change(
-                        self.human_synth.current_index() as u8,
-                        HUMAN_SPEAKER,
-                    );
-                    self.ai2output.push(msg);
-                }
-                if ai_name != self.ai_synth.name {
-                    let msg = SynthMsg::program_change(
-                        self.ai_synth.current_index() as u8,
-                        VARIATION_SPEAKER,
-                    );
-                    self.ai2output.push(msg);
-                }
-            });
-
-            ui.vertical(|ui| {
-                ui.label("Variation Algorithm Controls");
-                let p_random_slider = self.variation_controls.p_random_slider.clone();
-                Self::insert_slider(ui, p_random_slider, "Probability of Randomization");
-                let p_ornament_slider = self.variation_controls.p_ornament_slider.clone();
-                Self::insert_slider(ui, p_ornament_slider, "Probability of Inserting Ornament");
-                let replay_delay_slider = self.replay_delay_slider.clone();
-                Self::insert_slider(ui, replay_delay_slider, "Replay Delay (seconds)");
-                let shortest_note_slider = self.variation_controls.shortest_note_slider.clone();
-                Self::insert_slider(ui, shortest_note_slider, "Shortest Playable Note (seconds)");
-                let mut whimsify = self.variation_controls.whimsify.load();
-                ui.checkbox(&mut whimsify, "Whimsify Suffix");
-                self.variation_controls.whimsify.store(whimsify);
-            });
+            self.choose_synth_and_variation(ui);
+            self.variation_parameter_settings(ui);
         });
 
         self.display_melody_section(ui, MAIN_MELODY_SCALING);
+    }
+
+    fn choose_synth_and_variation(&mut self, ui: &mut Ui) {
+        ui.horizontal(|ui| {
+            let human_name = self.human_synth.name.clone();
+            let ai_name = self.ai_synth.name.clone();
+            self.show_synths(ui, human_name.as_str(), ai_name.as_str());
+            Self::radio_choice(ui, "Variation Algorithm", &mut self.ai_algorithm);
+            self.update_synths(human_name.as_str(), ai_name.as_str());
+        });
+    }
+
+    fn show_synths(&mut self, ui: &mut Ui, human_name: &str, ai_name: &str) {
+        if self.show_synth_choices {
+            Self::radio_choice(ui, "Human Synthesizer", &mut self.human_synth);
+            Self::radio_choice(ui, "Variation Synthesizer", &mut self.ai_synth);
+        } else {
+            ui.vertical(|ui| {
+                ui.label(format!("Human synth: {human_name}"));
+                ui.label(format!("AI synth: {ai_name}"));
+            });
+        }
+    }
+
+    fn update_synths(&mut self, human_name: &str, ai_name: &str) {
+        if human_name != self.human_synth.name {
+            let msg = SynthMsg::program_change(
+                self.human_synth.current_index() as u8,
+                HUMAN_SPEAKER,
+            );
+            self.ai2output.push(msg);
+        }
+        if ai_name != self.ai_synth.name {
+            let msg = SynthMsg::program_change(
+                self.ai_synth.current_index() as u8,
+                VARIATION_SPEAKER,
+            );
+            self.ai2output.push(msg);
+        }
+    }
+
+    fn variation_parameter_settings(&mut self, ui: &mut Ui) {
+        ui.vertical(|ui| {
+            ui.label("Variation Algorithm Controls");
+            let p_random_slider = self.variation_controls.p_random_slider.clone();
+            Self::insert_slider(ui, p_random_slider, "Probability of Randomization");
+            let p_ornament_slider = self.variation_controls.p_ornament_slider.clone();
+            Self::insert_slider(ui, p_ornament_slider, "Probability of Inserting Ornament");
+            let replay_delay_slider = self.replay_delay_slider.clone();
+            Self::insert_slider(ui, replay_delay_slider, "Replay Delay (seconds)");
+            let shortest_note_slider = self.variation_controls.shortest_note_slider.clone();
+            Self::insert_slider(ui, shortest_note_slider, "Shortest Playable Note (seconds)");
+            let mut whimsify = self.variation_controls.whimsify.load();
+            ui.checkbox(&mut whimsify, "Whimsify Suffix");
+            self.variation_controls.whimsify.store(whimsify);
+        });
     }
 
     fn display_melody_section(&mut self, ui: &mut Ui, staff_scaling: f32) {
