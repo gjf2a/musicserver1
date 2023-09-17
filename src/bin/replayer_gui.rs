@@ -20,8 +20,8 @@ use musicserver1::database::{
     Preference, VariationStats,
 };
 use musicserver1::runtime::{
-    make_synth_table, replay_slider, send_recorded_melody, ChooserTable, MelodyRunStatus,
-    SliderValue, SynthChoice, VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER, send_two_melodies,
+    make_synth_table, replay_slider, send_recorded_melody, send_two_melodies, ChooserTable,
+    MelodyRunStatus, SliderValue, SynthChoice, VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER,
 };
 use std::cmp::{max, min};
 use std::fmt::Display;
@@ -39,7 +39,8 @@ fn main() {
         "Replayer",
         native_options,
         Box::new(|cc| Box::new(ReplayerApp::new(cc).unwrap())),
-    ).unwrap();
+    )
+    .unwrap();
 }
 
 #[derive(Clone)]
@@ -394,17 +395,13 @@ impl ReplayerApp {
 
     fn update_synths(&mut self, human_name: &str, ai_name: &str) {
         if human_name != self.human_synth.name {
-            let msg = SynthMsg::program_change(
-                self.human_synth.current_index() as u8,
-                HUMAN_SPEAKER,
-            );
+            let msg =
+                SynthMsg::program_change(self.human_synth.current_index() as u8, HUMAN_SPEAKER);
             self.ai2output.push(msg);
         }
         if ai_name != self.ai_synth.name {
-            let msg = SynthMsg::program_change(
-                self.ai_synth.current_index() as u8,
-                VARIATION_SPEAKER,
-            );
+            let msg =
+                SynthMsg::program_change(self.ai_synth.current_index() as u8, VARIATION_SPEAKER);
             self.ai2output.push(msg);
         }
     }
@@ -627,7 +624,6 @@ impl ReplayerApp {
             );
         });
     }
-    
 
     fn melody_arrow<
         F: Fn(&VecTracker<(MelodyInfo, MelodyInfo, VariationStats)>) -> bool,
@@ -684,7 +680,13 @@ impl ReplayerApp {
         let melody_run_status = self.melody_run_status.clone();
         thread::spawn(move || {
             while melody_run_status.is_stopping() {}
-            send_two_melodies(&human_melody, &computer_melody, ai2output, melody_progress, melody_run_status);
+            send_two_melodies(
+                &human_melody,
+                &computer_melody,
+                ai2output,
+                melody_progress,
+                melody_run_status,
+            );
         });
     }
 

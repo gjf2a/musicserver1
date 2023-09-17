@@ -8,8 +8,8 @@ use midi_fundsp::SynthFunc;
 use midi_msg::MidiMsg;
 use read_input::prelude::input;
 use read_input::InputBuild;
-use std::collections::VecDeque;
 use std::collections::btree_map::BTreeMap;
+use std::collections::VecDeque;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 use std::time::Instant;
@@ -285,14 +285,30 @@ pub fn send_two_melodies(
 ) {
     melody_run_status.report_start();
     let elapsed = Instant::now();
-    let total_duration = if melody_left.duration() > melody_right.duration() {melody_left.duration()} else {melody_right.duration()};
+    let total_duration = if melody_left.duration() > melody_right.duration() {
+        melody_left.duration()
+    } else {
+        melody_right.duration()
+    };
     let mut left_queue = note_times_from(melody_left);
     let mut right_queue = note_times_from(melody_right);
     let mut left_next = 0.0;
     let mut right_next = 0.0;
     loop {
-        check_get_next(ai2output.clone(), elapsed, &mut left_next, &mut left_queue, Speaker::Left);
-        check_get_next(ai2output.clone(), elapsed, &mut right_next, &mut right_queue, Speaker::Right);
+        check_get_next(
+            ai2output.clone(),
+            elapsed,
+            &mut left_next,
+            &mut left_queue,
+            Speaker::Left,
+        );
+        check_get_next(
+            ai2output.clone(),
+            elapsed,
+            &mut right_next,
+            &mut right_queue,
+            Speaker::Right,
+        );
         if left_queue.is_empty() && right_queue.is_empty() {
             break;
         } else {
@@ -302,22 +318,28 @@ pub fn send_two_melodies(
                 break;
             }
         }
-    }   
+    }
     ai2output.push(SynthMsg::all_notes_off(Speaker::Both));
     melody_run_status.report_stop();
     melody_progress.store(None);
 }
 
-fn check_get_next(ai2output: Arc<SegQueue<SynthMsg>>, elapsed: Instant, next: &mut f64, queue: &mut VecDeque<(MidiMsg, f64)>, speaker: Speaker) {
+fn check_get_next(
+    ai2output: Arc<SegQueue<SynthMsg>>,
+    elapsed: Instant,
+    next: &mut f64,
+    queue: &mut VecDeque<(MidiMsg, f64)>,
+    speaker: Speaker,
+) {
     if *next < elapsed.elapsed().as_secs_f64() {
         if let Some((msg, time)) = queue.pop_front() {
             *next = time;
             ai2output.push(SynthMsg { msg, speaker });
         }
-    } 
+    }
 }
 
-fn note_times_from(melody: &Melody) -> VecDeque<(MidiMsg,f64)> {
+fn note_times_from(melody: &Melody) -> VecDeque<(MidiMsg, f64)> {
     let mut total_time = 0.0;
     let mut result = VecDeque::new();
     for note in melody.iter() {
