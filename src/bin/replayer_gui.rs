@@ -302,7 +302,7 @@ impl ReplayerApp {
             adjust_search_preferences: false,
             variations_of_current_melody: false,
             show_variation: true,
-            show_synth_choices: true,
+            show_synth_choices: false,
             show_melody_sections: false,
             new_tags: [String::new(), String::new()],
             quit_threads: Arc::new(AtomicCell::new(false)),
