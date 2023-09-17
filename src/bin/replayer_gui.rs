@@ -211,6 +211,7 @@ struct ReplayerApp {
     variations_of_current_melody: bool,
     show_variation: bool,
     show_synth_choices: bool,
+    show_melody_sections: bool,
     new_tags: [String; 2],
     quit_threads: Arc<AtomicCell<bool>>,
 }
@@ -302,6 +303,7 @@ impl ReplayerApp {
             variations_of_current_melody: false,
             show_variation: true,
             show_synth_choices: true,
+            show_melody_sections: false,
             new_tags: [String::new(), String::new()],
             quit_threads: Arc::new(AtomicCell::new(false)),
         };
@@ -432,6 +434,7 @@ impl ReplayerApp {
         if self.adjust_search_preferences {
             self.search_preference_screen(ui);
         } else {
+            ui.checkbox(&mut self.show_melody_sections, "Show Melody Sections");
             let before = self.variations_of_current_melody;
             ui.checkbox(
                 &mut self.variations_of_current_melody,
@@ -445,11 +448,7 @@ impl ReplayerApp {
                 if before {
                     self.request_refresh();
                 }
-                let before = self.show_variation;
                 ui.checkbox(&mut self.show_variation, "Show Variation");
-                if before != self.show_variation {
-                    self.request_refresh();
-                }
             }
             if self.displaying_melody_var_info() {
                 self.display_melody_info(ui, staff_scaling);
