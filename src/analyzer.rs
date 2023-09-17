@@ -195,26 +195,35 @@ fn dotify_float(f: OrderedFloat<f64>) -> String {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Melody {
-    notes: Vec<(Note, Option<NoteAnnotation>)>,
+    notes: Vec<Note>,
+    sections: Vec<Subsequences>,
 }
 
 impl Melody {
+
+    const MIN_MOTIVE_LEN: usize = 2;
+    const MIN_MOTIVE_REPETITIONS: usize = 2;
+    
     pub fn new() -> Self {
-        Melody { notes: vec![] }
+        Melody { notes: vec![], sections: vec![] }
+    }
+
+    fn identify_sections(&mut self) {
+        let pitches_only = self.notes.iter().map(|n| n.pitch).collect::<Vec<_>>();
+        self.sections = find_maximal_repeated_subs(&pitches_only, Self::MIN_MOTIVE_REPETITIONS, Self::MIN_MOTIVE_LEN);
     }
 
     pub fn from_vec(notes: &Vec<Note>) -> Self {
         let mut result = Self::new();
-        for n in notes.iter() {
-            result.add(*n);
-        }
+        result.notes = notes.clone();
+        result.identify_sections();
         result
     }
 
     /// This method exists solely for debugging purposes, to give a more concise
     /// representation than the `Debug` version.
     pub fn tuple_print(&self) {
-        for (n, _) in self.notes.iter() {
+        for n in self.notes.iter() {
             print!(
                 "({}, {}, {}), ",
                 n.pitch,
@@ -226,7 +235,7 @@ impl Melody {
     }
 
     pub fn duration(&self) -> f64 {
-        self.notes.iter().map(|(n,_)| n.duration.into_inner()).sum()
+        self.notes.iter().map(|n| n.duration.into_inner()).sum()
     }
 
     pub fn num_pitch_changes(&self) -> usize {
@@ -235,7 +244,7 @@ impl Melody {
         }
         let mut pitch_changes = 0;
         for i in 0..self.notes.len() - 1 {
-            if self.notes[i].0.pitch != self.notes[i + 1].0.pitch {
+            if self.notes[i].pitch != self.notes[i + 1].pitch {
                 pitch_changes += 1;
             }
         }
@@ -255,24 +264,25 @@ impl Melody {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Note> {
-        self.notes.iter().map(|(n,_)| n)
+        self.notes.iter().map(|n| n)
     }
 
     pub fn fragment(&self, start: usize, length: usize) -> Melody {
-        let mut notes = vec![];
+        let mut result = Self::new();
         for i in start..(start + length) {
-            notes.push(self.notes[i]);
+            result.notes.push(self.notes[i]);
         }
-        Melody { notes }
+        result.identify_sections();
+        result
     }
 
     pub fn pitch_subsequence_at(&self, start: usize, length: usize) -> Option<Vec<MidiByte>> {
-        let mut result = vec![self.notes[start].0.pitch];
+        let mut result = vec![self.notes[start].pitch];
         for i in start + 1..self.notes.len() {
             if result.len() == length {
                 break;
             } else {
-                let pitch = self.notes[i].0.pitch();
+                let pitch = self.notes[i].pitch();
                 if pitch != *result.last().unwrap() {
                     result.push(pitch);
                 }
@@ -286,10 +296,10 @@ impl Melody {
     }
 
     pub fn duration_with_rest(&self, i: usize) -> OrderedFloat<f64> {
-        let mut result = self[i].0.duration;
+        let mut result = self[i].duration;
         let mut i = i + 1;
-        while i < self.len() && self[i].0.is_rest() {
-            result += self[i].0.duration;
+        while i < self.len() && self[i].is_rest() {
+            result += self[i].duration;
             i += 1;
         }
         result
@@ -297,7 +307,7 @@ impl Melody {
 
     pub fn median_duration_note_on(&self) -> OrderedFloat<f64> {
         let mut durations = (0..self.len())
-            .filter(|i| !self[*i].0.is_rest())
+            .filter(|i| !self[*i].is_rest())
             .map(|i| self.duration_with_rest(i))
             .collect::<Vec<_>>();
         durations.sort();
@@ -312,20 +322,22 @@ impl Melody {
             let duration = nums.next().unwrap().parse().unwrap();
             let f_intensity: OrderedFloat<f64> = nums.next().unwrap().parse().unwrap();
             let intensity = (f_intensity.into_inner() * MAX_MIDI_VALUE as f64) as MidiByte;
-            result.add(Note::new(note, duration, intensity));
+            result.notes.push(Note::new(note, duration, intensity));
         }
+        result.identify_sections();
         result
     }
 
     pub fn add(&mut self, n: Note) {
-        self.notes.push((n, None));
+        self.notes.push(n);
+        self.identify_sections();
     }
 
     pub fn sonic_pi_list(&self) -> String {
         let mut list_str = self
             .notes
             .iter()
-            .map(|n| format!("{}, ", n.0.sonic_pi_list()))
+            .map(|n| format!("{}, ", n.sonic_pi_list()))
             .collect::<String>();
         list_str.pop();
         list_str.pop();
@@ -333,7 +345,7 @@ impl Melody {
     }
 
     pub fn last_note(&self) -> Note {
-        (*self.notes.last().unwrap()).0
+        *self.notes.last().unwrap()
     }
 
     pub fn len(&self) -> usize {
@@ -347,7 +359,7 @@ impl Melody {
     pub fn view_notes(&self) -> String {
         let scale = self.best_scale_for();
         let mut result = String::new();
-        for (n,_) in self.notes.iter() {
+        for n in self.notes.iter() {
             result.push_str(
                 format!(
                     "{} [({:2}) ({:2})] ",
@@ -366,7 +378,7 @@ impl Melody {
         let note_iter = self
             .notes
             .iter()
-            .map(|(n,_)| (n.pitch % NOTES_PER_OCTAVE, n.duration));
+            .map(|n| (n.pitch % NOTES_PER_OCTAVE, n.duration));
         let note_weights = collect_from_by_into!(note_iter, HashMap::new());
         mode_by_weight!(note_weights).unwrap()
     }
@@ -374,7 +386,7 @@ impl Melody {
     pub fn best_scale_for(&self) -> MusicMode {
         let mut mode_weights = BTreeMap::new();
         for mode in MusicMode::all_modes_for(self.find_root_pitch()).iter() {
-            for (n,_) in self.notes.iter().filter(|(n,_)| mode.contains(n.pitch)) {
+            for n in self.notes.iter().filter(|n| mode.contains(n.pitch)) {
                 bump_ref_by!(mode_weights, mode, n.duration);
             }
         }
@@ -384,7 +396,7 @@ impl Melody {
     pub fn diatonic_intervals(&self) -> Vec<DiatonicInterval> {
         let scale = self.best_scale_for();
         (0..self.notes.len() - 1)
-            .map(|i| scale.diatonic_steps_between(self.notes[i].0.pitch, self.notes[i + 1].0.pitch))
+            .map(|i| scale.diatonic_steps_between(self.notes[i].pitch, self.notes[i + 1].pitch))
             .collect()
     }
 
@@ -396,8 +408,8 @@ impl Melody {
         if self.notes.len() == 0 {
             vec![]
         } else {
-            let mut result = vec![(0, self.notes[0].0)];
-            for (i, (note,_)) in self.notes.iter().enumerate().skip(1) {
+            let mut result = vec![(0, self.notes[0])];
+            for (i, note) in self.notes.iter().enumerate().skip(1) {
                 if result.last().unwrap().1.pitch == note.pitch {
                     result
                         .last_mut()
@@ -417,9 +429,9 @@ impl Melody {
             return 0;
         }
         let mut count = 1;
-        let mut prev = self.notes[range.next().unwrap()].0;
+        let mut prev = self.notes[range.next().unwrap()];
         for i in range {
-            let current = self.notes[i].0;
+            let current = self.notes[i];
             if prev.pitch != current.pitch {
                 count += 1;
             }
@@ -442,8 +454,8 @@ impl Melody {
 
     pub fn all_rests_synchronized(&self) -> bool {
         for i in 0..(self.len() - 1) {
-            let next = self[i + 1].0;
-            if !self[i].0.is_rest() && (!next.is_rest() || self[i].0.pitch() != next.pitch()) {
+            let next = self[i + 1];
+            if !self[i].is_rest() && (!next.is_rest() || self[i].pitch() != next.pitch()) {
                 return false;
             }
         }
@@ -453,9 +465,9 @@ impl Melody {
     pub fn synchronize_rests(&mut self) {
         for i in 0..(self.len() - 1) {
             let next = self[i + 1];
-            if !self[i].0.is_rest() && next.0.pitch() != self[i].0.pitch {
+            if !self[i].is_rest() && next.pitch() != self[i].pitch {
                 let mut j = i + 1;
-                while j < self.len() - 1 && self[j].0.pitch != self[i].0.pitch {
+                while j < self.len() - 1 && self[j].pitch != self[i].pitch {
                     j += 1;
                 }
                 while j > i + 1 {
@@ -467,14 +479,14 @@ impl Melody {
     }
 
     fn synchro_swap(&mut self, a: usize, b: usize) {
-        let pa = self[a].0.pitch;
-        let pb = self[b].0.pitch;
-        self.notes[a].0.pitch = pb;
-        self.notes[b].0.pitch = pa;
-        let av = self[a].0.velocity;
-        let bv = self[b].0.velocity;
-        self.notes[a].0.velocity = bv;
-        self.notes[b].0.velocity = av;
+        let pa = self[a].pitch;
+        let pb = self[b].pitch;
+        self.notes[a].pitch = pb;
+        self.notes[b].pitch = pa;
+        let av = self[a].velocity;
+        let bv = self[b].velocity;
+        self.notes[a].velocity = bv;
+        self.notes[b].velocity = av;
     }
 
     pub fn distinct_seq_len(&self, start: usize, num_distinct_pitches: usize) -> Option<usize> {
@@ -482,7 +494,7 @@ impl Melody {
         let mut num_distinct_found = 1;
         let mut i = start + 1;
         while i < self.len() {
-            if self[i].0.pitch != self[i - 1].0.pitch {
+            if self[i].pitch != self[i - 1].pitch {
                 num_distinct_found += 1;
                 if num_distinct_found > num_distinct_pitches {
                     break;
@@ -499,9 +511,9 @@ impl Melody {
     }
 
     pub fn min_max_pitches(&self) -> (MidiByte, MidiByte) {
-        let mut lo = self.notes[0].0.pitch;
+        let mut lo = self.notes[0].pitch;
         let mut hi = lo;
-        for (note,_) in self.notes.iter().skip(1) {
+        for note in self.notes.iter().skip(1) {
             lo = min(lo, note.pitch);
             hi = max(hi, note.pitch);
         }
@@ -525,7 +537,7 @@ impl Melody {
         let mut result = self
             .notes
             .iter()
-            .map(|(n,_)| n)
+            .map(|n| n)
             .copied()
             .enumerate()
             .filter(|(_, n)| !n.is_rest())
@@ -536,7 +548,7 @@ impl Melody {
 }
 
 impl std::ops::Index<usize> for Melody {
-    type Output = (Note, Option<NoteAnnotation>);
+    type Output = Note;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.notes[index]
@@ -649,7 +661,7 @@ impl MelodyMaker {
                     {
                         if Self::any_notes_after(melody, i) && rand::random::<f64>() < p_ornament {
                             let figure = figure_list.choose(&mut rng).unwrap();
-                            let mut pitches = figure.make_pitches(melody[i].0.pitch, &scale);
+                            let mut pitches = figure.make_pitches(melody[i].pitch, &scale);
                             pitches.pop_back();
                             let mut duration = vec![lead_duration.into_inner()];
                             while !pitches.is_empty() {
@@ -657,13 +669,13 @@ impl MelodyMaker {
                                 result.add(Note::new(
                                     p,
                                     duration.pop().unwrap_or(ornament_duration.into_inner()),
-                                    melody[i].0.velocity,
+                                    melody[i].velocity,
                                 ));
                                 result.add(Note::new(p, 0.0, 0));
                             }
                             ornamented = true;
                             i += 1;
-                            while i < melody.len() && melody[i].0.is_rest() {
+                            while i < melody.len() && melody[i].is_rest() {
                                 i += 1;
                             }
                         }
@@ -671,7 +683,7 @@ impl MelodyMaker {
                 }
             }
             if !ornamented {
-                result.add(melody[i].0);
+                result.add(melody[i]);
                 i += 1;
             }
         }
@@ -683,7 +695,7 @@ impl MelodyMaker {
         melody: &Melody,
         i: usize,
     ) -> Option<(usize, OrderedFloat<f64>)> {
-        if !melody[i].0.is_rest() {
+        if !melody[i].is_rest() {
             let duration = melody.duration_with_rest(i);
             for len in FIGURE_LENGTHS {
                 let leftover = duration - ornament_duration * (OrderedFloat(len as f64) - 2.0);
@@ -696,18 +708,18 @@ impl MelodyMaker {
     }
 
     fn any_notes_after(melody: &Melody, start: usize) -> bool {
-        (start..melody.len()).any(|i| !melody[i].0.is_rest())
+        (start..melody.len()).any(|i| !melody[i].is_rest())
     }
 
     fn next_diatonic_gap(scale: &MusicMode, melody: &Melody, i: usize) -> Option<DiatonicInterval> {
-        let next = if i + 1 < melody.len() && !melody[i + 1].0.is_rest() {
+        let next = if i + 1 < melody.len() && !melody[i + 1].is_rest() {
             Some(i + 1)
         } else if i + 2 < melody.len() {
             Some(i + 2)
         } else {
             None
         };
-        next.map(|n| scale.diatonic_steps_between(melody[i].0.pitch, melody[n].0.pitch))
+        next.map(|n| scale.diatonic_steps_between(melody[i].pitch, melody[n].pitch))
     }
 
     pub fn all_figure_matches(&self, melody: &Melody) -> Vec<(usize, MelodicFigure, usize)> {
@@ -752,9 +764,7 @@ impl MelodyMaker {
 
     pub fn get_melody_sections(&self, melody: &Melody) -> Vec<MelodySection> {
         let consolidated = melody.get_consolidated_notes();
-        let consolidated_melody = Melody {
-            notes: consolidated.iter().map(|(_, n)| (*n, None)).collect(),
-        };
+        let consolidated_melody = Melody::from_vec(&consolidated.iter().map(|(_, n)| *n).collect());
         let intervals = consolidated_melody.diatonic_intervals();
         let subs = find_maximal_repeated_subs(
             &intervals,
@@ -780,10 +790,10 @@ impl MelodyMaker {
         let mut p_back = 0.0;
         let mut variation = Melody::new();
         let mut pitch_queue: VecDeque<MidiByte> = VecDeque::new();
-        variation.add(original[0].0);
+        variation.add(original[0]);
         for i in 1..original.len() {
-            if original[i].0.pitch() == original[i - 1].0.pitch() {
-                variation.add(original[i].0.repitched(variation.last_note().pitch()));
+            if original[i].pitch() == original[i - 1].pitch() {
+                variation.add(original[i].repitched(variation.last_note().pitch()));
             } else {
                 let popped = pitch_queue.pop_front().unwrap_or_else(|| {
                     let target_direction = if rand::random::<f64>() < 0.5 {
@@ -794,7 +804,7 @@ impl MelodyMaker {
                     };
 
                     let reduced_distro = distro.distro_with(|f| {
-                        MelodyDirection::find(*f, original[i].0.pitch(), &original, i)
+                        MelodyDirection::find(*f, original[i].pitch(), &original, i)
                             == target_direction
                     });
                     let figure = (if reduced_distro.is_empty() {
@@ -809,10 +819,10 @@ impl MelodyMaker {
                     }
                     pitch_queue.pop_front().unwrap()
                 });
-                if popped == original[i].0.pitch() {
+                if popped == original[i].pitch() {
                     p_back = 0.0;
                 }
-                variation.add(original[i].0.repitched(popped));
+                variation.add(original[i].repitched(popped));
             }
         }
         variation
@@ -840,10 +850,10 @@ impl MelodyMaker {
             let reduced_distro = distro.distro_with(|f| {
                 let mut matches = figure_len == f.len();
                 if figure_len <= 4 {
-                    let pitches = f.make_pitches(melody[start].0.pitch(), &scale);
+                    let pitches = f.make_pitches(melody[start].pitch(), &scale);
                     matches = matches
                         && pitches.back().unwrap() % NOTES_PER_OCTAVE
-                            == melody[end].0.pitch() % NOTES_PER_OCTAVE;
+                            == melody[end].pitch() % NOTES_PER_OCTAVE;
                 }
                 matches
             });
@@ -853,11 +863,11 @@ impl MelodyMaker {
                 &reduced_distro
             })
             .random_pick();
-            let mut pitches = figure.make_pitches(melody[start].0.pitch(), &scale);
+            let mut pitches = figure.make_pitches(melody[start].pitch(), &scale);
             while let Some(new_pitch) = pitches.pop_front() {
-                let original = melody[start].0.pitch();
-                while start < melody.len() && melody[start].0.pitch() == original {
-                    melody[start] = (melody[start].0.repitched(new_pitch), None); // TODO: This is bad - the approach I now have in mind is to mediate all Melody alterations through the as-yet-nonexistent auto-annotator.
+                let original = melody[start].pitch();
+                while start < melody.len() && melody[start].pitch() == original {
+                    melody[start] = melody[start].repitched(new_pitch); // TODO: This is bad - the approach I now have in mind is to mediate all Melody alterations through the as-yet-nonexistent auto-annotator.
                     start += 1;
                 }
             }
@@ -872,8 +882,8 @@ impl MelodyMaker {
             ranking.pop();
         }
         let mut ranking: BTreeMap<usize, Note> = ranking.iter().copied().collect();
-        ranking.insert(0, original[0].0);
-        ranking.insert(original.len() - 1, original[original.len() - 1].0);
+        ranking.insert(0, original[0]);
+        ranking.insert(original.len() - 1, original[original.len() - 1]);
         let mut variation = original.clone();
         let mut prev = 0;
         for i in ranking.keys() {
@@ -894,20 +904,20 @@ impl MelodyMaker {
                 return result;
             }
             i -= 1;
-            if !result[i].0.is_rest() {
+            if !result[i].is_rest() {
                 countdown -= 1;
             }
         }
-        let mut pitches = whimsifier.make_pitches(original[i].0.pitch(), &original.best_scale_for());
+        let mut pitches = whimsifier.make_pitches(original[i].pitch(), &original.best_scale_for());
         let mut i = original.len();
         while pitches.len() > 0 {
             i -= 1;
-            let pitch = if result[i].0.is_rest() {
+            let pitch = if result[i].is_rest() {
                 pitches[pitches.len() - 1]
             } else {
                 pitches.pop_back().unwrap()
             };
-            result[i] = (result[i].0.repitched(pitch), None); // TODO: Again, this is bad.
+            result[i] = result[i].repitched(pitch); // TODO: Again, this is bad.
         }
         result
     }
@@ -1073,17 +1083,17 @@ impl MelodySection {
     }
 
     fn remelodize_at(&self, melody: &mut Melody, start: usize, scale: &MusicMode) {
-        let mut pitch = melody[start].0.pitch;
+        let mut pitch = melody[start].pitch;
         let mut i = 0;
         let mut m = start;
         loop {
-            let last_pitch = melody[m].0.pitch;
-            melody[m].0.pitch = pitch; // TODO: This is bad. Invalidates the annotation.
+            let last_pitch = melody[m].pitch;
+            melody[m].pitch = pitch; // TODO: This is bad. Invalidates the annotation.
             m += 1;
             if m >= melody.len() {
                 break;
             }
-            if last_pitch != melody[m].0.pitch {
+            if last_pitch != melody[m].pitch {
                 pitch = scale.next_pitch(pitch, self.intervals[i]);
                 i += 1;
                 if i >= self.intervals.len() {
@@ -1208,7 +1218,7 @@ impl MelodyDirection {
         let final_pitch = figure_pitches.back().copied().unwrap();
         let mut i = target_start;
         loop {
-            if i == 0 || target_melody[i - 1].0.pitch() != target_melody[i].0.pitch() {
+            if i == 0 || target_melody[i - 1].pitch() != target_melody[i].pitch() {
                 figure_pitches.pop_front();
             }
             if i + 1 == target_melody.len() || figure_pitches.len() == 0 {
@@ -1217,7 +1227,7 @@ impl MelodyDirection {
                 i += 1;
             }
         }
-        let target_pitch = target_melody[i].0.pitch();
+        let target_pitch = target_melody[i].pitch();
         let start_pitch_distance = (start_pitch - target_pitch).abs();
         let figure_pitch_distance = (target_pitch - final_pitch).abs();
         if figure_pitch_distance < start_pitch_distance {
@@ -1710,9 +1720,9 @@ impl MelodicFigure {
         let mut p = 0;
         let mut m = start;
         while p < self.pattern().len() && m + 1 < melody.len() {
-            if melody[m].0.pitch != melody[m + 1].0.pitch {
+            if melody[m].pitch != melody[m + 1].pitch {
                 match scale
-                    .diatonic_steps_between(melody[m].0.pitch, melody[m + 1].0.pitch)
+                    .diatonic_steps_between(melody[m].pitch, melody[m + 1].pitch)
                     .pure_degree()
                 {
                     None => return None,
@@ -1849,13 +1859,6 @@ impl MelodicFigureShape {
     }
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, Ord, PartialOrd)]
-pub enum NoteAnnotation {
-    InMotive(usize),
-    InFigure(MelodicFigure),
-    Ornamentation,
-}
-
 #[cfg(test)]
 mod tests {
     use crate::analyzer::{
@@ -1914,8 +1917,8 @@ mod tests {
             assert_eq!(variant.len(), melody.len());
             assert_eq!(variant[0], melody[0]);
             assert_eq!(
-                variant[variant.len() - 1].0.pitch() % 12,
-                melody[variant.len() - 1].0.pitch() % 12
+                variant[variant.len() - 1].pitch() % 12,
+                melody[variant.len() - 1].pitch() % 12
             );
         }
     }
@@ -2152,10 +2155,10 @@ mod tests {
 
             let mut different_count = 0;
             for i in 0..var.len() {
-                assert_eq!(var[i].0.duration, melody[i].0.duration);
-                assert_eq!(var[i].0.velocity, melody[i].0.velocity);
-                assert!(!scale.contains(melody[i].0.pitch) || scale.contains(var[i].0.pitch));
-                if var[i].0.pitch != melody[i].0.pitch {
+                assert_eq!(var[i].duration, melody[i].duration);
+                assert_eq!(var[i].velocity, melody[i].velocity);
+                assert!(!scale.contains(melody[i].pitch) || scale.contains(var[i].pitch));
+                if var[i].pitch != melody[i].pitch {
                     different_count += 1;
                 }
             }
@@ -2190,11 +2193,11 @@ mod tests {
                 if melody.notes[i] != variation.notes[i] {
                     let pre_m = melody.notes[..i + 3]
                         .iter()
-                        .map(|(n,_)| n.pitch())
+                        .map(|n| n.pitch())
                         .collect::<Vec<_>>();
                     let pre_v = variation.notes[..i + 3]
                         .iter()
-                        .map(|(n,_)| n.pitch())
+                        .map(|n| n.pitch())
                         .collect::<Vec<_>>();
                     println!("{pre_m:?}");
                     println!("{pre_v:?}");
@@ -2242,9 +2245,7 @@ mod tests {
         println!("{} {}", scale.name(), scale.root());
         melody.tuple_print();
         let consolidated = melody.get_consolidated_notes();
-        let consolidated_melody = Melody {
-            notes: consolidated.iter().map(|(_, n)| (*n, None)).collect(),
-        }; // TODO: This is bad. No auto-annotation.
+        let consolidated_melody = Melody::from_vec(&consolidated.iter().map(|(_, n)| *n).collect());
         println!("{consolidated_melody:?}");
         let intervals = consolidated_melody.diatonic_intervals();
         println!("{intervals:?}");
@@ -2259,11 +2260,11 @@ mod tests {
                 if melody.notes[i] != variation.notes[i] {
                     let pre_m = melody.notes[..i + 3]
                         .iter()
-                        .map(|(n,_)| n.pitch())
+                        .map(|n| n.pitch())
                         .collect::<Vec<_>>();
                     let pre_v = variation.notes[..i + 3]
                         .iter()
-                        .map(|(n,_)| n.pitch())
+                        .map(|n| n.pitch())
                         .collect::<Vec<_>>();
                     println!("{pre_m:?}");
                     println!("{pre_v:?}");
@@ -2327,15 +2328,15 @@ mod tests {
             if let Some((matched, _matched_len)) = maker.matching_figure(&melody, start) {
                 figures.push((
                     Some(matched),
-                    matched.make_pitches(melody[start].0.pitch, &scale),
+                    matched.make_pitches(melody[start].pitch, &scale),
                 ));
             } else {
-                figures.push((None, VecDeque::from([melody[start].0.pitch])));
+                figures.push((None, VecDeque::from([melody[start].pitch])));
             }
             start += 1;
         }
         for (i, (figure, notes)) in figures.iter().enumerate() {
-            println!("{}: {}", i, melody[i].0.pitch());
+            println!("{}: {}", i, melody[i].pitch());
             println!("{:?} {:?}", figure, notes);
             if i > 0 {
                 println!(
