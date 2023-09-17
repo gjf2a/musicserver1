@@ -219,6 +219,10 @@ impl Melody {
         );
     }
 
+    pub fn section_number_for(&self, note_index: usize) -> Option<usize> {
+        self.sections.iter().enumerate().find(|(_, s)| s.contains(note_index)).map(|(i,_)| i)
+    }
+
     pub fn from_vec(notes: &Vec<Note>) -> Self {
         let mut result = Self::new();
         result.notes = notes.clone();

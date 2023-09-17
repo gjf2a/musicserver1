@@ -529,7 +529,7 @@ impl ReplayerApp {
         if self.show_variation {
             melodies.push((variation_info.melody(), Color32::RED));
         }
-        MelodyRenderer::render(ui, size, &melodies, self.melody_progress.clone());
+        MelodyRenderer::render(ui, size, &melodies, self.show_melody_sections, self.melody_progress.clone());
     }
 
     fn show_pref_selector(&mut self, ui: &mut Ui, label: &str, pref: Arc<AtomicCell<Preference>>) {
@@ -1002,6 +1002,7 @@ impl MelodyRenderer {
         ui: &mut Ui,
         size: Vec2,
         melodies: &Vec<(&Melody, Color32)>,
+        show_sections: bool,
         melody_progress: Arc<AtomicCell<Option<f32>>>,
     ) {
         if melodies.len() > 0 {
@@ -1030,7 +1031,7 @@ impl MelodyRenderer {
             let y_bass = renderer.y_middle_c + renderer.staff_line_space();
             renderer.draw_staff(&painter, Clef::Bass, y_bass);
             for (melody, color) in melodies.iter().rev() {
-                renderer.draw_melody(&painter, melody, *color);
+                renderer.draw_melody(&painter, melody, show_sections, *color);
             }
         }
     }
@@ -1050,16 +1051,25 @@ impl MelodyRenderer {
         }
     }
 
-    fn draw_melody(&self, painter: &Painter, melody: &Melody, color: Color32) {
+    fn draw_melody(&self, painter: &Painter, melody: &Melody, show_sections: bool, color: Color32) {
         let mut total_duration = 0.0;
-        for note in melody.iter() {
+        for (i, note) in melody.iter().enumerate() {
             let x = self.note_offset_x()
                 + self.total_note_x() * total_duration / melody.duration() as f32;
             total_duration += note.duration() as f32;
             if !note.is_rest() {
                 let (staff_offset, auxiliary_symbol) = self.scale.staff_position(note.pitch());
                 let y = self.y_middle_c - staff_offset as f32 * self.y_per_pitch;
-                painter.circle_filled(Pos2 { x, y }, self.y_per_pitch, color);
+                if show_sections {
+                    match melody.section_number_for(i) {
+                        None => painter.circle_filled(Pos2 { x, y }, self.y_per_pitch, color),
+                        Some(s) => {
+                            painter.text(Pos2 {x, y}, Align2::CENTER_CENTER, format!("{s}"), ReplayerApp::font_id(ACCIDENTAL_SIZE_MULTIPLIER * self.y_per_pitch), color);
+                        }
+                    };
+                } else {
+                    painter.circle_filled(Pos2 { x, y }, self.y_per_pitch, color);
+                }
                 if let Some(auxiliary_symbol) = auxiliary_symbol {
                     let x = x + self.staff_line_space();
                     self.draw_accidental(&painter, auxiliary_symbol, x, y, color);
