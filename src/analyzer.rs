@@ -196,11 +196,38 @@ fn dotify_float(f: OrderedFloat<f64>) -> String {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Melody {
     notes: Vec<Note>,
+    sections: Vec<Subsequences>,
 }
 
 impl Melody {
+    const MIN_MOTIVE_LEN: usize = 2;
+    const MIN_MOTIVE_REPETITIONS: usize = 2;
+
     pub fn new() -> Self {
-        Melody { notes: vec![] }
+        Melody {
+            notes: vec![],
+            sections: vec![],
+        }
+    }
+
+    fn identify_sections(&mut self) {
+        let pitches_only = self.notes.iter().map(|n| n.pitch).collect::<Vec<_>>();
+        self.sections = find_maximal_repeated_subs(
+            &pitches_only,
+            Self::MIN_MOTIVE_REPETITIONS,
+            Self::MIN_MOTIVE_LEN,
+        );
+    }
+
+    pub fn section_number_for(&self, note_index: usize) -> Option<usize> {
+        self.sections.iter().enumerate().find(|(_, s)| s.contains(note_index)).map(|(i,_)| i)
+    }
+
+    pub fn from_vec(notes: &Vec<Note>) -> Self {
+        let mut result = Self::new();
+        result.notes = notes.clone();
+        result.identify_sections();
+        result
     }
 
     /// This method exists solely for debugging purposes, to give a more concise
@@ -247,15 +274,16 @@ impl Melody {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Note> {
-        self.notes.iter()
+        self.notes.iter().map(|n| n)
     }
 
     pub fn fragment(&self, start: usize, length: usize) -> Melody {
-        let mut notes = vec![];
+        let mut result = Self::new();
         for i in start..(start + length) {
-            notes.push(self[i]);
+            result.notes.push(self.notes[i]);
         }
-        Melody { notes }
+        result.identify_sections();
+        result
     }
 
     pub fn pitch_subsequence_at(&self, start: usize, length: usize) -> Option<Vec<MidiByte>> {
@@ -296,21 +324,23 @@ impl Melody {
         durations[durations.len() / 2]
     }
 
-    pub fn from(s: &str) -> Self {
-        let mut notes = Vec::new();
+    pub fn from_str(s: &str) -> Self {
+        let mut result = Self::new();
         let mut nums = s.split(",");
         while let Some(note) = nums.next() {
             let note = note.parse().unwrap();
             let duration = nums.next().unwrap().parse().unwrap();
             let f_intensity: OrderedFloat<f64> = nums.next().unwrap().parse().unwrap();
             let intensity = (f_intensity.into_inner() * MAX_MIDI_VALUE as f64) as MidiByte;
-            notes.push(Note::new(note, duration, intensity));
+            result.notes.push(Note::new(note, duration, intensity));
         }
-        Melody { notes }
+        result.identify_sections();
+        result
     }
 
     pub fn add(&mut self, n: Note) {
         self.notes.push(n);
+        self.identify_sections();
     }
 
     pub fn sonic_pi_list(&self) -> String {
@@ -517,6 +547,7 @@ impl Melody {
         let mut result = self
             .notes
             .iter()
+            .map(|n| n)
             .copied()
             .enumerate()
             .filter(|(_, n)| !n.is_rest())
@@ -526,17 +557,17 @@ impl Melody {
     }
 }
 
-impl std::ops::IndexMut<usize> for Melody {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.notes[index]
-    }
-}
-
 impl std::ops::Index<usize> for Melody {
     type Output = Note;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.notes[index]
+    }
+}
+
+impl std::ops::IndexMut<usize> for Melody {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.notes[index]
     }
 }
 
@@ -768,9 +799,7 @@ impl MelodyMaker {
 
     pub fn get_melody_sections(&self, melody: &Melody) -> Vec<MelodySection> {
         let consolidated = melody.get_consolidated_notes();
-        let consolidated_melody = Melody {
-            notes: consolidated.iter().map(|(_, n)| *n).collect(),
-        };
+        let consolidated_melody = Melody::from_vec(&consolidated.iter().map(|(_, n)| *n).collect());
         let intervals = consolidated_melody.diatonic_intervals();
         let subs = find_maximal_repeated_subs(
             &intervals,
@@ -873,7 +902,7 @@ impl MelodyMaker {
             while let Some(new_pitch) = pitches.pop_front() {
                 let original = melody[start].pitch();
                 while start < melody.len() && melody[start].pitch() == original {
-                    melody[start] = melody[start].repitched(new_pitch);
+                    melody[start] = melody[start].repitched(new_pitch); // TODO: This is bad - the approach I now have in mind is to mediate all Melody alterations through the as-yet-nonexistent auto-annotator.
                     start += 1;
                 }
             }
@@ -923,7 +952,7 @@ impl MelodyMaker {
             } else {
                 pitches.pop_back().unwrap()
             };
-            result[i] = result[i].repitched(pitch);
+            result[i] = result[i].repitched(pitch); // TODO: Again, this is bad.
         }
         result
     }
@@ -1094,7 +1123,7 @@ impl MelodySection {
         let mut m = start;
         loop {
             let last_pitch = melody[m].pitch;
-            melody[m].pitch = pitch;
+            melody[m].pitch = pitch; // TODO: This is bad. Invalidates the annotation.
             m += 1;
             if m >= melody.len() {
                 break;
@@ -1865,13 +1894,6 @@ impl MelodicFigureShape {
     }
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash, Ord, PartialOrd)]
-pub enum NoteAnnotation {
-    InMotive(usize),
-    InFigure(MelodicFigure),
-    Ornamentation,
-}
-
 #[cfg(test)]
 mod tests {
     use crate::analyzer::{
@@ -1894,7 +1916,7 @@ mod tests {
     #[test]
     fn test_parse_melody() {
         let m = "69,0.24,1.0,69,0.09,0.0,72,0.31,1.0,72,0.08,0.0,71,0.29,0.69";
-        let notes = Melody::from(m);
+        let notes = Melody::from_str(m);
         println!("{}", notes.view_notes());
         assert_eq!(format!("{:?}", notes), "Melody { notes: [Note { pitch: 69, duration: OrderedFloat(0.24), velocity: 127 }, Note { pitch: 69, duration: OrderedFloat(0.09), velocity: 0 }, Note { pitch: 72, duration: OrderedFloat(0.31), velocity: 127 }, Note { pitch: 72, duration: OrderedFloat(0.08), velocity: 0 }, Note { pitch: 71, duration: OrderedFloat(0.29), velocity: 87 }] }");
     }
@@ -2093,13 +2115,13 @@ mod tests {
 
     #[test]
     fn test_send_back() {
-        let tune = Melody::from(COUNTDOWN_MELODY);
+        let tune = Melody::from_str(COUNTDOWN_MELODY);
         assert_eq!(tune.sonic_pi_list(), COUNTDOWN_ECHO);
     }
 
     #[test]
     fn test_diatonic_degree() {
-        let melody = Melody::from(EXAMPLE_MELODY);
+        let melody = Melody::from_str(EXAMPLE_MELODY);
         let scale = melody.best_scale_for();
         assert_eq!(scale.name(), "G Ionian");
         for (i, pitch) in [67, 69, 71, 72, 74, 76, 78, 79, 81, 83, 84, 86, 88, 90, 91]
@@ -2130,7 +2152,7 @@ mod tests {
     }
 
     fn test_figure_match(melody_str: &str) -> (usize, BTreeSet<MelodicFigure>) {
-        let melody = Melody::from(melody_str);
+        let melody = Melody::from_str(melody_str);
         let scale = melody.best_scale_for();
         println!("scale: {}", scale.name());
         let maker = MelodyMaker::new();
@@ -2145,7 +2167,7 @@ mod tests {
     }
 
     fn test_variation_unchanged<V: Fn(&MelodyMaker, &Melody, f64) -> Melody>(v_func: V) {
-        let melody = Melody::from(COUNTDOWN_MELODY);
+        let melody = Melody::from_str(COUNTDOWN_MELODY);
         let mut maker = MelodyMaker::new();
         let v = v_func(&mut maker, &melody, 0.0);
         assert_eq!(v.len(), melody.len());
@@ -2157,7 +2179,7 @@ mod tests {
         expected_lo: f64,
         expected_hi: f64,
     ) {
-        let melody = Melody::from(COUNTDOWN_MELODY);
+        let melody = Melody::from_str(COUNTDOWN_MELODY);
         let scale = melody.best_scale_for();
         let mut maker = MelodyMaker::new();
         let mut lo = OrderedFloat(1.0);
@@ -2192,7 +2214,7 @@ mod tests {
 
     #[test]
     fn test_motive_remelodize_unchanged() {
-        let melody = Melody::from(COUNTDOWN_MELODY);
+        let melody = Melody::from_str(COUNTDOWN_MELODY);
         melody.tuple_print();
         println!("{melody:?}");
         let maker = MelodyMaker::new();
@@ -2226,43 +2248,39 @@ mod tests {
 
     #[test]
     fn remelodize_countdown_bug() {
-        let melody = Melody {
-            notes: vec![
-                Note::new(74, 0.56, 127),
-                Note::new(74, 0.01, 0),
-                Note::new(73, 1.09, 100),
-                Note::new(73, 0.07, 0),
-                Note::new(75, 0.16, 114),
-                Note::new(75, 0.03, 0),
-                Note::new(73, 0.16, 106),
-                Note::new(73, 0.03, 0),
-                Note::new(71, 0.18, 72),
-                Note::new(71, 0.03, 0),
-                Note::new(73, 0.78, 81),
-                Note::new(73, 0.06, 0),
-                Note::new(73, 0.14, 115),
-                Note::new(73, 0.04, 0),
-                Note::new(73, 0.14, 110),
-                Note::new(73, 0.04, 0),
-                Note::new(73, 0.26, 102),
-                Note::new(73, 0.1, 0),
-                Note::new(71, 0.23, 115),
-                Note::new(71, 0.07, 0),
-                Note::new(69, 0.19, 124),
-                Note::new(69, 0.1, 0),
-                Note::new(68, 0.23, 74),
-                Note::new(68, 0.15, 0),
-                Note::new(66, 1.22, 86),
-                Note::new(66, 2.0, 0),
-            ],
-        };
+        let melody = Melody::from_vec(&vec![
+            Note::new(74, 0.56, 127),
+            Note::new(74, 0.01, 0),
+            Note::new(73, 1.09, 100),
+            Note::new(73, 0.07, 0),
+            Note::new(75, 0.16, 114),
+            Note::new(75, 0.03, 0),
+            Note::new(73, 0.16, 106),
+            Note::new(73, 0.03, 0),
+            Note::new(71, 0.18, 72),
+            Note::new(71, 0.03, 0),
+            Note::new(73, 0.78, 81),
+            Note::new(73, 0.06, 0),
+            Note::new(73, 0.14, 115),
+            Note::new(73, 0.04, 0),
+            Note::new(73, 0.14, 110),
+            Note::new(73, 0.04, 0),
+            Note::new(73, 0.26, 102),
+            Note::new(73, 0.1, 0),
+            Note::new(71, 0.23, 115),
+            Note::new(71, 0.07, 0),
+            Note::new(69, 0.19, 124),
+            Note::new(69, 0.1, 0),
+            Note::new(68, 0.23, 74),
+            Note::new(68, 0.15, 0),
+            Note::new(66, 1.22, 86),
+            Note::new(66, 2.0, 0),
+        ]);
         let scale = melody.best_scale_for();
         println!("{} {}", scale.name(), scale.root());
         melody.tuple_print();
         let consolidated = melody.get_consolidated_notes();
-        let consolidated_melody = Melody {
-            notes: consolidated.iter().map(|(_, n)| *n).collect(),
-        };
+        let consolidated_melody = Melody::from_vec(&consolidated.iter().map(|(_, n)| *n).collect());
         println!("{consolidated_melody:?}");
         let intervals = consolidated_melody.diatonic_intervals();
         println!("{intervals:?}");
@@ -2316,7 +2334,7 @@ mod tests {
 
     #[test]
     fn test_matching_figure() {
-        let melody = Melody::from(COUNTDOWN_MELODY);
+        let melody = Melody::from_str(COUNTDOWN_MELODY);
         let scale = melody.best_scale_for();
 
         let pitch1 = melody.pitch_subsequence_at(0, 4).unwrap();
@@ -2336,7 +2354,7 @@ mod tests {
 
     #[test]
     fn study_figures() {
-        let melody = Melody::from(COUNTDOWN_MELODY);
+        let melody = Melody::from_str(COUNTDOWN_MELODY);
         let scale = melody.best_scale_for();
         let maker = MelodyMaker::new();
         let mut start = 0;
@@ -2425,7 +2443,7 @@ mod tests {
 
     #[test]
     fn test_distinct_seq_len() {
-        let countdown = Melody::from(COUNTDOWN_MELODY);
+        let countdown = Melody::from_str(COUNTDOWN_MELODY);
         assert_eq!(countdown.distinct_seq_len(0, 3).unwrap(), 6);
         assert_eq!(countdown.distinct_seq_len(8, 3).unwrap(), 8)
     }
@@ -3020,72 +3038,70 @@ mod tests {
         for section in new_sections {
             section.remelodize(&mut melody);
         }
-        let expected = Melody {
-            notes: vec![
-                Note::new(60, 0.487445772, 92),
-                Note::new(60, 0.377421752, 0),
-                Note::new(60, 0.289316858, 93),
-                Note::new(60, 0.005971111, 0),
-                Note::new(64, 0.248933836, 102),
-                Note::new(64, 0.05767016, 0),
-                Note::new(62, 0.25962179, 113),
-                Note::new(62, 0.229479448, 0),
-                Note::new(65, 0.317320844, 4),
-                Note::new(65, 0.042830378, 0),
-                Note::new(65, 0.582655121, 70),
-                Note::new(65, 0.50379576, 0),
-                Note::new(65, 0.250825755, 106),
-                Note::new(65, 0.017210736, 0),
-                Note::new(64, 0.272029135, 100),
-                Note::new(64, 0.027428442, 0),
-                Note::new(65, 1.126041184, 99),
-                Note::new(64, 0.548192689, 99),
-                Note::new(65, 0.273066185, 99),
-                Note::new(64, 0.60045823, 117),
-                Note::new(64, 0.450277594, 0),
-                Note::new(64, 0.269494265, 85),
-                Note::new(64, 0.003552609, 0),
-                Note::new(62, 0.267746147, 96),
-                Note::new(62, 0.016828202, 0),
-                Note::new(64, 0.382390025, 123),
-                Note::new(64, 0.128571533, 0),
-                Note::new(64, 0.699718069, 113),
-                Note::new(64, 0.126759354, 0),
-                Note::new(62, 0.867493649, 117),
-                Note::new(62, 0.46433006, 0),
-                Note::new(64, 0.268483555, 106),
-                Note::new(60, 1.323782698, 106),
-                Note::new(60, 0.247095603, 100),
-                Note::new(60, 0.026361804, 0),
-                Note::new(64, 0.312539865, 30),
-                Note::new(64, 0.008570104, 0),
-                Note::new(62, 0.267542603, 100),
-                Note::new(62, 0.05672056, 0),
-                Note::new(65, 0.60457732, 110),
-                Note::new(65, 0.537155291, 0),
-                Note::new(65, 0.271879248, 113),
-                Note::new(65, 0.06866826, 0),
-                Note::new(67, 0.253815119, 88),
-                Note::new(67, 0.10896619, 0),
-                Note::new(65, 1.4822801190000001, 78),
-                Note::new(67, 0.362781309, 78),
-                Note::new(65, 0.202632925, 78),
-                Note::new(64, 0.651313167, 118),
-                Note::new(64, 0.412422427, 0),
-                Note::new(64, 0.315570477, 86),
-                Note::new(64, 0.032453773, 0),
-                Note::new(57, 1.254315847, 92),
-                Note::new(65, 0.321109969, 92),
-                Note::new(64, 0.64096164, 117),
-                Note::new(64, 0.485079544, 0),
-                Note::new(55, 0.530547672, 94),
-                Note::new(55, 0.017645017, 0),
-                Note::new(62, 0.263664442, 125),
-                Note::new(62, 0.009401743, 0),
-                Note::new(60, 0.670999911, 111),
-                Note::new(60, 1.5000003039999998, 0),
-            ],
-        };
+        let expected = Melody::from_vec(&vec![
+            Note::new(60, 0.487445772, 92),
+            Note::new(60, 0.377421752, 0),
+            Note::new(60, 0.289316858, 93),
+            Note::new(60, 0.005971111, 0),
+            Note::new(64, 0.248933836, 102),
+            Note::new(64, 0.05767016, 0),
+            Note::new(62, 0.25962179, 113),
+            Note::new(62, 0.229479448, 0),
+            Note::new(65, 0.317320844, 4),
+            Note::new(65, 0.042830378, 0),
+            Note::new(65, 0.582655121, 70),
+            Note::new(65, 0.50379576, 0),
+            Note::new(65, 0.250825755, 106),
+            Note::new(65, 0.017210736, 0),
+            Note::new(64, 0.272029135, 100),
+            Note::new(64, 0.027428442, 0),
+            Note::new(65, 1.126041184, 99),
+            Note::new(64, 0.548192689, 99),
+            Note::new(65, 0.273066185, 99),
+            Note::new(64, 0.60045823, 117),
+            Note::new(64, 0.450277594, 0),
+            Note::new(64, 0.269494265, 85),
+            Note::new(64, 0.003552609, 0),
+            Note::new(62, 0.267746147, 96),
+            Note::new(62, 0.016828202, 0),
+            Note::new(64, 0.382390025, 123),
+            Note::new(64, 0.128571533, 0),
+            Note::new(64, 0.699718069, 113),
+            Note::new(64, 0.126759354, 0),
+            Note::new(62, 0.867493649, 117),
+            Note::new(62, 0.46433006, 0),
+            Note::new(64, 0.268483555, 106),
+            Note::new(60, 1.323782698, 106),
+            Note::new(60, 0.247095603, 100),
+            Note::new(60, 0.026361804, 0),
+            Note::new(64, 0.312539865, 30),
+            Note::new(64, 0.008570104, 0),
+            Note::new(62, 0.267542603, 100),
+            Note::new(62, 0.05672056, 0),
+            Note::new(65, 0.60457732, 110),
+            Note::new(65, 0.537155291, 0),
+            Note::new(65, 0.271879248, 113),
+            Note::new(65, 0.06866826, 0),
+            Note::new(67, 0.253815119, 88),
+            Note::new(67, 0.10896619, 0),
+            Note::new(65, 1.4822801190000001, 78),
+            Note::new(67, 0.362781309, 78),
+            Note::new(65, 0.202632925, 78),
+            Note::new(64, 0.651313167, 118),
+            Note::new(64, 0.412422427, 0),
+            Note::new(64, 0.315570477, 86),
+            Note::new(64, 0.032453773, 0),
+            Note::new(57, 1.254315847, 92),
+            Note::new(65, 0.321109969, 92),
+            Note::new(64, 0.64096164, 117),
+            Note::new(64, 0.485079544, 0),
+            Note::new(55, 0.530547672, 94),
+            Note::new(55, 0.017645017, 0),
+            Note::new(62, 0.263664442, 125),
+            Note::new(62, 0.009401743, 0),
+            Note::new(60, 0.670999911, 111),
+            Note::new(60, 1.5000003039999998, 0),
+        ]);
         assert_eq!(melody, expected);
     }
 
@@ -3148,70 +3164,66 @@ mod tests {
 
     #[test]
     fn test_without_brief_notes() {
-        let melody = Melody {
-            notes: vec![
-                Note::new(72, 0.369792827, 127),
-                Note::new(72, 0.061621093, 0),
-                Note::new(74, 0.329988672, 127),
-                Note::new(74, 0.127228427, 0),
-                Note::new(76, 0.3714564, 99),
-                Note::new(76, 0.085686124, 0),
-                Note::new(77, 0.330959396, 127),
-                Note::new(77, 0.159859305, 0),
-                Note::new(72, 0.314343867, 76),
-                Note::new(72, 0.026874508, 0),
-                Note::new(74, 0.037653197, 12),
-                Note::new(74, 0.044087338, 0),
-                Note::new(75, 0.024298299, 77),
-                Note::new(75, 0.000002524, 0),
-                Note::new(74, 0.280279047, 80),
-                Note::new(74, 0.178904154, 0),
-                Note::new(76, 0.323056836, 89),
-                Note::new(76, 0.1009156, 0),
-                Note::new(77, 0.330098162, 127),
-                Note::new(77, 0.10557298, 0),
-                Note::new(72, 0.300934497, 80),
-                Note::new(72, 0.00000287, 0),
-                Note::new(73, 0.022893581, 20),
-                Note::new(73, 0.044463414, 0),
-                Note::new(74, 0.394669786, 101),
-                Note::new(74, 0.078055973, 0),
-                Note::new(77, 0.025097277, 91),
-                Note::new(77, 0.00000256, 0),
-                Note::new(76, 0.332283936, 92),
-                Note::new(76, 0.113469215, 0),
-                Note::new(77, 0.345122384, 127),
-                Note::new(77, 1.5000002829999999, 0),
-            ],
-        };
-        let expected = Melody {
-            notes: vec![
-                Note::new(72, 0.369792827, 127),
-                Note::new(72, 0.061621093, 0),
-                Note::new(74, 0.329988672, 127),
-                Note::new(74, 0.127228427, 0),
-                Note::new(76, 0.3714564, 99),
-                Note::new(76, 0.085686124, 0),
-                Note::new(77, 0.330959396, 127),
-                Note::new(77, 0.159859305, 0),
-                Note::new(72, 0.314343867, 76),
-                Note::new(72, 0.026874508, 0),
-                Note::new(74, 0.280279047, 80),
-                Note::new(74, 0.178904154, 0),
-                Note::new(76, 0.323056836, 89),
-                Note::new(76, 0.1009156, 0),
-                Note::new(77, 0.330098162, 127),
-                Note::new(77, 0.10557298, 0),
-                Note::new(72, 0.300934497, 80),
-                Note::new(72, 0.00000287, 0),
-                Note::new(74, 0.394669786, 101),
-                Note::new(74, 0.078055973, 0),
-                Note::new(76, 0.332283936, 92),
-                Note::new(76, 0.113469215, 0),
-                Note::new(77, 0.345122384, 127),
-                Note::new(77, 1.5000002829999999, 0),
-            ],
-        };
+        let melody = Melody::from_vec(&vec![
+            Note::new(72, 0.369792827, 127),
+            Note::new(72, 0.061621093, 0),
+            Note::new(74, 0.329988672, 127),
+            Note::new(74, 0.127228427, 0),
+            Note::new(76, 0.3714564, 99),
+            Note::new(76, 0.085686124, 0),
+            Note::new(77, 0.330959396, 127),
+            Note::new(77, 0.159859305, 0),
+            Note::new(72, 0.314343867, 76),
+            Note::new(72, 0.026874508, 0),
+            Note::new(74, 0.037653197, 12),
+            Note::new(74, 0.044087338, 0),
+            Note::new(75, 0.024298299, 77),
+            Note::new(75, 0.000002524, 0),
+            Note::new(74, 0.280279047, 80),
+            Note::new(74, 0.178904154, 0),
+            Note::new(76, 0.323056836, 89),
+            Note::new(76, 0.1009156, 0),
+            Note::new(77, 0.330098162, 127),
+            Note::new(77, 0.10557298, 0),
+            Note::new(72, 0.300934497, 80),
+            Note::new(72, 0.00000287, 0),
+            Note::new(73, 0.022893581, 20),
+            Note::new(73, 0.044463414, 0),
+            Note::new(74, 0.394669786, 101),
+            Note::new(74, 0.078055973, 0),
+            Note::new(77, 0.025097277, 91),
+            Note::new(77, 0.00000256, 0),
+            Note::new(76, 0.332283936, 92),
+            Note::new(76, 0.113469215, 0),
+            Note::new(77, 0.345122384, 127),
+            Note::new(77, 1.5000002829999999, 0),
+        ]);
+        let expected = Melody::from_vec(&vec![
+            Note::new(72, 0.369792827, 127),
+            Note::new(72, 0.061621093, 0),
+            Note::new(74, 0.329988672, 127),
+            Note::new(74, 0.127228427, 0),
+            Note::new(76, 0.3714564, 99),
+            Note::new(76, 0.085686124, 0),
+            Note::new(77, 0.330959396, 127),
+            Note::new(77, 0.159859305, 0),
+            Note::new(72, 0.314343867, 76),
+            Note::new(72, 0.026874508, 0),
+            Note::new(74, 0.280279047, 80),
+            Note::new(74, 0.178904154, 0),
+            Note::new(76, 0.323056836, 89),
+            Note::new(76, 0.1009156, 0),
+            Note::new(77, 0.330098162, 127),
+            Note::new(77, 0.10557298, 0),
+            Note::new(72, 0.300934497, 80),
+            Note::new(72, 0.00000287, 0),
+            Note::new(74, 0.394669786, 101),
+            Note::new(74, 0.078055973, 0),
+            Note::new(76, 0.332283936, 92),
+            Note::new(76, 0.113469215, 0),
+            Note::new(77, 0.345122384, 127),
+            Note::new(77, 1.5000002829999999, 0),
+        ]);
         assert_eq!(melody.without_brief_notes(0.1), expected);
     }
 

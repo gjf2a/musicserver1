@@ -53,6 +53,10 @@ impl Subsequences {
     pub fn starts(&self) -> &Vec<usize> {
         &self.starts
     }
+
+    pub fn contains(&self, i: usize) -> bool {
+        self.starts.iter().find(|start| **start <= i && i < **start + self.length).is_some()
+    }
 }
 
 fn find_subs_of_length<T: SeqItem>(items: &Vec<T>, length: usize) -> Vec<Subsequences> {

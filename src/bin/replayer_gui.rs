@@ -20,8 +20,8 @@ use musicserver1::database::{
     Preference, VariationStats,
 };
 use musicserver1::runtime::{
-    make_synth_table, replay_slider, send_recorded_melody, ChooserTable, MelodyRunStatus,
-    SliderValue, SynthChoice, VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER, send_two_melodies,
+    make_synth_table, replay_slider, send_recorded_melody, send_two_melodies, ChooserTable,
+    MelodyRunStatus, SliderValue, SynthChoice, VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER,
 };
 use std::cmp::{max, min};
 use std::fmt::Display;
@@ -39,7 +39,8 @@ fn main() {
         "Replayer",
         native_options,
         Box::new(|cc| Box::new(ReplayerApp::new(cc).unwrap())),
-    ).unwrap();
+    )
+    .unwrap();
 }
 
 #[derive(Clone)]
@@ -211,6 +212,7 @@ struct ReplayerApp {
     variations_of_current_melody: bool,
     show_variation: bool,
     show_synth_choices: bool,
+    show_melody_sections: bool,
     new_tags: [String; 2],
     quit_threads: Arc<AtomicCell<bool>>,
 }
@@ -301,7 +303,8 @@ impl ReplayerApp {
             adjust_search_preferences: false,
             variations_of_current_melody: false,
             show_variation: true,
-            show_synth_choices: true,
+            show_synth_choices: false,
+            show_melody_sections: false,
             new_tags: [String::new(), String::new()],
             quit_threads: Arc::new(AtomicCell::new(false)),
         };
@@ -392,17 +395,13 @@ impl ReplayerApp {
 
     fn update_synths(&mut self, human_name: &str, ai_name: &str) {
         if human_name != self.human_synth.name {
-            let msg = SynthMsg::program_change(
-                self.human_synth.current_index() as u8,
-                HUMAN_SPEAKER,
-            );
+            let msg =
+                SynthMsg::program_change(self.human_synth.current_index() as u8, HUMAN_SPEAKER);
             self.ai2output.push(msg);
         }
         if ai_name != self.ai_synth.name {
-            let msg = SynthMsg::program_change(
-                self.ai_synth.current_index() as u8,
-                VARIATION_SPEAKER,
-            );
+            let msg =
+                SynthMsg::program_change(self.ai_synth.current_index() as u8, VARIATION_SPEAKER);
             self.ai2output.push(msg);
         }
     }
@@ -432,6 +431,7 @@ impl ReplayerApp {
         if self.adjust_search_preferences {
             self.search_preference_screen(ui);
         } else {
+            ui.checkbox(&mut self.show_melody_sections, "Show Melody Sections");
             let before = self.variations_of_current_melody;
             ui.checkbox(
                 &mut self.variations_of_current_melody,
@@ -445,11 +445,7 @@ impl ReplayerApp {
                 if before {
                     self.request_refresh();
                 }
-                let before = self.show_variation;
                 ui.checkbox(&mut self.show_variation, "Show Variation");
-                if before != self.show_variation {
-                    self.request_refresh();
-                }
             }
             if self.displaying_melody_var_info() {
                 self.display_melody_info(ui, staff_scaling);
@@ -533,7 +529,7 @@ impl ReplayerApp {
         if self.show_variation {
             melodies.push((variation_info.melody(), Color32::RED));
         }
-        MelodyRenderer::render(ui, size, &melodies, self.melody_progress.clone());
+        MelodyRenderer::render(ui, size, &melodies, self.show_melody_sections, self.melody_progress.clone());
     }
 
     fn show_pref_selector(&mut self, ui: &mut Ui, label: &str, pref: Arc<AtomicCell<Preference>>) {
@@ -628,7 +624,6 @@ impl ReplayerApp {
             );
         });
     }
-    
 
     fn melody_arrow<
         F: Fn(&VecTracker<(MelodyInfo, MelodyInfo, VariationStats)>) -> bool,
@@ -685,7 +680,13 @@ impl ReplayerApp {
         let melody_run_status = self.melody_run_status.clone();
         thread::spawn(move || {
             while melody_run_status.is_stopping() {}
-            send_two_melodies(&human_melody, &computer_melody, ai2output, melody_progress, melody_run_status);
+            send_two_melodies(
+                &human_melody,
+                &computer_melody,
+                ai2output,
+                melody_progress,
+                melody_run_status,
+            );
         });
     }
 
@@ -1001,6 +1002,7 @@ impl MelodyRenderer {
         ui: &mut Ui,
         size: Vec2,
         melodies: &Vec<(&Melody, Color32)>,
+        show_sections: bool,
         melody_progress: Arc<AtomicCell<Option<f32>>>,
     ) {
         if melodies.len() > 0 {
@@ -1029,7 +1031,7 @@ impl MelodyRenderer {
             let y_bass = renderer.y_middle_c + renderer.staff_line_space();
             renderer.draw_staff(&painter, Clef::Bass, y_bass);
             for (melody, color) in melodies.iter().rev() {
-                renderer.draw_melody(&painter, melody, *color);
+                renderer.draw_melody(&painter, melody, show_sections, *color);
             }
         }
     }
@@ -1049,16 +1051,25 @@ impl MelodyRenderer {
         }
     }
 
-    fn draw_melody(&self, painter: &Painter, melody: &Melody, color: Color32) {
+    fn draw_melody(&self, painter: &Painter, melody: &Melody, show_sections: bool, color: Color32) {
         let mut total_duration = 0.0;
-        for note in melody.iter() {
+        for (i, note) in melody.iter().enumerate() {
             let x = self.note_offset_x()
                 + self.total_note_x() * total_duration / melody.duration() as f32;
             total_duration += note.duration() as f32;
             if !note.is_rest() {
                 let (staff_offset, auxiliary_symbol) = self.scale.staff_position(note.pitch());
                 let y = self.y_middle_c - staff_offset as f32 * self.y_per_pitch;
-                painter.circle_filled(Pos2 { x, y }, self.y_per_pitch, color);
+                if show_sections {
+                    match melody.section_number_for(i) {
+                        None => painter.circle_filled(Pos2 { x, y }, self.y_per_pitch, color),
+                        Some(s) => {
+                            painter.text(Pos2 {x, y}, Align2::CENTER_CENTER, format!("{s}"), ReplayerApp::font_id(ACCIDENTAL_SIZE_MULTIPLIER * self.y_per_pitch), color);
+                        }
+                    };
+                } else {
+                    painter.circle_filled(Pos2 { x, y }, self.y_per_pitch, color);
+                }
                 if let Some(auxiliary_symbol) = auxiliary_symbol {
                     let x = x + self.staff_line_space();
                     self.draw_accidental(&painter, auxiliary_symbol, x, y, color);
