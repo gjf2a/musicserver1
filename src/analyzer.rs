@@ -772,31 +772,6 @@ impl MelodyMaker {
         variation
     }
 
-    pub fn get_motives_and_figures(&self, melody: &Melody) -> Vec<Vec<NoteAnnotation>> {
-        let mut annotations = (0..melody.len()).map(|_| Vec::new()).collect();
-        self.add_motives_to(melody, &mut annotations);
-        self.add_figures_to(melody, &mut annotations);
-        annotations
-    }
-
-    fn add_motives_to(&self, melody: &Melody, annotations: &mut Vec<Vec<NoteAnnotation>>) {
-        assert_eq!(melody.len(), annotations.len());
-        let sections = self.get_melody_sections(melody);
-        for (m, section) in sections.iter().enumerate() {
-            let note = NoteAnnotation::InMotive(m);
-            for i in 0..section.starts.len() {
-                for j in 0..section.intervals.len() {
-                    annotations[section.starts[i] + j].push(note);
-                }
-            }
-        }
-    }
-
-    fn add_figures_to(&self, melody: &Melody, annotations: &mut Vec<Vec<NoteAnnotation>>) {
-        let scale = melody.best_scale_for();
-
-    }
-
     pub fn get_melody_sections(&self, melody: &Melody) -> Vec<MelodySection> {
         let consolidated = melody.get_consolidated_notes();
         let consolidated_melody = Melody::from_vec(&consolidated.iter().map(|(_, n)| *n).collect());
