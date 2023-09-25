@@ -222,6 +222,10 @@ impl Melody {
         );
     }
 
+    pub fn sorted_figures_for(&self) -> Vec<(Vec<(usize,usize)>, MelodicFigure)> {
+        MAKER.sorted_figures_for(self)
+    }
+
     pub fn section_number_for(&self, note_index: usize) -> Option<usize> {
         self.sections
             .iter()
@@ -631,6 +635,7 @@ lazy_static! {
 
 pub struct MelodyMaker {
     figure_tables: BTreeMap<usize, BTreeMap<MidiByte, Vec<MelodicFigure>>>,
+    all_figures: HashSet<MelodicFigure>
 }
 
 impl MelodyMaker {
@@ -649,7 +654,7 @@ impl MelodyMaker {
             }
         }
 
-        MelodyMaker { figure_tables }
+        MelodyMaker { figure_tables, all_figures }
     }
 
     pub fn make_figure_distribution(&self, melody: &Melody) -> Distribution<MelodicFigure> {
@@ -670,6 +675,13 @@ impl MelodyMaker {
             }
         }
         result
+    }
+
+    pub fn sorted_figures_for(&self, melody: &Melody) -> Vec<(Vec<(usize,usize)>, MelodicFigure)> {
+        let scale = melody.best_scale_for();
+        let mut figure_starts = MAKER.all_figures.iter().map(|f| (f.all_match_starts_in(melody, &scale), *f)).collect::<Vec<_>>();
+        figure_starts.sort_by_key(|k| -(k.0.len() as isize));
+        figure_starts
     }
 
     // Vec elements:
@@ -1829,6 +1841,10 @@ impl MelodicFigure {
         let mut self_range = self_start..(self_start + self_len);
         let other_range = (other_start + 1)..(other_start + other_len - 1);
         self_range.any(|i| other_range.contains(&i))
+    }
+
+    pub fn all_match_starts_in(&self, melody: &Melody, scale: &MusicMode) -> Vec<(usize,usize)> {
+        (0..melody.len()).filter_map(|i| self.match_length(melody, scale, i).map(|length| (i, length))).collect()
     }
 
     pub fn match_length(&self, melody: &Melody, scale: &MusicMode, start: usize) -> Option<usize> {
