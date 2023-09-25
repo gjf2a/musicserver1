@@ -4,6 +4,7 @@ use distribution_select::Distribution;
 use enum_iterator::{all, Sequence};
 use float_cmp::{ApproxEq, F64Margin};
 use histogram_macros::*;
+use lazy_static::lazy_static;
 use midi_msg::MidiMsg::ChannelVoice;
 use midi_msg::{Channel, ChannelVoiceMsg, MidiMsg};
 use ordered_float::OrderedFloat;
@@ -197,6 +198,7 @@ fn dotify_float(f: OrderedFloat<f64>) -> String {
 pub struct Melody {
     notes: Vec<Note>,
     sections: Vec<Subsequences>,
+    figures: Vec<(usize, MelodicFigure, usize)>,
 }
 
 impl Melody {
@@ -207,6 +209,7 @@ impl Melody {
         Melody {
             notes: vec![],
             sections: vec![],
+            figures: vec![],
         }
     }
 
@@ -220,7 +223,11 @@ impl Melody {
     }
 
     pub fn section_number_for(&self, note_index: usize) -> Option<usize> {
-        self.sections.iter().enumerate().find(|(_, s)| s.contains(note_index)).map(|(i,_)| i)
+        self.sections
+            .iter()
+            .enumerate()
+            .find(|(_, s)| s.contains(note_index))
+            .map(|(i, _)| i)
     }
 
     pub fn from_vec(notes: &Vec<Note>) -> Self {
@@ -332,15 +339,15 @@ impl Melody {
             let duration = nums.next().unwrap().parse().unwrap();
             let f_intensity: OrderedFloat<f64> = nums.next().unwrap().parse().unwrap();
             let intensity = (f_intensity.into_inner() * MAX_MIDI_VALUE as f64) as MidiByte;
-            result.notes.push(Note::new(note, duration, intensity));
+            result.add(Note::new(note, duration, intensity));
         }
-        result.identify_sections();
         result
     }
 
     pub fn add(&mut self, n: Note) {
         self.notes.push(n);
         self.identify_sections();
+        self.figures = MAKER.best_figure_matches(self);
     }
 
     pub fn sonic_pi_list(&self) -> String {
@@ -555,6 +562,13 @@ impl Melody {
         result.sort_by(|(_, n1), (_, n2)| n2.duration.cmp(&n1.duration));
         result
     }
+
+    pub fn figure_boundaries(&self) -> VecDeque<(usize, usize)> {
+        self.figures
+            .iter()
+            .map(|(start, _, length)| (*start, start + length - 1))
+            .collect()
+    }
 }
 
 impl std::ops::Index<usize> for Melody {
@@ -569,6 +583,10 @@ impl std::ops::IndexMut<usize> for Melody {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.notes[index]
     }
+}
+
+lazy_static! {
+    static ref MAKER: MelodyMaker = MelodyMaker::new();
 }
 
 pub struct MelodyMaker {
@@ -609,6 +627,48 @@ impl MelodyMaker {
                 for figure in figures.iter() {
                     result.add(figure, 1.0);
                 }
+            }
+        }
+        result
+    }
+
+    // Vec elements:
+    // * Starting index in original melody
+    // * Matching figure
+    // * Number of notes matched in original melody
+    pub fn best_figure_matches(&self, melody: &Melody) -> Vec<(usize, MelodicFigure, usize)> {
+        let scale = melody.best_scale_for();
+        let consolidated = melody.get_consolidated_notes();
+        let mut result = vec![];
+        let mut i = 0;
+        while i < consolidated.len() {
+            let mut matched = false;
+            'figure_loop: for length in FIGURE_LENGTHS.iter() {
+                if i + *length <= consolidated.len() {
+                    let (start_index, start_note) = consolidated[i];
+                    let end_i = i + *length - 1;
+                    let end_note = consolidated[end_i].1;
+                    if let Some(step_gap) = scale
+                        .diatonic_steps_between(start_note.pitch, end_note.pitch)
+                        .pure_degree()
+                    {
+                        if let Some(candidates) = self.figure_candidates(*length, step_gap) {
+                            for candidate in candidates.iter() {
+                                if let Some(match_len) =
+                                    candidate.match_length(melody, &scale, start_index)
+                                {
+                                    result.push((start_index, candidate.clone(), match_len));
+                                    matched = true;
+                                    i = end_i;
+                                    break 'figure_loop;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if !matched {
+                i += 1;
             }
         }
         result
@@ -960,7 +1020,8 @@ impl MelodySection {
     ) -> Self {
         let starts: Vec<usize> = sub.starts().iter().map(|s| consolidated[*s].0).collect();
         let start = sub.starts().iter().next().copied().unwrap();
-        let intervals: Vec<DiatonicInterval> = (0..(sub.sub_len())).map(|i| intervals[i + start]).collect();
+        let intervals: Vec<DiatonicInterval> =
+            (0..(sub.sub_len())).map(|i| intervals[i + start]).collect();
         MelodySection { intervals, starts }
     }
 

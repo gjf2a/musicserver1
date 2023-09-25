@@ -7,6 +7,7 @@ use eframe::egui::{
     Ui, Vec2, Visuals,
 };
 use eframe::emath::Numeric;
+use eframe::epaint::Rect;
 use enum_iterator::all;
 use midi_fundsp::io::{start_input_thread, start_output_thread, Speaker, SynthMsg};
 use midi_fundsp::SynthFunc;
@@ -213,6 +214,7 @@ struct ReplayerApp {
     show_variation: bool,
     show_synth_choices: bool,
     show_melody_sections: bool,
+    show_figures: bool,
     new_tags: [String; 2],
     quit_threads: Arc<AtomicCell<bool>>,
 }
@@ -305,6 +307,7 @@ impl ReplayerApp {
             show_variation: true,
             show_synth_choices: false,
             show_melody_sections: false,
+            show_figures: false,
             new_tags: [String::new(), String::new()],
             quit_threads: Arc::new(AtomicCell::new(false)),
         };
@@ -432,6 +435,7 @@ impl ReplayerApp {
             self.search_preference_screen(ui);
         } else {
             ui.checkbox(&mut self.show_melody_sections, "Show Melody Sections");
+            ui.checkbox(&mut self.show_figures, "Show Figure Boundaries");
             let before = self.variations_of_current_melody;
             ui.checkbox(
                 &mut self.variations_of_current_melody,
@@ -529,7 +533,14 @@ impl ReplayerApp {
         if self.show_variation {
             melodies.push((variation_info.melody(), Color32::RED));
         }
-        MelodyRenderer::render(ui, size, &melodies, self.show_melody_sections, self.melody_progress.clone());
+        MelodyRenderer::render(
+            ui,
+            size,
+            &melodies,
+            self.show_melody_sections,
+            self.show_figures,
+            self.melody_progress.clone(),
+        );
     }
 
     fn show_pref_selector(&mut self, ui: &mut Ui, label: &str, pref: Arc<AtomicCell<Preference>>) {
@@ -1003,6 +1014,7 @@ impl MelodyRenderer {
         size: Vec2,
         melodies: &Vec<(&Melody, Color32)>,
         show_sections: bool,
+        show_figures: bool,
         melody_progress: Arc<AtomicCell<Option<f32>>>,
     ) {
         if melodies.len() > 0 {
@@ -1031,7 +1043,7 @@ impl MelodyRenderer {
             let y_bass = renderer.y_middle_c + renderer.staff_line_space();
             renderer.draw_staff(&painter, Clef::Bass, y_bass);
             for (melody, color) in melodies.iter().rev() {
-                renderer.draw_melody(&painter, melody, show_sections, *color);
+                renderer.draw_melody(&painter, melody, show_sections, show_figures, *color);
             }
         }
     }
@@ -1051,20 +1063,48 @@ impl MelodyRenderer {
         }
     }
 
-    fn draw_melody(&self, painter: &Painter, melody: &Melody, show_sections: bool, color: Color32) {
+    fn draw_melody(
+        &self,
+        painter: &Painter,
+        melody: &Melody,
+        show_sections: bool,
+        show_figures: bool,
+        color: Color32,
+    ) {
         let mut total_duration = 0.0;
+        let mut figure_start = None;
+        let mut figure_boundaries = melody.figure_boundaries();
         for (i, note) in melody.iter().enumerate() {
             let x = self.note_offset_x()
                 + self.total_note_x() * total_duration / melody.duration() as f32;
             total_duration += note.duration() as f32;
+            let (staff_offset, auxiliary_symbol) = self.scale.staff_position(note.pitch());
+            let y = self.y_middle_c - staff_offset as f32 * self.y_per_pitch;
+            if show_figures && figure_boundaries.len() > 0 {
+                if i == figure_boundaries[0].0 {
+                    figure_start = Some((x, y));
+                } else if i == figure_boundaries[0].1 {
+                    if let Some((x1, y1)) = figure_start {
+                        let (min_y, max_y) = if y1 < y {(y1, y)} else {(y, y1)};
+                        let rect = Rect::from_min_max(Pos2::new(x1, min_y), Pos2::new(x, max_y));
+                        painter.rect_stroke(rect, 0.0, egui::Stroke::new(1.0, egui::Color32::BLUE));
+                        figure_start = None;
+                        figure_boundaries.pop_front();
+                    }
+                }
+            }
             if !note.is_rest() {
-                let (staff_offset, auxiliary_symbol) = self.scale.staff_position(note.pitch());
-                let y = self.y_middle_c - staff_offset as f32 * self.y_per_pitch;
                 if show_sections {
                     match melody.section_number_for(i) {
                         None => painter.circle_filled(Pos2 { x, y }, self.y_per_pitch, color),
                         Some(s) => {
-                            painter.text(Pos2 {x, y}, Align2::CENTER_CENTER, format!("{s}"), ReplayerApp::font_id(ACCIDENTAL_SIZE_MULTIPLIER * self.y_per_pitch), color);
+                            painter.text(
+                                Pos2 { x, y },
+                                Align2::CENTER_CENTER,
+                                format!("{s}"),
+                                ReplayerApp::font_id(ACCIDENTAL_SIZE_MULTIPLIER * self.y_per_pitch),
+                                color,
+                            );
                         }
                     };
                 } else {
