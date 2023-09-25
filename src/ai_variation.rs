@@ -17,12 +17,13 @@ use std::time::Instant;
 pub type AIFuncType = dyn Fn(&MelodyMaker, &Melody, f64) -> Melody + Send + Sync;
 pub type AITable = ChooserTable<Arc<AIFuncType>>;
 pub const NO_AI_NAME: &str = "Bypass";
-pub const DEFAULT_AI_NAME: &str = "Motive Mapper";
+pub const DEFAULT_AI_NAME: &str = "Figure Remapper";
 
 pub fn make_ai_table() -> AITable {
     let ai_funcs: Vec<(String, Arc<AIFuncType>)> = arc_vec![
         (NO_AI_NAME, |_, _, _| Melody::new()),
-        (DEFAULT_AI_NAME, MelodyMaker::create_motive_variation),
+        (DEFAULT_AI_NAME, MelodyMaker::create_remapped_variation),
+        ("Motive Mapper", MelodyMaker::create_motive_variation),
         ("Wanderer", MelodyMaker::create_wandering_variation)
     ];
     ChooserTable::from(&ai_funcs)

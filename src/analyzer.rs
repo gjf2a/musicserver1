@@ -569,6 +569,38 @@ impl Melody {
             .map(|(start, _, length)| (*start, start + length - 1))
             .collect()
     }
+
+    pub fn figure_swap_variation(&self) -> Self {
+        let mut mappings = HashMap::new();
+        for (_,figure,_) in self.figures.iter() {
+            if !mappings.contains_key(figure) {
+                mappings.insert(*figure, MAKER.pick_figure(*figure));
+            }
+        }
+        let scale = self.best_scale_for();
+        let mut result = Self::new();
+        result.figures = self.figures.iter().map(|(i, f, j)| (*i, *mappings.get(f).unwrap(), *j)).collect();
+        let mut i = 0;
+        let mut f = 0;
+        while i < self.len() {
+            if f < result.figures.len() && result.figures[f].0 == i {
+                let mut pitch_queue = result.figures[f].1.make_pitches(self.notes[i].pitch, &scale);
+                while !pitch_queue.is_empty() {
+                    result.notes.push(self.notes[i].repitched(pitch_queue[0]));
+                    i += 1;
+                    if self.notes[i].pitch != self.notes[i - 1].pitch {
+                        pitch_queue.pop_front();
+                    }
+                }
+                f += 1;
+            } else {
+                result.notes.push(self.notes[i]);
+                i += 1;
+            }
+        }
+        result.identify_sections();
+        result
+    }
 }
 
 impl std::ops::Index<usize> for Melody {
@@ -818,6 +850,10 @@ impl MelodyMaker {
 
     const MIN_MOTIVE_LEN: usize = 2;
     const MIN_MOTIVE_REPETITIONS: usize = 2;
+
+    pub fn create_remapped_variation(&self, original: &Melody, _p: f64) -> Melody {
+        original.figure_swap_variation()
+    }
 
     pub fn create_motive_variation(&self, original: &Melody, p_remap: f64) -> Melody {
         let scale = original.best_scale_for();

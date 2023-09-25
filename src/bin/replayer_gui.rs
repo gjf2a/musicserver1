@@ -371,7 +371,9 @@ impl ReplayerApp {
             self.variation_parameter_settings(ui);
         });
 
-        self.display_melody_section(ui, MAIN_MELODY_SCALING);
+        if !self.show_synth_choices {
+            self.display_melody_section(ui, MAIN_MELODY_SCALING);
+        }
     }
 
     fn choose_synth_and_variation(&mut self, ui: &mut Ui) {
