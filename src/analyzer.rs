@@ -572,19 +572,25 @@ impl Melody {
 
     pub fn figure_swap_variation(&self) -> Self {
         let mut mappings = HashMap::new();
-        for (_,figure,_) in self.figures.iter() {
+        for (_, figure, _) in self.figures.iter() {
             if !mappings.contains_key(figure) {
                 mappings.insert(*figure, MAKER.pick_figure(*figure));
             }
         }
         let scale = self.best_scale_for();
         let mut result = Self::new();
-        result.figures = self.figures.iter().map(|(i, f, j)| (*i, *mappings.get(f).unwrap(), *j)).collect();
+        result.figures = self
+            .figures
+            .iter()
+            .map(|(i, f, j)| (*i, *mappings.get(f).unwrap(), *j))
+            .collect();
         let mut i = 0;
         let mut f = 0;
         while i < self.len() {
             if f < result.figures.len() && result.figures[f].0 == i {
-                let mut pitch_queue = result.figures[f].1.make_pitches(self.notes[i].pitch, &scale);
+                let mut pitch_queue = result.figures[f]
+                    .1
+                    .make_pitches(self.notes[i].pitch, &scale);
                 while !pitch_queue.is_empty() {
                     result.notes.push(self.notes[i].repitched(pitch_queue[0]));
                     i += 1;
