@@ -594,15 +594,12 @@ impl Melody {
         let mut f = 0;
         while i < self.len() {
             println!("i: {i}");
-            if f < result.figures.len() && result.figures[f].0 <= i {
+            if f < result.figures.len() && result.figures[f].0 == i {
                 println!("match");
                 let mut pitch_queue = result.figures[f]
                     .1
                     .make_pitches(self.notes[i].pitch, &scale);
-                if result.figures[f].0 < i {
-                    pitch_queue.pop_front();
-                }
-                while !pitch_queue.is_empty() {
+                while !pitch_queue.is_empty() && (f + 1 == result.figures.len() || i < result.figures[f + 1].0) {
                     result.notes.push(self.notes[i].repitched(pitch_queue[0]));
                     i += 1;
                     if i == self.notes.len() || self.notes[i].pitch != self.notes[i - 1].pitch {
