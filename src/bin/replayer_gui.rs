@@ -1106,11 +1106,15 @@ impl MelodyRenderer {
             }
             if show_figures && figure_boundaries.len() > 0 {
                 if i == figure_boundaries[0].0 {
-                    figure_start = Some((x, y));
+                    figure_start = Some((x, y, y));
                 } else if i == figure_boundaries[0].1 {
-                    if let Some((x1, y1)) = figure_start {
-                        let (min_y, max_y) = if y1 < y { (y1, y) } else { (y, y1) };
-                        let rect = Rect::from_min_max(Pos2::new(x1, min_y), Pos2::new(x, max_y));
+                    if let Some((x1, min_y, max_y)) = figure_start {
+                        let min_y = if min_y < y { min_y } else { y };
+                        let max_y = if max_y > y { max_y } else { y };
+                        let rect = Rect::from_min_max(
+                            Pos2::new(x1 - self.y_per_pitch, min_y - self.y_per_pitch),
+                            Pos2::new(x + self.y_per_pitch, max_y + self.y_per_pitch),
+                        );
                         painter.rect_stroke(rect, 0.0, egui::Stroke::new(1.0, figure_box_color));
                         figure_start = None;
                         figure_boundaries.pop_front();
@@ -1119,6 +1123,14 @@ impl MelodyRenderer {
                         } else {
                             egui::Color32::RED
                         };
+                    }
+                } else {
+                    if let Some((x, min_y, max_y)) = figure_start {
+                        if y < min_y {
+                            figure_start = Some((x, y, max_y));
+                        } else if y > max_y {
+                            figure_start = Some((x, min_y, y));
+                        }
                     }
                 }
             }
