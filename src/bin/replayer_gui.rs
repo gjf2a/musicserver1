@@ -1074,25 +1074,13 @@ impl MelodyRenderer {
         let mut total_duration = 0.0;
         let mut figure_start = None;
         let mut figure_boundaries = melody.figure_boundaries();
+        let mut figure_box_color = egui::Color32::RED;
         for (i, note) in melody.iter().enumerate() {
             let x = self.note_offset_x()
                 + self.total_note_x() * total_duration / melody.duration() as f32;
             total_duration += note.duration() as f32;
             let (staff_offset, auxiliary_symbol) = self.scale.staff_position(note.pitch());
             let y = self.y_middle_c - staff_offset as f32 * self.y_per_pitch;
-            if show_figures && figure_boundaries.len() > 0 {
-                if i == figure_boundaries[0].0 {
-                    figure_start = Some((x, y));
-                } else if i == figure_boundaries[0].1 {
-                    if let Some((x1, y1)) = figure_start {
-                        let (min_y, max_y) = if y1 < y {(y1, y)} else {(y, y1)};
-                        let rect = Rect::from_min_max(Pos2::new(x1, min_y), Pos2::new(x, max_y));
-                        painter.rect_stroke(rect, 0.0, egui::Stroke::new(1.0, egui::Color32::BLUE));
-                        figure_start = None;
-                        figure_boundaries.pop_front();
-                    }
-                }
-            }
             if !note.is_rest() {
                 if show_sections {
                     match melody.section_number_for(i) {
@@ -1115,6 +1103,24 @@ impl MelodyRenderer {
                     self.draw_accidental(&painter, auxiliary_symbol, x, y, color);
                 }
                 self.draw_extra_dashes(painter, x, staff_offset);
+            }
+            if show_figures && figure_boundaries.len() > 0 {
+                if i == figure_boundaries[0].0 {
+                    figure_start = Some((x, y));
+                } else if i == figure_boundaries[0].1 {
+                    if let Some((x1, y1)) = figure_start {
+                        let (min_y, max_y) = if y1 < y { (y1, y) } else { (y, y1) };
+                        let rect = Rect::from_min_max(Pos2::new(x1, min_y), Pos2::new(x, max_y));
+                        painter.rect_stroke(rect, 0.0, egui::Stroke::new(1.0, figure_box_color));
+                        figure_start = None;
+                        figure_boundaries.pop_front();
+                        figure_box_color = if figure_box_color == egui::Color32::RED {
+                            egui::Color32::BLUE
+                        } else {
+                            egui::Color32::RED
+                        };
+                    }
+                }
             }
         }
     }
