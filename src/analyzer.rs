@@ -584,22 +584,16 @@ impl Melody {
             .iter()
             .map(|(i, f, j)| (*i, *mappings.get(f).unwrap(), *j))
             .collect();
-        println!();
-        for i in 0..self.figures.len() {
-            println!("{:?} => {:?}", self.figures[i], result.figures[i]);
-        }
-        let starts = self.figures.iter().map(|a| a.0).collect::<Vec<_>>();
-        println!("{starts:?}");
         let mut i = 0;
         let mut f = 0;
         while i < self.len() {
-            println!("i: {i}");
             if f < result.figures.len() && result.figures[f].0 == i {
-                println!("match");
                 let mut pitch_queue = result.figures[f]
                     .1
                     .make_pitches(self.notes[i].pitch, &scale);
-                while !pitch_queue.is_empty() && (f + 1 == result.figures.len() || i < result.figures[f + 1].0) {
+                while !pitch_queue.is_empty()
+                    && (f + 1 == result.figures.len() || i < result.figures[f + 1].0)
+                {
                     result.notes.push(self.notes[i].repitched(pitch_queue[0]));
                     i += 1;
                     if i == self.notes.len() || self.notes[i].pitch != self.notes[i - 1].pitch {
@@ -608,7 +602,6 @@ impl Melody {
                 }
                 f += 1;
             } else {
-                println!("No match");
                 result.notes.push(self.notes[i]);
                 i += 1;
             }
