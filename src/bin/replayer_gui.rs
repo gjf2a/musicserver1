@@ -529,7 +529,10 @@ impl ReplayerApp {
         });
 
         if ui.button("Create New Variation").clicked() {
-            println!("Figure ranking: {:?}", melody_info.melody().sorted_figures_for());
+            println!(
+                "Figure ranking: {:?}",
+                melody_info.melody().sorted_figures_for()
+            );
             self.create_new_variation(&melody_info);
         }
 

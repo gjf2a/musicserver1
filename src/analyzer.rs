@@ -635,7 +635,7 @@ lazy_static! {
 
 pub struct MelodyMaker {
     figure_tables: BTreeMap<usize, BTreeMap<MidiByte, Vec<MelodicFigure>>>,
-    all_figures: HashSet<MelodicFigure>
+    all_figures: HashSet<MelodicFigure>,
 }
 
 impl MelodyMaker {
@@ -654,7 +654,10 @@ impl MelodyMaker {
             }
         }
 
-        MelodyMaker { figure_tables, all_figures }
+        MelodyMaker {
+            figure_tables,
+            all_figures,
+        }
     }
 
     pub fn make_figure_distribution(&self, melody: &Melody) -> Distribution<MelodicFigure> {
@@ -679,7 +682,12 @@ impl MelodyMaker {
 
     pub fn sorted_figures_for(&self, melody: &Melody) -> Vec<(Vec<FigureStart>, MelodicFigure)> {
         let scale = melody.best_scale_for();
-        let mut figure_starts = MAKER.all_figures.iter().map(|f| (f.all_match_starts_in(melody, &scale), *f)).collect::<Vec<_>>();
+        let mut figure_starts = MAKER
+            .all_figures
+            .iter()
+            .map(|f| (f.all_match_starts_in(melody, &scale), *f))
+            .filter(|(v, _)| v.len() > 0)
+            .collect::<Vec<_>>();
         figure_starts.sort_by_key(|k| -(k.0.len() as isize));
         figure_starts
     }
@@ -1844,7 +1852,12 @@ impl MelodicFigure {
     }
 
     pub fn all_match_starts_in(&self, melody: &Melody, scale: &MusicMode) -> Vec<FigureStart> {
-        (0..melody.len()).filter_map(|i| self.match_length(melody, scale, i).map(|length|FigureStart {start: i, length})).collect()
+        (0..melody.len())
+            .filter_map(|i| {
+                self.match_length(melody, scale, i)
+                    .map(|length| FigureStart { start: i, length })
+            })
+            .collect()
     }
 
     pub fn match_length(&self, melody: &Melody, scale: &MusicMode, start: usize) -> Option<usize> {
@@ -1908,7 +1921,7 @@ impl MelodicFigure {
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
 pub struct FigureStart {
     start: usize,
-    length: usize
+    length: usize,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Sequence, Hash, Ord, PartialOrd)]
