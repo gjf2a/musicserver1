@@ -222,7 +222,7 @@ impl Melody {
         );
     }
 
-    pub fn sorted_figures_for(&self) -> Vec<(Vec<(usize,usize)>, MelodicFigure)> {
+    pub fn sorted_figures_for(&self) -> Vec<(Vec<FigureStart>, MelodicFigure)> {
         MAKER.sorted_figures_for(self)
     }
 
@@ -677,7 +677,7 @@ impl MelodyMaker {
         result
     }
 
-    pub fn sorted_figures_for(&self, melody: &Melody) -> Vec<(Vec<(usize,usize)>, MelodicFigure)> {
+    pub fn sorted_figures_for(&self, melody: &Melody) -> Vec<(Vec<FigureStart>, MelodicFigure)> {
         let scale = melody.best_scale_for();
         let mut figure_starts = MAKER.all_figures.iter().map(|f| (f.all_match_starts_in(melody, &scale), *f)).collect::<Vec<_>>();
         figure_starts.sort_by_key(|k| -(k.0.len() as isize));
@@ -1843,8 +1843,8 @@ impl MelodicFigure {
         self_range.any(|i| other_range.contains(&i))
     }
 
-    pub fn all_match_starts_in(&self, melody: &Melody, scale: &MusicMode) -> Vec<(usize,usize)> {
-        (0..melody.len()).filter_map(|i| self.match_length(melody, scale, i).map(|length| (i, length))).collect()
+    pub fn all_match_starts_in(&self, melody: &Melody, scale: &MusicMode) -> Vec<FigureStart> {
+        (0..melody.len()).filter_map(|i| self.match_length(melody, scale, i).map(|length|FigureStart {start: i, length})).collect()
     }
 
     pub fn match_length(&self, melody: &Melody, scale: &MusicMode, start: usize) -> Option<usize> {
@@ -1867,7 +1867,11 @@ impl MelodicFigure {
             }
             m += 1;
         }
-        Some(m - start)
+        if p == self.pattern().len() {
+            Some(m - start)
+        } else {
+            None
+        }
     }
 
     /// Generates a sequence of diatonic pitches derived from `scale` corresponding to
@@ -1899,6 +1903,12 @@ impl MelodicFigure {
         }
         result
     }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
+pub struct FigureStart {
+    start: usize,
+    length: usize
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Sequence, Hash, Ord, PartialOrd)]

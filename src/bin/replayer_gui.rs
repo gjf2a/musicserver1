@@ -305,7 +305,7 @@ impl ReplayerApp {
             adjust_search_preferences: false,
             variations_of_current_melody: false,
             show_variation: true,
-            show_synth_choices: false,
+            show_synth_choices: true,
             show_melody_sections: false,
             show_figures: false,
             new_tags: [String::new(), String::new()],
@@ -508,6 +508,8 @@ impl ReplayerApp {
             self.melody_variation_selector(ui, &mut melody_var_info);
             melody_var_info.get().cloned().unwrap()
         };
+        println!();
+        println!("{:?}", melody_info.melody().sorted_figures_for());
         if self.melody_var_update_needed.load() {
             self.variation_controls.update_from(&stats);
             self.ai_algorithm.name = stats.algorithm_name;
