@@ -508,8 +508,6 @@ impl ReplayerApp {
             self.melody_variation_selector(ui, &mut melody_var_info);
             melody_var_info.get().cloned().unwrap()
         };
-        println!();
-        println!("{:?}", melody_info.melody().sorted_figures_for());
         if self.melody_var_update_needed.load() {
             self.variation_controls.update_from(&stats);
             self.ai_algorithm.name = stats.algorithm_name;

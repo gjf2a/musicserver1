@@ -198,7 +198,7 @@ fn dotify_float(f: OrderedFloat<f64>) -> String {
 pub struct Melody {
     notes: Vec<Note>,
     sections: Vec<Subsequences>,
-    figures: Vec<(usize, MelodicFigure, usize)>,
+    figures: Vec<(FigureStart, MelodicFigure)>,
 }
 
 impl Melody {
@@ -213,6 +213,12 @@ impl Melody {
         }
     }
 
+    pub fn add(&mut self, n: Note) {
+        self.notes.push(n);
+        self.identify_sections();
+        self.identify_figures(); 
+    }
+
     fn identify_sections(&mut self) {
         let pitches_only = self.notes.iter().map(|n| n.pitch).collect::<Vec<_>>();
         self.sections = find_maximal_repeated_subs(
@@ -220,6 +226,16 @@ impl Melody {
             Self::MIN_MOTIVE_REPETITIONS,
             Self::MIN_MOTIVE_LEN,
         );
+    }
+
+    fn identify_figures(&mut self) {
+        self.figures = vec![];
+        let sorted_figures = self.sorted_figures_for();
+        for (starts, figure) in sorted_figures.iter() {
+            for start in starts.iter() {
+                self.figures.push((*start, *figure));
+            }
+        } 
     }
 
     pub fn sorted_figures_for(&self) -> Vec<(Vec<FigureStart>, MelodicFigure)> {
@@ -346,12 +362,6 @@ impl Melody {
             result.add(Note::new(note, duration, intensity));
         }
         result
-    }
-
-    pub fn add(&mut self, n: Note) {
-        self.notes.push(n);
-        self.identify_sections();
-        self.figures = MAKER.best_figure_matches(self);
     }
 
     pub fn sonic_pi_list(&self) -> String {
@@ -570,13 +580,13 @@ impl Melody {
     pub fn figure_boundaries(&self) -> VecDeque<(usize, usize)> {
         self.figures
             .iter()
-            .map(|(start, _, length)| (*start, start + length - 1))
+            .map(|(start, _)| (start.start(), start.end()))
             .collect()
     }
 
     pub fn figure_swap_variation(&self) -> Self {
         let mut mappings = HashMap::new();
-        for (_, figure, _) in self.figures.iter() {
+        for (_, figure) in self.figures.iter() {
             if !mappings.contains_key(figure) {
                 mappings.insert(*figure, MAKER.pick_figure(*figure));
             }
@@ -586,17 +596,17 @@ impl Melody {
         result.figures = self
             .figures
             .iter()
-            .map(|(i, f, j)| (*i, *mappings.get(f).unwrap(), *j))
+            .map(|(s, f)| (*s, *mappings.get(f).unwrap()))
             .collect();
         let mut i = 0;
         let mut f = 0;
         while i < self.len() {
-            if f < result.figures.len() && result.figures[f].0 == i {
+            if f < result.figures.len() && result.figures[f].0.start() == i {
                 let mut pitch_queue = result.figures[f]
                     .1
                     .make_pitches(self.notes[i].pitch, &scale);
                 while !pitch_queue.is_empty()
-                    && (f + 1 == result.figures.len() || i < result.figures[f + 1].0)
+                    && (f + 1 == result.figures.len() || i < result.figures[f + 1].0.start())
                 {
                     result.notes.push(self.notes[i].repitched(pitch_queue[0]));
                     i += 1;
@@ -688,50 +698,40 @@ impl MelodyMaker {
             .map(|f| (f.all_match_starts_in(melody, &scale), *f))
             .filter(|(v, _)| v.len() > 0)
             .collect::<Vec<_>>();
+        figure_starts = Self::purge_contained_starts(&figure_starts);
         figure_starts.sort_by_key(|k| -(k.0.len() as isize));
         figure_starts
     }
 
-    // Vec elements:
-    // * Starting index in original melody
-    // * Matching figure
-    // * Number of notes matched in original melody
-    pub fn best_figure_matches(&self, melody: &Melody) -> Vec<(usize, MelodicFigure, usize)> {
-        let scale = melody.best_scale_for();
-        let consolidated = melody.get_consolidated_notes();
+    fn purge_contained_starts(
+        starts: &Vec<(Vec<FigureStart>, MelodicFigure)>,
+    ) -> Vec<(Vec<FigureStart>, MelodicFigure)> {
         let mut result = vec![];
-        let mut i = 0;
-        while i < consolidated.len() {
-            let mut matched = false;
-            'figure_loop: for length in FIGURE_LENGTHS.iter() {
-                if i + *length <= consolidated.len() {
-                    let (start_index, start_note) = consolidated[i];
-                    let end_i = i + *length - 1;
-                    let end_note = consolidated[end_i].1;
-                    if let Some(step_gap) = scale
-                        .diatonic_steps_between(start_note.pitch, end_note.pitch)
-                        .pure_degree()
-                    {
-                        if let Some(candidates) = self.figure_candidates(*length, step_gap) {
-                            for candidate in candidates.iter() {
-                                if let Some(match_len) =
-                                    candidate.match_length(melody, &scale, start_index)
-                                {
-                                    result.push((start_index, candidate.clone(), match_len));
-                                    matched = true;
-                                    i = end_i;
-                                    break 'figure_loop;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if !matched {
-                i += 1;
+        for (fig_starts, fig) in starts.iter() {
+            let usable_starts = fig_starts
+                .iter()
+                .filter(|s| !Self::contained_by_any(**s, starts))
+                .copied()
+                .collect::<Vec<_>>();
+            if usable_starts.len() > 0 {
+                result.push((usable_starts, *fig));
             }
         }
         result
+    }
+
+    fn contained_by_any(
+        start: FigureStart,
+        starts: &Vec<(Vec<FigureStart>, MelodicFigure)>,
+    ) -> bool {
+        for (fig_starts, _) in starts.iter() {
+            for fig_start in fig_starts.iter() {
+                if start.overlap_with(fig_start) == FigureStartOverlap::ContainedBy {
+                    return true;
+                }
+            }
+        }
+        false
     }
 
     /// Finds a MelodicFigure that matches the pitch sequence in `melody` starting at `start`.
@@ -1922,6 +1922,47 @@ impl MelodicFigure {
 pub struct FigureStart {
     start: usize,
     length: usize,
+}
+
+impl FigureStart {
+    pub fn start(&self) -> usize {
+        self.start
+    }
+
+    pub fn end(&self) -> usize {
+        self.start + self.length - 1
+    }
+
+    pub fn contains(&self, i: usize) -> bool {
+        i >= self.start() && i <= self.end()
+    }
+
+    pub fn overlap_with(&self, other: &FigureStart) -> FigureStartOverlap {
+        if self.start() == other.start() && self.end() == other.end() {
+            FigureStartOverlap::Matches
+        } else if !self.contains(other.start())
+            && !self.contains(other.end())
+            && !other.contains(self.start())
+            && !other.contains(self.end())
+        {
+            FigureStartOverlap::Disjoins
+        } else if self.contains(other.start()) && self.contains(other.end()) {
+            FigureStartOverlap::Contains
+        } else if other.contains(self.start()) && other.contains(self.end()) {
+            FigureStartOverlap::ContainedBy
+        } else {
+            FigureStartOverlap::Intersects
+        }
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Hash)]
+pub enum FigureStartOverlap {
+    Contains,
+    ContainedBy,
+    Matches,
+    Intersects,
+    Disjoins,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Sequence, Hash, Ord, PartialOrd)]
