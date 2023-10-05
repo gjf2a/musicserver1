@@ -578,10 +578,12 @@ impl Melody {
     }
 
     pub fn figure_boundaries(&self) -> VecDeque<(usize, usize)> {
-        self.figures
+        let mut boundaries = self.figures
             .iter()
             .map(|(start, _)| (start.start(), start.end()))
-            .collect()
+            .collect::<Vec<_>>();
+        boundaries.sort_by_key(|(s,_)| *s);
+        boundaries.iter().copied().collect()
     }
 
     pub fn figure_swap_variation(&self) -> Self {

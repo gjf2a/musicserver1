@@ -25,6 +25,7 @@ use musicserver1::runtime::{
     MelodyRunStatus, SliderValue, SynthChoice, VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER,
 };
 use std::cmp::{max, min};
+use std::collections::VecDeque;
 use std::fmt::Display;
 use std::ops::RangeInclusive;
 use std::str::FromStr;
@@ -1088,57 +1089,66 @@ impl MelodyRenderer {
             let (staff_offset, auxiliary_symbol) = self.scale.staff_position(note.pitch());
             let y = self.y_middle_c - staff_offset as f32 * self.y_per_pitch;
             if !note.is_rest() {
-                if show_sections {
-                    match melody.section_number_for(i) {
-                        None => painter.circle_filled(Pos2 { x, y }, self.y_per_pitch, color),
-                        Some(s) => {
-                            painter.text(
-                                Pos2 { x, y },
-                                Align2::CENTER_CENTER,
-                                format!("{s}"),
-                                ReplayerApp::font_id(ACCIDENTAL_SIZE_MULTIPLIER * self.y_per_pitch),
-                                color,
-                            );
-                        }
-                    };
-                } else {
-                    painter.circle_filled(Pos2 { x, y }, self.y_per_pitch, color);
-                }
-                if let Some(auxiliary_symbol) = auxiliary_symbol {
-                    let x = x + self.staff_line_space();
-                    self.draw_accidental(&painter, auxiliary_symbol, x, y, color);
-                }
-                self.draw_extra_dashes(painter, x, staff_offset);
+                self.show_note(show_sections, i, melody, painter, x, y, color, staff_offset, auxiliary_symbol);
             }
             if show_figures && figure_boundaries.len() > 0 {
-                if i == figure_boundaries[0].0 {
-                    figure_start = Some((x, y, y));
-                } else if i == figure_boundaries[0].1 {
-                    if let Some((x1, min_y, max_y)) = figure_start {
-                        let min_y = if min_y < y { min_y } else { y };
-                        let max_y = if max_y > y { max_y } else { y };
-                        let rect = Rect::from_min_max(
-                            Pos2::new(x1 - self.y_per_pitch, min_y - self.y_per_pitch),
-                            Pos2::new(x + self.y_per_pitch, max_y + self.y_per_pitch),
-                        );
-                        painter.rect_stroke(rect, 0.0, egui::Stroke::new(1.0, figure_box_color));
-                        figure_start = None;
-                        figure_boundaries.pop_front();
-                        figure_box_color = if figure_box_color == egui::Color32::RED {
-                            egui::Color32::BLUE
-                        } else {
-                            egui::Color32::RED
-                        };
-                    }
+                self.show_figures(painter, i, &mut figure_start, x, y, &mut figure_box_color, &mut figure_boundaries);
+            }
+        }
+    }
+
+    fn show_note(&self, show_sections: bool, i: usize, melody: &Melody, painter: &Painter, x: f32, y: f32, color: Color32, staff_offset: i16, auxiliary_symbol: Option<Accidental>) {
+        if show_sections {
+            self.show_sections(i, melody, painter, x, y, color);
+        } else {
+            painter.circle_filled(Pos2 { x, y }, self.y_per_pitch, color);
+        }
+        if let Some(auxiliary_symbol) = auxiliary_symbol {
+            let x = x + self.staff_line_space();
+            self.draw_accidental(&painter, auxiliary_symbol, x, y, color);
+        }
+        self.draw_extra_dashes(painter, x, staff_offset);
+    }
+
+    fn show_sections(&self, i: usize, melody: &Melody, painter: &Painter, x: f32, y: f32, color: Color32) {
+        match melody.section_number_for(i) {
+            None => painter.circle_filled(Pos2 { x, y }, self.y_per_pitch, color),
+            Some(s) => {
+                painter.text(
+                    Pos2 { x, y },
+                    Align2::CENTER_CENTER,
+                    format!("{s}"),
+                    ReplayerApp::font_id(ACCIDENTAL_SIZE_MULTIPLIER * self.y_per_pitch),
+                    color,
+                );
+            }
+        };
+    }
+
+    fn show_figures(&self, painter: &Painter, i: usize, figure_start: &mut Option<(f32,f32,f32)>, x: f32, y: f32, figure_box_color: &mut Color32, figure_boundaries: &mut VecDeque<(usize,usize)>) {
+        println!("{i}: {} {:?} {figure_start:?}", figure_boundaries.len(), figure_boundaries[0]);
+        if i == figure_boundaries[0].0 {
+            *figure_start = Some((x, y, y));
+        } else if i == figure_boundaries[0].1 {
+            if let Some((x1, min_y, max_y)) = figure_start {
+                let min_y = if *min_y < y { *min_y } else { y };
+                let max_y = if *max_y > y { *max_y } else { y };
+                let rect = Rect::from_min_max(
+                    Pos2::new(*x1 - self.y_per_pitch, min_y - self.y_per_pitch),
+                    Pos2::new(x + self.y_per_pitch, max_y + self.y_per_pitch),
+                );
+                painter.rect_stroke(rect, 0.0, egui::Stroke::new(1.0, *figure_box_color));
+                *figure_start = None;
+                figure_boundaries.pop_front();
+                *figure_box_color = if *figure_box_color == egui::Color32::RED {
+                    egui::Color32::BLUE
                 } else {
-                    if let Some((x, min_y, max_y)) = figure_start {
-                        if y < min_y {
-                            figure_start = Some((x, y, max_y));
-                        } else if y > max_y {
-                            figure_start = Some((x, min_y, y));
-                        }
-                    }
-                }
+                    egui::Color32::RED
+                };
+            }
+        } else {
+            if let Some((x, min_y, max_y)) = figure_start {
+                *figure_start = if y < *min_y {Some((*x, y, *max_y))} else {Some((*x, *min_y, y))};
             }
         }
     }
