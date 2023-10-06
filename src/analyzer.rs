@@ -216,7 +216,7 @@ impl Melody {
     pub fn add(&mut self, n: Note) {
         self.notes.push(n);
         self.identify_sections();
-        self.identify_figures(); 
+        self.identify_figures();
     }
 
     fn identify_sections(&mut self) {
@@ -235,7 +235,7 @@ impl Melody {
             for start in starts.iter() {
                 self.figures.push((*start, *figure));
             }
-        } 
+        }
     }
 
     pub fn sorted_figures_for(&self) -> Vec<(Vec<FigureStart>, MelodicFigure)> {
@@ -578,11 +578,12 @@ impl Melody {
     }
 
     pub fn figure_boundaries(&self) -> VecDeque<(usize, usize)> {
-        let mut boundaries = self.figures
+        let mut boundaries = self
+            .figures
             .iter()
             .map(|(start, _)| (start.start(), start.end()))
             .collect::<Vec<_>>();
-        boundaries.sort_by_key(|(s,_)| *s);
+        boundaries.sort_by_key(|(s, _)| *s);
         boundaries.iter().copied().collect()
     }
 

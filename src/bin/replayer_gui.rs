@@ -15,7 +15,7 @@ use midir::{Ignore, InitError, MidiInput, MidiInputPort, MidiInputPorts};
 use musicserver1::ai_variation::{
     make_ai_table, start_ai_thread, AIFuncType, DEFAULT_AI_NAME, NO_AI_NAME,
 };
-use musicserver1::analyzer::{Accidental, KeySignature, Melody, MidiByte, MusicMode};
+use musicserver1::analyzer::{Accidental, KeySignature, Melody, MidiByte, MusicMode, Note};
 use musicserver1::database::{
     start_database_thread, Database, DatabaseGuiUpdate, FromAiMsg, GuiDatabaseUpdate, MelodyInfo,
     Preference, VariationStats,
@@ -1078,77 +1078,18 @@ impl MelodyRenderer {
         show_figures: bool,
         color: Color32,
     ) {
-        let mut total_duration = 0.0;
-        let mut figure_start = None;
-        let mut figure_boundaries = melody.figure_boundaries();
-        let mut figure_box_color = egui::Color32::RED;
+        let mut note_renderer =
+            IncrementalNoteRenderer::new(self, painter, melody, show_sections, show_figures, color);
         for (i, note) in melody.iter().enumerate() {
             let x = self.note_offset_x()
-                + self.total_note_x() * total_duration / melody.duration() as f32;
-            total_duration += note.duration() as f32;
-            let (staff_offset, auxiliary_symbol) = self.scale.staff_position(note.pitch());
-            let y = self.y_middle_c - staff_offset as f32 * self.y_per_pitch;
+                + self.total_note_x() * note_renderer.total_duration / melody.duration() as f32;
+            note_renderer.note_update(note, &self.scale);
+            let y = self.y_middle_c - note_renderer.staff_offset as f32 * self.y_per_pitch;
             if !note.is_rest() {
-                self.show_note(show_sections, i, melody, painter, x, y, color, staff_offset, auxiliary_symbol);
+                note_renderer.show_note(i, x, y);
             }
-            if show_figures && figure_boundaries.len() > 0 {
-                self.show_figures(painter, i, &mut figure_start, x, y, &mut figure_box_color, &mut figure_boundaries);
-            }
-        }
-    }
-
-    fn show_note(&self, show_sections: bool, i: usize, melody: &Melody, painter: &Painter, x: f32, y: f32, color: Color32, staff_offset: i16, auxiliary_symbol: Option<Accidental>) {
-        if show_sections {
-            self.show_sections(i, melody, painter, x, y, color);
-        } else {
-            painter.circle_filled(Pos2 { x, y }, self.y_per_pitch, color);
-        }
-        if let Some(auxiliary_symbol) = auxiliary_symbol {
-            let x = x + self.staff_line_space();
-            self.draw_accidental(&painter, auxiliary_symbol, x, y, color);
-        }
-        self.draw_extra_dashes(painter, x, staff_offset);
-    }
-
-    fn show_sections(&self, i: usize, melody: &Melody, painter: &Painter, x: f32, y: f32, color: Color32) {
-        match melody.section_number_for(i) {
-            None => painter.circle_filled(Pos2 { x, y }, self.y_per_pitch, color),
-            Some(s) => {
-                painter.text(
-                    Pos2 { x, y },
-                    Align2::CENTER_CENTER,
-                    format!("{s}"),
-                    ReplayerApp::font_id(ACCIDENTAL_SIZE_MULTIPLIER * self.y_per_pitch),
-                    color,
-                );
-            }
-        };
-    }
-
-    fn show_figures(&self, painter: &Painter, i: usize, figure_start: &mut Option<(f32,f32,f32)>, x: f32, y: f32, figure_box_color: &mut Color32, figure_boundaries: &mut VecDeque<(usize,usize)>) {
-        println!("{i}: {} {:?} {figure_start:?}", figure_boundaries.len(), figure_boundaries[0]);
-        if i == figure_boundaries[0].0 {
-            *figure_start = Some((x, y, y));
-        } else if i == figure_boundaries[0].1 {
-            if let Some((x1, min_y, max_y)) = figure_start {
-                let min_y = if *min_y < y { *min_y } else { y };
-                let max_y = if *max_y > y { *max_y } else { y };
-                let rect = Rect::from_min_max(
-                    Pos2::new(*x1 - self.y_per_pitch, min_y - self.y_per_pitch),
-                    Pos2::new(x + self.y_per_pitch, max_y + self.y_per_pitch),
-                );
-                painter.rect_stroke(rect, 0.0, egui::Stroke::new(1.0, *figure_box_color));
-                *figure_start = None;
-                figure_boundaries.pop_front();
-                *figure_box_color = if *figure_box_color == egui::Color32::RED {
-                    egui::Color32::BLUE
-                } else {
-                    egui::Color32::RED
-                };
-            }
-        } else {
-            if let Some((x, min_y, max_y)) = figure_start {
-                *figure_start = if y < *min_y {Some((*x, y, *max_y))} else {Some((*x, *min_y, y))};
+            if note_renderer.can_show_figures() {
+                note_renderer.show_figures(i, x, y);
             }
         }
     }
@@ -1219,6 +1160,174 @@ impl MelodyRenderer {
             hi = max(hi, mhi);
         }
         (scale.closest_pitch_below(lo), scale.closest_pitch_above(hi))
+    }
+}
+
+#[derive(Copy, Clone, PartialEq, Debug)]
+struct PendingFigureBox {
+    color: Color32,
+    x: f32,
+    y_min: f32,
+    y_max: f32,
+    last_note: usize,
+}
+
+impl PendingFigureBox {
+    fn new(x: f32, y: f32, last_note: usize) -> Self {
+        Self {
+            color: random_color(),
+            x,
+            y_min: y,
+            y_max: y,
+            last_note,
+        }
+    }
+
+    fn active(&self, i: usize) -> bool {
+        i <= self.last_note
+    }
+
+    fn update_y(&mut self, y: f32) {
+        if y < self.y_min {
+            self.y_min = y;
+        }
+        if y > self.y_max {
+            self.y_max = y;
+        }
+    }
+}
+
+fn random_color() -> Color32 {
+    Color32::from_rgb(
+        rand::random::<u8>(),
+        rand::random::<u8>(),
+        rand::random::<u8>(),
+    )
+}
+
+struct IncrementalNoteRenderer<'a> {
+    renderer: &'a MelodyRenderer,
+    melody: &'a Melody,
+    painter: &'a Painter,
+    total_duration: f32,
+    figure_boundaries: VecDeque<(usize, usize)>,
+    show_sections: bool,
+    show_figures: bool,
+    staff_offset: i16,
+    note_color: Color32,
+    auxiliary_symbol: Option<Accidental>,
+    pending_figures: Vec<PendingFigureBox>,
+}
+
+impl<'a> IncrementalNoteRenderer<'a> {
+    fn new(
+        renderer: &'a MelodyRenderer,
+        painter: &'a Painter,
+        melody: &'a Melody,
+        show_sections: bool,
+        show_figures: bool,
+        note_color: Color32,
+    ) -> Self {
+        Self {
+            renderer,
+            total_duration: 0.0,
+            melody,
+            painter,
+            show_figures,
+            show_sections,
+            figure_boundaries: melody.figure_boundaries(),
+            auxiliary_symbol: None,
+            staff_offset: 0,
+            note_color,
+            pending_figures: vec![],
+        }
+    }
+
+    fn note_update(&mut self, note: &Note, scale: &MusicMode) {
+        self.total_duration += note.duration() as f32;
+        let (staff_offset, auxiliary_symbol) = scale.staff_position(note.pitch());
+        self.staff_offset = staff_offset;
+        self.auxiliary_symbol = auxiliary_symbol;
+    }
+
+    fn show_note(&self, i: usize, x: f32, y: f32) {
+        if self.show_sections {
+            self.show_sections(i, x, y);
+        } else {
+            self.painter
+                .circle_filled(Pos2 { x, y }, self.renderer.y_per_pitch, self.note_color);
+        }
+        if let Some(auxiliary_symbol) = self.auxiliary_symbol {
+            let x = x + self.renderer.staff_line_space();
+            self.renderer
+                .draw_accidental(self.painter, auxiliary_symbol, x, y, self.note_color);
+        }
+        self.renderer
+            .draw_extra_dashes(self.painter, x, self.staff_offset);
+    }
+
+    fn show_sections(&self, i: usize, x: f32, y: f32) {
+        match self.melody.section_number_for(i) {
+            None => self.painter.circle_filled(
+                Pos2 { x, y },
+                self.renderer.y_per_pitch,
+                self.note_color,
+            ),
+            Some(s) => {
+                self.painter.text(
+                    Pos2 { x, y },
+                    Align2::CENTER_CENTER,
+                    format!("{s}"),
+                    ReplayerApp::font_id(ACCIDENTAL_SIZE_MULTIPLIER * self.renderer.y_per_pitch),
+                    self.note_color,
+                );
+            }
+        };
+    }
+
+    fn can_show_figures(&self) -> bool {
+        self.show_figures && self.figure_boundaries.len() > 0
+    }
+
+    fn show_figures(&mut self, i: usize, x: f32, y: f32) {
+        self.set_up_figures(i, x, y);
+        self.update_active_figures(i, y);
+        self.resolve_completed_figures(i, x);
+    }
+
+    fn set_up_figures(&mut self, i: usize, x: f32, y: f32) {
+        for (start, end) in self.figure_boundaries.iter() {
+            if i == *start {
+                self.pending_figures.push(PendingFigureBox::new(x, y, *end));
+            }
+        }
+    }
+
+    fn update_active_figures(&mut self, i: usize, y: f32) {
+        for pending in self.pending_figures.iter_mut() {
+            if pending.active(i) {
+                pending.update_y(y);
+            }
+        }
+    }
+
+    fn resolve_completed_figures(&self, i: usize, x: f32) {
+        for pending in self.pending_figures.iter() {
+            if pending.last_note == i {
+                let rect = Rect::from_min_max(
+                    Pos2::new(
+                        pending.x - self.renderer.y_per_pitch,
+                        pending.y_min - self.renderer.y_per_pitch,
+                    ),
+                    Pos2::new(
+                        x + self.renderer.y_per_pitch,
+                        pending.y_max + self.renderer.y_per_pitch,
+                    ),
+                );
+                self.painter
+                    .rect_stroke(rect, 0.0, egui::Stroke::new(1.0, pending.color));
+            }
+        }
     }
 }
 
