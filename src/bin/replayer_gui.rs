@@ -1216,14 +1216,6 @@ impl PendingFigureBox {
     }
 }
 
-fn random_color() -> Color32 {
-    Color32::from_rgb(
-        rand::random::<u8>(),
-        rand::random::<u8>(),
-        rand::random::<u8>(),
-    )
-}
-
 struct IncrementalNoteRenderer<'a> {
     renderer: &'a MelodyRenderer,
     melody: &'a Melody,
