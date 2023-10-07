@@ -15,7 +15,7 @@ use midir::{Ignore, InitError, MidiInput, MidiInputPort, MidiInputPorts};
 use musicserver1::ai_variation::{
     make_ai_table, start_ai_thread, AIFuncType, DEFAULT_AI_NAME, NO_AI_NAME,
 };
-use musicserver1::analyzer::{Accidental, KeySignature, Melody, MidiByte, MusicMode, Note};
+use musicserver1::analyzer::{Accidental, KeySignature, Melody, MidiByte, MusicMode, Note, MelodicFigure};
 use musicserver1::database::{
     start_database_thread, Database, DatabaseGuiUpdate, FromAiMsg, GuiDatabaseUpdate, MelodyInfo,
     Preference, VariationStats,
@@ -25,7 +25,7 @@ use musicserver1::runtime::{
     MelodyRunStatus, SliderValue, SynthChoice, VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER,
 };
 use std::cmp::{max, min};
-use std::collections::VecDeque;
+use std::collections::{VecDeque, HashMap};
 use std::fmt::Display;
 use std::ops::RangeInclusive;
 use std::str::FromStr;
@@ -1163,6 +1163,25 @@ impl MelodyRenderer {
     }
 }
 
+static FIGURE_COLORS: [Color32; 8] = [Color32::DARK_GREEN, Color32::DARK_RED, Color32::DARK_BLUE, Color32::GOLD, Color32::GREEN, Color32::RED, Color32::BLUE, Color32::BROWN];
+
+struct ColorMaker {
+    next: ModNum<usize>
+}
+
+impl ColorMaker {
+    fn new() -> Self {
+        Self {next: ModNum::new(0, FIGURE_COLORS.len())}
+    }
+
+    fn next(&mut self) -> Color32 {
+        let result = FIGURE_COLORS[self.next.a()];
+        self.next += 1;
+        result
+    }
+}
+
+
 #[derive(Copy, Clone, PartialEq, Debug)]
 struct PendingFigureBox {
     color: Color32,
@@ -1173,9 +1192,9 @@ struct PendingFigureBox {
 }
 
 impl PendingFigureBox {
-    fn new(x: f32, y: f32, last_note: usize) -> Self {
+    fn new(color: Color32, x: f32, y: f32, last_note: usize) -> Self {
         Self {
-            color: random_color(),
+            color,
             x,
             y_min: y,
             y_max: y,
@@ -1210,7 +1229,8 @@ struct IncrementalNoteRenderer<'a> {
     melody: &'a Melody,
     painter: &'a Painter,
     total_duration: f32,
-    figure_boundaries: VecDeque<(usize, usize)>,
+    figure_boundaries: VecDeque<(usize, usize, MelodicFigure)>,
+    figure_colors: HashMap<MelodicFigure, Color32>,
     show_sections: bool,
     show_figures: bool,
     staff_offset: i16,
@@ -1228,6 +1248,14 @@ impl<'a> IncrementalNoteRenderer<'a> {
         show_figures: bool,
         note_color: Color32,
     ) -> Self {
+        let figure_boundaries = melody.figure_boundaries();
+        let mut figure_colors = HashMap::new();
+        let mut colors = ColorMaker::new();
+        for (_, _, f) in figure_boundaries.iter() {
+            if !figure_colors.contains_key(f) {
+                figure_colors.insert(*f, colors.next());
+            }
+        }
         Self {
             renderer,
             total_duration: 0.0,
@@ -1235,7 +1263,8 @@ impl<'a> IncrementalNoteRenderer<'a> {
             painter,
             show_figures,
             show_sections,
-            figure_boundaries: melody.figure_boundaries(),
+            figure_boundaries,
+            figure_colors,
             auxiliary_symbol: None,
             staff_offset: 0,
             note_color,
@@ -1296,9 +1325,9 @@ impl<'a> IncrementalNoteRenderer<'a> {
     }
 
     fn set_up_figures(&mut self, i: usize, x: f32, y: f32) {
-        for (start, end) in self.figure_boundaries.iter() {
+        for (start, end, figure) in self.figure_boundaries.iter() {
             if i == *start {
-                self.pending_figures.push(PendingFigureBox::new(x, y, *end));
+                self.pending_figures.push(PendingFigureBox::new(self.figure_colors.get(figure).copied().unwrap(), x, y, *end));
             }
         }
     }

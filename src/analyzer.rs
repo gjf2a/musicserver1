@@ -577,13 +577,13 @@ impl Melody {
         result
     }
 
-    pub fn figure_boundaries(&self) -> VecDeque<(usize, usize)> {
+    pub fn figure_boundaries(&self) -> VecDeque<(usize, usize, MelodicFigure)> {
         let mut boundaries = self
             .figures
             .iter()
-            .map(|(start, _)| (start.start(), start.end()))
+            .map(|(start, f)| (start.start(), start.end(), *f))
             .collect::<Vec<_>>();
-        boundaries.sort_by_key(|(s, _)| *s);
+        boundaries.sort_by_key(|(s, _, _)| *s);
         boundaries.iter().copied().collect()
     }
 
