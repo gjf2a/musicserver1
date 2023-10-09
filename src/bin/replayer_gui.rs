@@ -38,7 +38,9 @@ use std::time::{Duration, Instant};
 const NUM_OUTPUT_CHANNELS: usize = 2; // More than this, and it has occasional noise-clipping problems.
 
 fn main() {
-    let native_options = eframe::NativeOptions::default();
+    let mut native_options = eframe::NativeOptions::default();
+    native_options.initial_window_size = Some(Vec2 { x: 800.0, y: 600.0 });
+    println!("Window size: {:?}", native_options.initial_window_size);
     eframe::run_native(
         "Replayer",
         native_options,
