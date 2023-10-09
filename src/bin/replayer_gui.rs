@@ -1045,8 +1045,10 @@ impl MelodyRenderer {
             renderer.draw_staff(&painter, Clef::Treble, y_treble);
             let y_bass = renderer.y_middle_c + renderer.staff_line_space();
             renderer.draw_staff(&painter, Clef::Bass, y_bass);
+            let mut first_melody = true;
             for (melody, color) in melodies.iter().rev() {
-                renderer.draw_melody(&painter, melody, show_sections, show_figures, *color);
+                renderer.draw_melody(&painter, melody, show_sections, show_figures && first_melody, *color);
+                first_melody = false;
             }
         }
     }

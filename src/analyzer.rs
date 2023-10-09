@@ -610,6 +610,7 @@ impl Melody {
         let mut all_source_figures = mappings.keys().collect::<Vec<_>>();
         all_source_figures.shuffle(&mut thread_rng());
         let mut result = self.clone();
+        result.figures = vec![];
         let mut replaced_indices = HashSet::new();
         while all_source_figures.len() > 0 {
             let target = all_source_figures.pop().unwrap();
@@ -623,6 +624,7 @@ impl Melody {
                     }
                 }
                 if !already_replaced {
+                    result.figures.push((*start, *replacer));
                     while replacements.len() > 0 {
                         let (i, note) = replacements.pop_front().unwrap();
                         result.notes[i] = note;
