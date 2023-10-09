@@ -9,6 +9,7 @@ use midi_msg::MidiMsg::ChannelVoice;
 use midi_msg::{Channel, ChannelVoiceMsg, MidiMsg};
 use ordered_float::OrderedFloat;
 use rand::prelude::SliceRandom;
+use rand::thread_rng;
 use std::cmp::{max, min};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::iter::Sum;
@@ -587,13 +588,74 @@ impl Melody {
         boundaries.iter().copied().collect()
     }
 
-    pub fn figure_swap_variation(&self) -> Self {
+    fn randomized_figure_mappings(&self) -> HashMap<MelodicFigure, MelodicFigure> {
         let mut mappings = HashMap::new();
         for (_, figure) in self.figures.iter() {
             if !mappings.contains_key(figure) {
                 mappings.insert(*figure, MAKER.pick_figure(*figure));
             }
         }
+        mappings
+    }
+
+    pub fn generalized_figure_variation(&self) -> Self {
+        let mappings = self.randomized_figure_mappings();
+        let mut figures2starts = HashMap::new();
+        for (start, figure) in self.figures.iter() {
+            match figures2starts.get_mut(figure) {
+                None => {figures2starts.insert(figure, vec![*start]);}
+                Some(v) => {v.push(*start);}
+            }
+        }
+        let mut all_source_figures = mappings.keys().collect::<Vec<_>>();
+        all_source_figures.shuffle(&mut thread_rng());
+        let mut result = self.clone();
+        let mut replaced_indices = HashSet::new();
+        while all_source_figures.len() > 0 {
+            let target = all_source_figures.pop().unwrap();
+            let replacer = mappings.get(target).unwrap();
+            for start in figures2starts.get(target).unwrap().iter() {
+                let mut replacements = self.replacements(start.start(), start.end(), replacer);
+                let mut already_replaced = false;
+                for (r, _) in replacements.iter() {
+                    if replaced_indices.contains(r) {
+                        already_replaced = true;
+                    }
+                }
+                if !already_replaced {
+                    while replacements.len() > 0 {
+                        let (i, note) = replacements.pop_front().unwrap();
+                        result.notes[i] = note;
+                        replaced_indices.insert(i);
+                    }
+                }
+            }
+        }
+        result
+    }
+
+    fn replacements(&self, start: usize, end: usize, replacer: &MelodicFigure) -> VecDeque<(usize, Note)> {
+        let scale = self.best_scale_for();
+        let mut pitch_queue = replacer.make_pitches(self.notes[start].pitch, &scale);
+        pitch_queue.pop_front();
+        pitch_queue.pop_back();
+        let mut result = VecDeque::new();
+        let mut i = start + 1;
+        while i < end && self.notes[i - 1].pitch == self.notes[i].pitch {
+            i += 1;
+        }
+        while i < end && pitch_queue.len() > 0 {
+            result.push_back((i, self.notes[i].repitched(pitch_queue[0])));
+            i += 1;
+            if self.notes[i].pitch != self.notes[i - 1].pitch {
+                pitch_queue.pop_front();
+            }
+        }
+        result
+    }
+
+    pub fn figure_swap_variation(&self) -> Self {
+        let mappings = self.randomized_figure_mappings();
         let scale = self.best_scale_for();
         let mut result = Self::new();
         result.figures = self
@@ -884,6 +946,10 @@ impl MelodyMaker {
 
     pub fn create_remapped_variation(&self, original: &Melody, _p: f64) -> Melody {
         original.figure_swap_variation()
+    }
+
+    pub fn create_remapped2_variation(&self, original: &Melody, _p: f64) -> Melody {
+        original.generalized_figure_variation()
     }
 
     pub fn create_motive_variation(&self, original: &Melody, p_remap: f64) -> Melody {

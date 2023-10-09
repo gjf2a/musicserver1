@@ -22,7 +22,7 @@ pub const DEFAULT_AI_NAME: &str = "Figure Remapper";
 pub fn make_ai_table() -> AITable {
     let ai_funcs: Vec<(String, Arc<AIFuncType>)> = arc_vec![
         (NO_AI_NAME, |_, _, _| Melody::new()),
-        (DEFAULT_AI_NAME, MelodyMaker::create_remapped_variation),
+        (DEFAULT_AI_NAME, MelodyMaker::create_remapped2_variation),
         ("Motive Mapper", MelodyMaker::create_motive_variation),
         ("Wanderer", MelodyMaker::create_wandering_variation)
     ];
