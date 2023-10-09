@@ -15,7 +15,9 @@ use midir::{Ignore, InitError, MidiInput, MidiInputPort, MidiInputPorts};
 use musicserver1::ai_variation::{
     make_ai_table, start_ai_thread, AIFuncType, DEFAULT_AI_NAME, NO_AI_NAME,
 };
-use musicserver1::analyzer::{Accidental, KeySignature, Melody, MidiByte, MusicMode, Note, MelodicFigure};
+use musicserver1::analyzer::{
+    Accidental, KeySignature, MelodicFigure, Melody, MidiByte, MusicMode, Note,
+};
 use musicserver1::database::{
     start_database_thread, Database, DatabaseGuiUpdate, FromAiMsg, GuiDatabaseUpdate, MelodyInfo,
     Preference, VariationStats,
@@ -25,7 +27,7 @@ use musicserver1::runtime::{
     MelodyRunStatus, SliderValue, SynthChoice, VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER,
 };
 use std::cmp::{max, min};
-use std::collections::{VecDeque, HashMap};
+use std::collections::{HashMap, VecDeque};
 use std::fmt::Display;
 use std::ops::RangeInclusive;
 use std::str::FromStr;
@@ -1049,7 +1051,13 @@ impl MelodyRenderer {
             renderer.draw_staff(&painter, Clef::Bass, y_bass);
             let mut first_melody = true;
             for (melody, color) in melodies.iter().rev() {
-                renderer.draw_melody(&painter, melody, show_sections, show_figures && first_melody, *color);
+                renderer.draw_melody(
+                    &painter,
+                    melody,
+                    show_sections,
+                    show_figures && first_melody,
+                    *color,
+                );
                 first_melody = false;
             }
         }
@@ -1148,10 +1156,7 @@ impl MelodyRenderer {
         painter.line_segment([Pos2 { x: x1, y }, Pos2 { x: x2, y }], LINE_STROKE);
     }
 
-    fn min_max_staff(
-        scale: &MusicMode,
-        melodies: &Vec<(Melody, Color32)>,
-    ) -> (MidiByte, MidiByte) {
+    fn min_max_staff(scale: &MusicMode, melodies: &Vec<(Melody, Color32)>) -> (MidiByte, MidiByte) {
         let mut lo = LOWEST_STAFF_PITCH;
         let mut hi = HIGHEST_STAFF_PITCH;
         for (melody, _) in melodies.iter() {
@@ -1163,15 +1168,26 @@ impl MelodyRenderer {
     }
 }
 
-static FIGURE_COLORS: [Color32; 8] = [Color32::DARK_GREEN, Color32::DARK_RED, Color32::DARK_BLUE, Color32::GOLD, Color32::GREEN, Color32::RED, Color32::BLUE, Color32::BROWN];
+static FIGURE_COLORS: [Color32; 8] = [
+    Color32::DARK_GREEN,
+    Color32::DARK_RED,
+    Color32::DARK_BLUE,
+    Color32::GOLD,
+    Color32::GREEN,
+    Color32::RED,
+    Color32::BLUE,
+    Color32::BROWN,
+];
 
 struct ColorMaker {
-    next: ModNum<usize>
+    next: ModNum<usize>,
 }
 
 impl ColorMaker {
     fn new() -> Self {
-        Self {next: ModNum::new(0, FIGURE_COLORS.len())}
+        Self {
+            next: ModNum::new(0, FIGURE_COLORS.len()),
+        }
     }
 
     fn next(&mut self) -> Color32 {
@@ -1180,7 +1196,6 @@ impl ColorMaker {
         result
     }
 }
-
 
 #[derive(Copy, Clone, PartialEq, Debug)]
 struct PendingFigureBox {
@@ -1319,7 +1334,12 @@ impl<'a> IncrementalNoteRenderer<'a> {
     fn set_up_figures(&mut self, i: usize, x: f32, y: f32) {
         for (start, end, figure) in self.figure_boundaries.iter() {
             if i == *start {
-                self.pending_figures.push(PendingFigureBox::new(self.figure_colors.get(figure).copied().unwrap(), x, y, *end));
+                self.pending_figures.push(PendingFigureBox::new(
+                    self.figure_colors.get(figure).copied().unwrap(),
+                    x,
+                    y,
+                    *end,
+                ));
             }
         }
     }

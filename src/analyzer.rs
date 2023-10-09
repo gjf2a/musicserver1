@@ -240,23 +240,24 @@ impl Melody {
     }
 
     pub fn keep_only_differing_figures(&mut self, other: &Melody) {
+        let different_pitches = (0..self.notes.len().min(other.notes.len()))
+            .filter(|i| self.notes[*i].pitch != other.notes[*i].pitch)
+            .collect::<Vec<_>>();
         let mut keepers = vec![];
         for (start, figure) in self.figures.iter() {
-            let mut differs = true;
-            for (other_start, other_figure) in other.figures.iter() {
-                if *start == *other_start && *figure == *other_figure {
-                    differs = false;
+            let mut differs = false;
+            for pitch_i in different_pitches.iter() {
+                if start.contains(*pitch_i) {
+                    differs = true;
                 }
-            } 
+            }
             if differs {
                 keepers.push((*start, *figure));
-            } else {
-                println!("not a keeper");
             }
         }
         self.figures = keepers;
     }
- 
+
     pub fn sorted_figures_for(&self) -> Vec<(Vec<FigureStart>, MelodicFigure)> {
         MAKER.sorted_figures_for(self)
     }
@@ -621,8 +622,12 @@ impl Melody {
         let mut figures2starts = HashMap::new();
         for (start, figure) in self.figures.iter() {
             match figures2starts.get_mut(figure) {
-                None => {figures2starts.insert(figure, vec![*start]);}
-                Some(v) => {v.push(*start);}
+                None => {
+                    figures2starts.insert(figure, vec![*start]);
+                }
+                Some(v) => {
+                    v.push(*start);
+                }
             }
         }
         let mut all_source_figures = mappings.keys().collect::<Vec<_>>();
@@ -654,7 +659,12 @@ impl Melody {
         result
     }
 
-    fn replacements(&self, start: usize, end: usize, replacer: &MelodicFigure) -> VecDeque<(usize, Note)> {
+    fn replacements(
+        &self,
+        start: usize,
+        end: usize,
+        replacer: &MelodicFigure,
+    ) -> VecDeque<(usize, Note)> {
         let scale = self.best_scale_for();
         let mut pitch_queue = replacer.make_pitches(self.notes[start].pitch, &scale);
         pitch_queue.pop_front();
