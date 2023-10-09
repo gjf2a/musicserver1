@@ -239,6 +239,24 @@ impl Melody {
         }
     }
 
+    pub fn keep_only_differing_figures(&mut self, other: &Melody) {
+        let mut keepers = vec![];
+        for (start, figure) in self.figures.iter() {
+            let mut differs = true;
+            for (other_start, other_figure) in other.figures.iter() {
+                if *start == *other_start && *figure == *other_figure {
+                    differs = false;
+                }
+            } 
+            if differs {
+                keepers.push((*start, *figure));
+            } else {
+                println!("not a keeper");
+            }
+        }
+        self.figures = keepers;
+    }
+ 
     pub fn sorted_figures_for(&self) -> Vec<(Vec<FigureStart>, MelodicFigure)> {
         MAKER.sorted_figures_for(self)
     }

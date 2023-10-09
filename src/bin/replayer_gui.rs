@@ -532,9 +532,11 @@ impl ReplayerApp {
         }
 
         let size = Vec2::new(ui.available_width(), ui.available_height() * staff_scaling);
-        let mut melodies = vec![(melody_info.melody(), Color32::BLACK)];
+        let mut melodies = vec![(melody_info.melody().clone(), Color32::BLACK)];
         if self.show_variation {
-            melodies.push((variation_info.melody(), Color32::RED));
+            let mut variation = variation_info.melody().clone();
+            variation.keep_only_differing_figures(melody_info.melody());
+            melodies.push((variation, Color32::RED));
         }
         MelodyRenderer::render(
             ui,
@@ -1015,7 +1017,7 @@ impl MelodyRenderer {
     fn render(
         ui: &mut Ui,
         size: Vec2,
-        melodies: &Vec<(&Melody, Color32)>,
+        melodies: &Vec<(Melody, Color32)>,
         show_sections: bool,
         show_figures: bool,
         melody_progress: Arc<AtomicCell<Option<f32>>>,
@@ -1148,7 +1150,7 @@ impl MelodyRenderer {
 
     fn min_max_staff(
         scale: &MusicMode,
-        melodies: &Vec<(&Melody, Color32)>,
+        melodies: &Vec<(Melody, Color32)>,
     ) -> (MidiByte, MidiByte) {
         let mut lo = LOWEST_STAFF_PITCH;
         let mut hi = HIGHEST_STAFF_PITCH;
