@@ -433,7 +433,7 @@ impl Melody {
             .iter()
             .map(|(mode, v)| (dot_product(v, &mv), mode))
             .max_by_key(|(dp, _)| *dp)
-            .map(|(_,m)| m.clone())
+            .map(|(_, m)| m.clone())
             .unwrap()
     }
 
@@ -1499,7 +1499,7 @@ impl MusicMode {
             let mut major = [0.0; USIZE_NOTES_PER_OCTAVE];
             let mut minor = [0.0; USIZE_NOTES_PER_OCTAVE];
             for n in 0..USIZE_NOTES_PER_OCTAVE {
-                let dest_n = ModNumC::<usize,USIZE_NOTES_PER_OCTAVE>::new(n + i);
+                let dest_n = ModNumC::<usize, USIZE_NOTES_PER_OCTAVE>::new(n + i);
                 major[dest_n.a()] = TEMPERLEY_C_MAJOR[n];
                 minor[dest_n.a()] = TEMPERLEY_C_MINOR[n];
             }
