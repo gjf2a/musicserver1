@@ -2022,7 +2022,7 @@ impl MelodicFigure {
             m += 1;
         }
         if p == self.pattern().len() {
-            Some(m - start)
+            Some(m - start + 1)
         } else {
             None
         }
