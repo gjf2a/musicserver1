@@ -1368,7 +1368,7 @@ impl<'a> IncrementalNoteRenderer<'a> {
                     ),
                 );
                 self.painter
-                    .rect_stroke(rect, 0.0, egui::Stroke::new(1.0, pending.color));
+                    .rect_stroke(rect, 0.0, egui::Stroke::new(3.0, pending.color));
             }
         }
     }
