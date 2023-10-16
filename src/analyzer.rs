@@ -51,12 +51,12 @@ const NOTE_IDS: [(NoteLetter, Accidental); USIZE_NOTES_PER_OCTAVE] = [
 ];
 
 const MODE_NAMES: [&str; DIATONIC_SCALE_SIZE] = [
-    "Ionian",
+    "Major",
     "Dorian",
     "Phrygian",
     "Lydian",
     "Mixolydian",
-    "Aeolian",
+    "Minor",
     "Locrian",
 ];
 
