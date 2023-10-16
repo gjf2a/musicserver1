@@ -239,25 +239,6 @@ impl Melody {
         }
     }
 
-    pub fn keep_only_differing_figures(&mut self, other: &Melody) {
-        let different_pitches = (0..self.notes.len().min(other.notes.len()))
-            .filter(|i| self.notes[*i].pitch != other.notes[*i].pitch)
-            .collect::<Vec<_>>();
-        let mut keepers = vec![];
-        for (start, figure) in self.figures.iter() {
-            let mut differs = false;
-            for pitch_i in different_pitches.iter() {
-                if start.contains(*pitch_i) {
-                    differs = true;
-                }
-            }
-            if differs {
-                keepers.push((*start, *figure));
-            }
-        }
-        self.figures = keepers;
-    }
-
     pub fn sorted_figures_for(&self) -> Vec<(Vec<FigureStart>, MelodicFigure)> {
         MAKER.sorted_figures_for(self)
     }

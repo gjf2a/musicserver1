@@ -538,9 +538,7 @@ impl ReplayerApp {
         let size = Vec2::new(ui.available_width(), ui.available_height() * staff_scaling);
         let mut melodies = vec![(melody_info.melody().clone(), Color32::BLACK)];
         if self.show_variation {
-            let mut variation = variation_info.melody().clone();
-            variation.keep_only_differing_figures(melody_info.melody());
-            melodies.push((variation, Color32::RED));
+            melodies.push((variation_info.melody().clone(), Color32::RED));
         }
         MelodyRenderer::render(
             ui,
