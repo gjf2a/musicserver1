@@ -437,14 +437,23 @@ impl Melody {
         mode_by_weight!(self.find_note_weights()).unwrap()
     }
 
-    pub fn best_scale_for(&self) -> MusicMode {
-        let mut mode_weights = BTreeMap::new();
-        for mode in MusicMode::all_modes_for(self.find_root_pitch()).iter() {
-            for n in self.notes.iter().filter(|n| mode.contains(n.pitch)) {
-                bump_ref_by!(mode_weights, mode, n.duration);
-            }
+    pub fn note_weight_vector(&self) -> [f64; USIZE_NOTES_PER_OCTAVE] {
+        assert!(self.len() >= 1);
+        let mut result = [0.0; USIZE_NOTES_PER_OCTAVE];
+        for n in self.notes.iter() {
+            result[n.pitch as usize % USIZE_NOTES_PER_OCTAVE] += n.duration.0;
         }
-        mode_by_weight!(mode_weights).unwrap()
+        result
+    }
+
+    pub fn best_scale_for(&self) -> MusicMode {
+        let mv = self.note_weight_vector();
+        MusicMode::all_major_minor_weights()
+            .iter()
+            .map(|(mode, v)| (dot_product(v, &mv), mode))
+            .max_by_key(|(dp, _)| *dp)
+            .map(|(_,m)| m.clone())
+            .unwrap()
     }
 
     pub fn diatonic_intervals(&self) -> Vec<DiatonicInterval> {
@@ -1485,6 +1494,17 @@ pub struct MusicMode {
     intervals: [MidiByte; DIATONIC_SCALE_SIZE],
 }
 
+fn dot_product(
+    v1: &[f64; USIZE_NOTES_PER_OCTAVE],
+    v2: &[f64; USIZE_NOTES_PER_OCTAVE],
+) -> OrderedFloat<f64> {
+    let mut sum = 0.0;
+    for i in 0..USIZE_NOTES_PER_OCTAVE {
+        sum += v1[i] * v2[i];
+    }
+    OrderedFloat(sum)
+}
+
 impl MusicMode {
     pub fn all_modes_for(root_note: MidiByte) -> Vec<Self> {
         (0..DIATONIC_SCALE_SIZE)
@@ -1492,15 +1512,15 @@ impl MusicMode {
             .collect()
     }
 
-    pub fn all_major_minor_weights() -> Vec<(Self, [f64; 12])> {
+    pub fn all_major_minor_weights() -> Vec<(Self, [f64; USIZE_NOTES_PER_OCTAVE])> {
         let mut result = vec![];
-        for i in 0..12 {
-            let mut major = [0.0; 12];
-            let mut minor = [0.0; 12];
-            for n in 0..12 {
-                let src_i = (n + i) % major.len();
-                major[n] = TEMPERLEY_C_MAJOR[src_i];
-                minor[n] = TEMPERLEY_C_MINOR[src_i];
+        for i in 0..USIZE_NOTES_PER_OCTAVE {
+            let mut major = [0.0; USIZE_NOTES_PER_OCTAVE];
+            let mut minor = [0.0; USIZE_NOTES_PER_OCTAVE];
+            for n in 0..USIZE_NOTES_PER_OCTAVE {
+                let dest_n = ModNumC::<usize,USIZE_NOTES_PER_OCTAVE>::new(n + i);
+                major[dest_n.a()] = TEMPERLEY_C_MAJOR[n];
+                minor[dest_n.a()] = TEMPERLEY_C_MINOR[n];
             }
             result.push((Self::new(ModNumC::new(0), i as MidiByte), major));
             result.push((Self::new(ModNumC::new(5), i as MidiByte), minor));
