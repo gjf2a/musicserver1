@@ -424,14 +424,17 @@ impl Melody {
         result
     }
 
-    pub fn find_root_pitch(&self) -> MidiByte {
+    pub fn find_note_weights(&self) -> HashMap<MidiByte, OrderedFloat<f64>> {
         assert!(self.len() >= 1);
         let note_iter = self
             .notes
             .iter()
             .map(|n| (n.pitch % NOTES_PER_OCTAVE, n.duration));
-        let note_weights = collect_from_by_into!(note_iter, HashMap::new());
-        mode_by_weight!(note_weights).unwrap()
+        collect_from_by_into!(note_iter, HashMap::new())
+    }
+
+    pub fn find_root_pitch(&self) -> MidiByte {
+        mode_by_weight!(self.find_note_weights()).unwrap()
     }
 
     pub fn best_scale_for(&self) -> MusicMode {
@@ -1471,6 +1474,10 @@ impl MelodyDirection {
     }
 }
 
+// From http://davidtemperley.com/wp-content/uploads/2015/11/temperley-mp99.pdf
+const TEMPERLEY_C_MAJOR: [f64; 12] = [5.0, 2.0, 3.5, 2.0, 4.5, 4.0, 2.0, 4.5, 2.0, 3.5, 1.5, 4.0];
+const TEMPERLEY_C_MINOR: [f64; 12] = [5.0, 2.0, 3.5, 4.5, 2.0, 4.0, 2.0, 4.5, 3.5, 2.0, 1.5, 4.0];
+
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
 pub struct MusicMode {
     root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>,
@@ -1483,6 +1490,22 @@ impl MusicMode {
         (0..DIATONIC_SCALE_SIZE)
             .map(|i| Self::new(ModNumC::new(i), root_note))
             .collect()
+    }
+
+    pub fn all_major_minor_weights() -> Vec<(Self, [f64; 12])> {
+        let mut result = vec![];
+        for i in 0..12 {
+            let mut major = [0.0; 12];
+            let mut minor = [0.0; 12];
+            for n in 0..12 {
+                let src_i = (n + i) % major.len();
+                major[n] = TEMPERLEY_C_MAJOR[src_i];
+                minor[n] = TEMPERLEY_C_MINOR[src_i];
+            }
+            result.push((Self::new(ModNumC::new(0), i as MidiByte), major));
+            result.push((Self::new(ModNumC::new(5), i as MidiByte), minor));
+        }
+        result
     }
 
     pub fn root_name(&self) -> (NoteLetter, Accidental) {
