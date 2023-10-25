@@ -4,7 +4,7 @@ This repository represents a research project I am undertaking, to give musician
 [call-and-response](https://jamplay.com/weekend-warrior/w/call-and-response-like-a-blues-legend) format. My purpose
 in undertaking this project is to create a resource that enables musicians to improve their improvisational skills.
 
-There are several executables in the [`\bin`](https://github.com/gjf2a/musicserver1/tree/master/src/bin) directory. 
+There are several executables in the [`bin`](https://github.com/gjf2a/musicserver1/tree/master/src/bin) directory. 
 The one to run is [`replayer_gui.rs`](https://github.com/gjf2a/musicserver1/blob/master/src/bin/replayer_gui.rs). 
 
 When you start the program, it will automatically identify all MIDI devices attached to your computer. If there is 
