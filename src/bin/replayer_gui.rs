@@ -18,8 +18,8 @@ use musicserver1::database::{
 use musicserver1::melody_renderer::MelodyRenderer;
 use musicserver1::midi::MidiScenario;
 use musicserver1::runtime::{
-    make_synth_table, replay_slider, send_recorded_melody, send_two_melodies,
-    MelodyRunStatus, SliderValue, SynthChoice, VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER, TableInfo,
+    make_synth_table, replay_slider, send_recorded_melody, send_two_melodies, MelodyRunStatus,
+    SliderValue, SynthChoice, TableInfo, VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER,
 };
 use musicserver1::vec_tracker::VecTracker;
 use std::fmt::Display;
@@ -222,7 +222,7 @@ impl ReplayerApp {
     fn choose_synth_and_variation(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
             self.show_synths(ui);
-            Self::radio_choice(ui, "Variation Algorithm", &mut self.ai_algorithm);
+            self.ai_algorithm.radio_choice(ui, "Variation Algorithm");
         });
     }
 
@@ -230,8 +230,8 @@ impl ReplayerApp {
         let human_name = self.human_synth.current_name();
         let ai_name = self.ai_synth.current_name();
         if self.show_synth_choices {
-            Self::radio_choice(ui, "Human Synthesizer", &mut self.human_synth);
-            Self::radio_choice(ui, "Variation Synthesizer", &mut self.ai_synth);
+            self.human_synth.radio_choice(ui, "Human Synthesizer");
+            self.ai_synth.radio_choice(ui, "Variation Synthesizer");
         } else {
             ui.vertical(|ui| {
                 ui.label(format!("Human synth: {}", self.human_synth.current_name()));
@@ -353,7 +353,8 @@ impl ReplayerApp {
         };
         if self.melody_var_update_needed.load() {
             self.variation_controls.update_from(&stats);
-            self.ai_algorithm.update_choice(stats.algorithm_name.as_str());
+            self.ai_algorithm
+                .update_choice(stats.algorithm_name.as_str());
             self.melody_var_update_needed.store(false);
         }
 
@@ -573,17 +574,6 @@ impl ReplayerApp {
             }
         });
         pref.store(current_value);
-    }
-
-    fn radio_choice<T: Clone>(ui: &mut Ui, header: &str, info: &mut TableInfo<T>) {
-        let mut current_name = info.current_name();
-        ui.vertical(|ui| {
-            ui.label(header);
-            for item in info.name_vec() {
-                ui.radio_value(&mut current_name, item.clone(), item.clone());
-            }
-        });
-        info.update_choice(current_name.as_str());
     }
 
     fn insert_slider<N: FromStr + Numeric + Display>(

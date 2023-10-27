@@ -2,6 +2,7 @@ use crate::analyzer::Melody;
 use crate::database::VariationStats;
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
+use eframe::egui::Ui;
 use midi_fundsp::io::{Speaker, SynthMsg};
 use midi_fundsp::sounds::favorites;
 use midi_fundsp::SynthFunc;
@@ -43,7 +44,7 @@ impl<T: Clone> TableInfo<T> {
         table.name_vec()
     }
 
-    pub fn choice_vec(&self) -> Vec<(String,T)> {
+    pub fn choice_vec(&self) -> Vec<(String, T)> {
         let table = self.table.lock().unwrap();
         table.choice_vec()
     }
@@ -57,8 +58,18 @@ impl<T: Clone> TableInfo<T> {
         let table = self.table.lock().unwrap();
         table.current_index()
     }
-}
 
+    pub fn radio_choice(&mut self, ui: &mut Ui, header: &str) {
+        let mut current_name = self.current_name();
+        ui.vertical(|ui| {
+            ui.label(header);
+            for item in self.name_vec() {
+                ui.radio_value(&mut current_name, item.clone(), item.clone());
+            }
+        });
+        self.update_choice(current_name.as_str());
+    }
+}
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum SynthChoice {
