@@ -1,5 +1,4 @@
-use bare_metal_modulo::{ModNum, MNum};
-
+use bare_metal_modulo::{MNum, ModNum};
 
 #[derive(Clone, Debug)]
 pub struct VecTracker<T: Clone> {

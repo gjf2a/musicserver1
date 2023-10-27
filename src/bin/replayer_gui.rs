@@ -6,7 +6,7 @@ use eframe::emath::Numeric;
 use enum_iterator::all;
 use midi_fundsp::io::{start_input_thread, start_output_thread, Speaker, SynthMsg};
 use midi_fundsp::SynthFunc;
-use midir::{Ignore, InitError, MidiInput, MidiInputPort, MidiInputPorts};
+use midir::{MidiInput, MidiInputPort, MidiInputPorts};
 use musicserver1::ai_variation::{
     make_ai_table, start_ai_thread, AIFuncType, DEFAULT_AI_NAME, NO_AI_NAME,
 };
@@ -16,6 +16,7 @@ use musicserver1::database::{
     Preference, VariationStats,
 };
 use musicserver1::melody_renderer::MelodyRenderer;
+use musicserver1::midi::MidiScenario;
 use musicserver1::runtime::{
     make_synth_table, replay_slider, send_recorded_melody, send_two_melodies, ChooserTable,
     MelodyRunStatus, SliderValue, SynthChoice, VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER,
@@ -40,38 +41,6 @@ fn main() {
         Box::new(|cc| Box::new(ReplayerApp::new(cc).unwrap())),
     )
     .unwrap();
-}
-
-#[derive(Clone)]
-enum MidiScenario {
-    StartingUp,
-    NoInputPorts(String),
-    InputPortSelected { in_port: MidiInputPort },
-    MultipleInputPorts { in_ports: MidiInputPorts },
-}
-
-impl MidiScenario {
-    fn new(midi_in: &mut Result<MidiInput, InitError>) -> Self {
-        match midi_in {
-            Ok(ref mut midi_in) => {
-                midi_in.ignore(Ignore::None);
-                let in_ports = midi_in.ports();
-                match in_ports.len() {
-                    0 => MidiScenario::NoInputPorts(
-                        "No MIDI devices found\nRestart program after MIDI device plugged in"
-                            .to_string(),
-                    ),
-                    1 => MidiScenario::InputPortSelected {
-                        in_port: in_ports[0].clone(),
-                    },
-                    _ => MidiScenario::MultipleInputPorts {
-                        in_ports: in_ports.clone(),
-                    },
-                }
-            }
-            Err(e) => MidiScenario::NoInputPorts(e.to_string()),
-        }
-    }
 }
 
 struct TableInfo<T: Clone> {
