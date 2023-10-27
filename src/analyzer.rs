@@ -1958,12 +1958,6 @@ impl MelodicFigure {
     pub fn total_diatonic_change(&self) -> MidiByte {
         self.pattern().iter().sum()
     }
-    /*
-    // Proposed new version
-    pub fn total_diatonic_change(&self) -> DiatonicInterval {
-        DiatonicInterval::pure(self.pattern().iter().sum())
-    }
-    */
 
     /// Two `MelodicFigure` objects `interfere()` if they overlap anywhere except at their endpoints.
     pub fn interfere(
