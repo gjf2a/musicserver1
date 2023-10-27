@@ -29,7 +29,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
-const NUM_OUTPUT_CHANNELS: usize = 2; // More than this, and it has occasional noise-clipping problems.
+const NUM_OUTPUT_CHANNELS: usize = 10; // More than this, and it has occasional noise-clipping problems.
 const MAIN_MELODY_SCALING: f32 = 0.8;
 
 fn main() {

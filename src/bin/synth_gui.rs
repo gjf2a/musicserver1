@@ -3,10 +3,13 @@ use std::sync::{Arc, Mutex};
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use eframe::{
-    egui::{FontDefinitions, Visuals, self},
+    egui::{self, FontDefinitions, Visuals},
     epaint::{Pos2, Vec2},
 };
-use midi_fundsp::{SynthFunc, io::{start_input_thread, SynthMsg, start_output_thread}};
+use midi_fundsp::{
+    io::{start_input_thread, start_output_thread, Speaker, SynthMsg},
+    SynthFunc,
+};
 use midir::{MidiInput, MidiInputPort};
 use musicserver1::{
     load_font,
@@ -14,11 +17,11 @@ use musicserver1::{
     runtime::{make_synth_table, TableInfo},
 };
 
-const NUM_OUTPUT_CHANNELS: usize = 10; 
+const NUM_OUTPUT_CHANNELS: usize = 10;
 
 fn main() {
     let mut native_options = eframe::NativeOptions::default();
-    native_options.initial_window_size = Some(Vec2 { x: 800.0, y: 600.0 });
+    native_options.initial_window_size = Some(Vec2 { x: 400.0, y: 400.0 });
     native_options.initial_window_pos = Some(Pos2 { x: 50.0, y: 25.0 });
     eframe::run_native(
         "Synth",
@@ -61,7 +64,7 @@ impl eframe::App for SynthApp {
                 self.main_screen(ctx, frame)
             }
             MidiScenario::MultipleInputPorts { in_ports } => todo!(),
-        }        
+        }
     }
 }
 
@@ -83,7 +86,7 @@ impl SynthApp {
         };
         app.startup();
         app
-    } 
+    }
 
     fn startup_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
@@ -111,7 +114,7 @@ impl SynthApp {
         let mut midi_in_record = self.midi_in.lock().unwrap();
         *midi_in_record = midi_in.ok();
     }
-    
+
     fn no_midi_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame, message: &str) {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading(format!("No MIDI devices connected\n{message}"));
@@ -120,9 +123,19 @@ impl SynthApp {
 
     fn main_screen(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            let heading = format!("MIDI FunDSP GUI using ({})", self.in_port_name.as_ref().unwrap());
+            let heading = format!(
+                "MIDI FunDSP GUI using ({})",
+                self.in_port_name.as_ref().unwrap()
+            );
             ui.heading(heading);
+            let current_synth = self.synth.current_name();
             self.synth.radio_choice(ui, "Synth choices");
+            if self.synth.current_name() != current_synth {
+                self.input2output.push(SynthMsg::program_change(
+                    self.synth.current_index() as u8,
+                    Speaker::Both,
+                ));
+            }
         });
     }
 
@@ -141,7 +154,7 @@ impl SynthApp {
             self.quit_threads.clone(),
         );
     }
-    
+
     fn set_in_port_name(&mut self, in_port: &MidiInputPort) {
         let midi_in = self.midi_in.lock().unwrap();
         self.in_port_name = midi_in.as_ref().and_then(|m| m.port_name(in_port).ok());
