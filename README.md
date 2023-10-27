@@ -34,6 +34,10 @@ The `--release` is very important - sound quality often suffers if compiler opti
 [midi-msg](https://crates.io/crates/midi-msg), and [cpal](https://crates.io/crates/cpal), who made it possible and practical for me to create this crate. 
 * Thank you to [Mark Goadrich](https://github.com/mgoadric) and [Andy Morgan](https://www.hendrix.edu/academicaffairs/profile.aspx?id=70775) for numerous suggestions for improvements and helpful features.
 
+## Contact
+
+Please visit my [personal web page](https://gjf2a.github.io/). To contact me, email me at my last name at hendrix.edu. 
+
 ## License
 
 Licensed under either of
