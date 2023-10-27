@@ -2,12 +2,8 @@ use bare_metal_modulo::*;
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use eframe::egui::{self, Key, TextEdit};
-use eframe::egui::{
-    Align2, Color32, FontData, FontDefinitions, FontFamily, FontId, Painter, Pos2, Sense, Stroke,
-    Ui, Vec2, Visuals,
-};
+use eframe::egui::{Color32, FontData, FontDefinitions, FontFamily, Pos2, Ui, Vec2, Visuals};
 use eframe::emath::Numeric;
-use eframe::epaint::Rect;
 use enum_iterator::all;
 use midi_fundsp::io::{start_input_thread, start_output_thread, Speaker, SynthMsg};
 use midi_fundsp::SynthFunc;
@@ -15,9 +11,7 @@ use midir::{Ignore, InitError, MidiInput, MidiInputPort, MidiInputPorts};
 use musicserver1::ai_variation::{
     make_ai_table, start_ai_thread, AIFuncType, DEFAULT_AI_NAME, NO_AI_NAME,
 };
-use musicserver1::analyzer::{
-    Accidental, KeySignature, MelodicFigure, Melody, MidiByte, MusicMode, Note,
-};
+use musicserver1::analyzer::Melody;
 use musicserver1::database::{
     start_database_thread, Database, DatabaseGuiUpdate, FromAiMsg, GuiDatabaseUpdate, MelodyInfo,
     Preference, VariationStats,
@@ -27,10 +21,7 @@ use musicserver1::runtime::{
     make_synth_table, replay_slider, send_recorded_melody, send_two_melodies, ChooserTable,
     MelodyRunStatus, SliderValue, SynthChoice, VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER,
 };
-use std::cmp::{max, min};
-use std::collections::{HashMap, VecDeque};
 use std::fmt::Display;
-use std::ops::RangeInclusive;
 use std::str::FromStr;
 use std::sync::{Arc, Mutex};
 use std::thread;
