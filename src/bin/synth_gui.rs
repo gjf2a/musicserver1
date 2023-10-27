@@ -10,7 +10,7 @@ use midi_fundsp::{
     io::{start_input_thread, start_output_thread, Speaker, SynthMsg},
     SynthFunc,
 };
-use midir::{MidiInput, MidiInputPort};
+use midir::{MidiInput, MidiInputPort, MidiInputPorts};
 use musicserver1::{
     load_font,
     midi::MidiScenario,
@@ -63,7 +63,9 @@ impl eframe::App for SynthApp {
                 }
                 self.main_screen(ctx, frame)
             }
-            MidiScenario::MultipleInputPorts { in_ports } => todo!(),
+            MidiScenario::MultipleInputPorts { in_ports } => {
+                self.pick_midi_screen(ctx, frame, &in_ports);
+            }
         }
     }
 }
@@ -158,5 +160,39 @@ impl SynthApp {
     fn set_in_port_name(&mut self, in_port: &MidiInputPort) {
         let midi_in = self.midi_in.lock().unwrap();
         self.in_port_name = midi_in.as_ref().and_then(|m| m.port_name(in_port).ok());
+    }
+
+    
+    fn pick_midi_screen(
+        &mut self,
+        ctx: &egui::Context,
+        _frame: &mut eframe::Frame,
+        in_ports: &MidiInputPorts,
+    ) {
+        if self.in_port.is_none() {
+            self.in_port = Some(in_ports[0].clone());
+        }
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.heading("Replayer: Choose a MIDI Device");
+            ui.vertical(|ui| {
+                for in_port in in_ports.iter() {
+                    self.set_in_port_name(in_port);
+                    ui.radio_value(
+                        &mut self.in_port,
+                        Some(in_port.clone()),
+                        self.in_port_name.as_ref().unwrap().clone(),
+                    );
+                }
+            });
+            if ui.button("Start Playing").clicked() {
+                {
+                    let mut midi_scenario = self.midi_scenario.lock().unwrap();
+                    *midi_scenario = MidiScenario::InputPortSelected {
+                        in_port: self.in_port.clone().unwrap(),
+                    };
+                }
+                self.start_input();
+            }
+        });
     }
 }
