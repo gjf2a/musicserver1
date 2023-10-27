@@ -1103,24 +1103,6 @@ impl MelodyMaker {
         }
     }
 
-    pub fn create_wandering_variation(&self, original: &Melody, p_eliminate: f64) -> Melody {
-        let mut ranking = original.notes_ranked_by_duration();
-        let target_len = (ranking.len() as f64 * (1.0 - p_eliminate)) as usize;
-        while ranking.len() > target_len {
-            ranking.pop();
-        }
-        let mut ranking: BTreeMap<usize, Note> = ranking.iter().copied().collect();
-        ranking.insert(0, original[0]);
-        ranking.insert(original.len() - 1, original[original.len() - 1]);
-        let mut variation = original.clone();
-        let mut prev = 0;
-        for i in ranking.keys() {
-            self.randomize_subsection(&mut variation, prev..=*i);
-            prev = *i;
-        }
-        variation
-    }
-
     pub fn whimsified_ending(&self, original: &Melody) -> Melody {
         let distro = self.make_figure_distribution(original);
         let whimsifier = distro.random_pick();
