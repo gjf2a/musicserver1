@@ -11,13 +11,54 @@ use read_input::InputBuild;
 use std::collections::btree_map::BTreeMap;
 use std::collections::VecDeque;
 use std::ops::RangeInclusive;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 pub const SHOW_MIDI_MSG: bool = false;
 
 pub const HUMAN_SPEAKER: Speaker = Speaker::Left;
 pub const VARIATION_SPEAKER: Speaker = Speaker::Right;
+
+pub struct TableInfo<T: Clone> {
+    table: Arc<Mutex<ChooserTable<T>>>,
+}
+
+impl<T: Clone> TableInfo<T> {
+    pub fn new(table: ChooserTable<T>) -> Self {
+        let table = Arc::new(Mutex::new(table));
+        Self { table }
+    }
+
+    pub fn table_ref(&self) -> Arc<Mutex<ChooserTable<T>>> {
+        self.table.clone()
+    }
+
+    pub fn current_name(&self) -> String {
+        let table = self.table.lock().unwrap();
+        table.current_name().to_owned()
+    }
+
+    pub fn name_vec(&self) -> Vec<String> {
+        let table = self.table.lock().unwrap();
+        table.name_vec()
+    }
+
+    pub fn choice_vec(&self) -> Vec<(String,T)> {
+        let table = self.table.lock().unwrap();
+        table.choice_vec()
+    }
+
+    pub fn update_choice(&mut self, updated_name: &str) {
+        let mut table = self.table.lock().unwrap();
+        table.choose(updated_name);
+    }
+
+    pub fn current_index(&self) -> usize {
+        let table = self.table.lock().unwrap();
+        table.current_index()
+    }
+}
+
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum SynthChoice {

@@ -18,8 +18,8 @@ use musicserver1::database::{
 use musicserver1::melody_renderer::MelodyRenderer;
 use musicserver1::midi::MidiScenario;
 use musicserver1::runtime::{
-    make_synth_table, replay_slider, send_recorded_melody, send_two_melodies, ChooserTable,
-    MelodyRunStatus, SliderValue, SynthChoice, VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER,
+    make_synth_table, replay_slider, send_recorded_melody, send_two_melodies,
+    MelodyRunStatus, SliderValue, SynthChoice, VariationControls, HUMAN_SPEAKER, VARIATION_SPEAKER, TableInfo,
 };
 use musicserver1::vec_tracker::VecTracker;
 use std::fmt::Display;
@@ -41,32 +41,6 @@ fn main() {
         Box::new(|cc| Box::new(ReplayerApp::new(cc).unwrap())),
     )
     .unwrap();
-}
-
-struct TableInfo<T: Clone> {
-    name: String,
-    table: Arc<Mutex<ChooserTable<T>>>,
-    index: Arc<AtomicCell<usize>>,
-}
-
-impl<T: Clone> TableInfo<T> {
-    fn new(table: ChooserTable<T>) -> Self {
-        let name = table.current_name().to_owned();
-        let index = Arc::new(AtomicCell::new(table.current_index()));
-        let table = Arc::new(Mutex::new(table));
-        Self { name, table, index }
-    }
-
-    fn update_choice(&mut self) {
-        let mut table = self.table.lock().unwrap();
-        table.choose(self.name.as_str());
-        self.index.store(table.current_index());
-    }
-
-    fn current_index(&self) -> usize {
-        let table = self.table.lock().unwrap();
-        table.current_index()
-    }
 }
 
 struct ReplayerApp {
@@ -247,33 +221,33 @@ impl ReplayerApp {
 
     fn choose_synth_and_variation(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
-            let human_name = self.human_synth.name.clone();
-            let ai_name = self.ai_synth.name.clone();
-            self.show_synths(ui, human_name.as_str(), ai_name.as_str());
+            self.show_synths(ui);
             Self::radio_choice(ui, "Variation Algorithm", &mut self.ai_algorithm);
-            self.update_synths(human_name.as_str(), ai_name.as_str());
         });
     }
 
-    fn show_synths(&mut self, ui: &mut Ui, human_name: &str, ai_name: &str) {
+    fn show_synths(&mut self, ui: &mut Ui) {
+        let human_name = self.human_synth.current_name();
+        let ai_name = self.ai_synth.current_name();
         if self.show_synth_choices {
             Self::radio_choice(ui, "Human Synthesizer", &mut self.human_synth);
             Self::radio_choice(ui, "Variation Synthesizer", &mut self.ai_synth);
         } else {
             ui.vertical(|ui| {
-                ui.label(format!("Human synth: {human_name}"));
-                ui.label(format!("AI synth: {ai_name}"));
+                ui.label(format!("Human synth: {}", self.human_synth.current_name()));
+                ui.label(format!("AI synth: {}", self.ai_synth.current_name()));
             });
         }
+        self.update_synths(human_name.as_str(), ai_name.as_str());
     }
 
-    fn update_synths(&mut self, human_name: &str, ai_name: &str) {
-        if human_name != self.human_synth.name {
+    fn update_synths(&self, human_name: &str, ai_name: &str) {
+        if human_name != self.human_synth.current_name() {
             let msg =
                 SynthMsg::program_change(self.human_synth.current_index() as u8, HUMAN_SPEAKER);
             self.ai2output.push(msg);
         }
-        if ai_name != self.ai_synth.name {
+        if ai_name != self.ai_synth.current_name() {
             let msg =
                 SynthMsg::program_change(self.ai_synth.current_index() as u8, VARIATION_SPEAKER);
             self.ai2output.push(msg);
@@ -379,8 +353,7 @@ impl ReplayerApp {
         };
         if self.melody_var_update_needed.load() {
             self.variation_controls.update_from(&stats);
-            self.ai_algorithm.name = stats.algorithm_name;
-            self.ai_algorithm.update_choice();
+            self.ai_algorithm.update_choice(stats.algorithm_name.as_str());
             self.melody_var_update_needed.store(false);
         }
 
@@ -543,12 +516,8 @@ impl ReplayerApp {
     }
 
     fn create_new_variation(&mut self, melody_info: &MelodyInfo) {
-        {
-            let mut ai_table = self.ai_algorithm.table.lock().unwrap();
-            if ai_table.current_name() == NO_AI_NAME {
-                ai_table.choose(DEFAULT_AI_NAME);
-                self.ai_algorithm.name = String::from(DEFAULT_AI_NAME);
-            }
+        if self.ai_algorithm.current_name() == NO_AI_NAME {
+            self.ai_algorithm.update_choice(DEFAULT_AI_NAME);
         }
         self.gui2ai.push(melody_info.clone());
     }
@@ -607,14 +576,14 @@ impl ReplayerApp {
     }
 
     fn radio_choice<T: Clone>(ui: &mut Ui, header: &str, info: &mut TableInfo<T>) {
+        let mut current_name = info.current_name();
         ui.vertical(|ui| {
-            let table = info.table.lock().unwrap();
             ui.label(header);
-            for item in table.name_vec() {
-                ui.radio_value(&mut info.name, item.clone(), item.clone());
+            for item in info.name_vec() {
+                ui.radio_value(&mut current_name, item.clone(), item.clone());
             }
         });
-        info.update_choice();
+        info.update_choice(current_name.as_str());
     }
 
     fn insert_slider<N: FromStr + Numeric + Display>(
@@ -638,14 +607,11 @@ impl ReplayerApp {
     fn startup(&mut self) {
         start_output_thread::<NUM_OUTPUT_CHANNELS>(
             self.ai2output.clone(),
-            {
-                let table = self.human_synth.table.lock().unwrap();
-                Arc::new(Mutex::new(table.choice_vec()))
-            },
+            Arc::new(Mutex::new(self.human_synth.choice_vec())),
             self.quit_threads.clone(),
         );
         start_ai_thread(
-            self.ai_algorithm.table.clone(),
+            self.ai_algorithm.table_ref(),
             self.input2ai.clone(),
             self.gui2ai.clone(),
             self.ai2output.clone(),
