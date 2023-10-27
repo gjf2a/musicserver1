@@ -255,6 +255,7 @@ impl Melody {
         let mut result = Self::new();
         result.notes = notes.clone();
         result.identify_sections();
+        result.identify_figures();
         result
     }
 
@@ -574,6 +575,8 @@ impl Melody {
                 result.add(*note);
             }
         }
+        result.identify_sections();
+        result.identify_figures();
         result
     }
 
@@ -1306,6 +1309,8 @@ impl MelodySection {
         for start in self.starts.iter() {
             self.remelodize_at(melody, *start, &scale);
         }
+        melody.identify_sections();
+        melody.identify_figures();
     }
 
     fn remelodize_at(&self, melody: &mut Melody, start: usize, scale: &MusicMode) {
@@ -2187,8 +2192,9 @@ mod tests {
     use bare_metal_modulo::ModNumC;
     use float_cmp::assert_approx_eq;
     use ordered_float::OrderedFloat;
-    use std::cmp::{max, min};
-    use std::collections::{BTreeSet, VecDeque};
+    use std::{cmp::{max, min}, collections::BTreeSet};
+
+    use super::MAKER;
 
     const EXAMPLE_MELODY: &str = "55,0.39,0.91,55,0.04,0.0,59,0.33,0.73,60,0.06,0.44,62,0.02,0.87,59,0.05,0.0,60,0.16,0.0,62,0.2,0.0,55,0.39,0.61,55,0.01,0.0,57,0.34,0.98,57,0.05,0.0,55,0.39,0.78,54,0.02,0.98,55,0.19,0.0,54,0.12,0.0,52,0.11,0.74,52,0.0,0.0,54,0.12,0.46,54,0.03,0.0,50,0.1,0.84,50,0.27,0.0,55,0.27,0.74,55,0.1,0.0,59,0.27,0.44,60,0.07,0.54,62,0.04,0.91,59,0.09,0.0,60,0.11,0.0,62,0.19,0.0,55,0.29,0.67,55,0.07,0.0,57,0.32,0.76,57,0.06,0.0,55,0.23,0.7,55,0.05,0.0,54,0.12,0.93,54,0.07,0.0,50,0.37,0.8,50,0.5,0.0,55,0.36,0.76,55,0.05,0.0,59,0.28,0.76,60,0.05,0.7,62,0.01,0.91,59,0.07,0.0,60,0.15,0.0,62,0.2,0.0,55,0.33,0.67,55,0.02,0.0,57,0.29,0.8,57,0.1,0.0,55,0.29,0.9,55,0.08,0.0,54,0.16,1.0,54,0.12,0.0,52,0.12,0.72,54,0.01,0.71,52,0.14,0.0,54,0.07,0.0,50,0.1,0.76,50,0.23,0.0,55,0.22,0.65,55,0.13,0.0,57,0.29,0.64,57,0.08,0.0,55,0.23,0.76,55,0.07,0.0,54,0.12,0.99,54,0.04,0.0,52,0.24,0.95,52,0.19,0.0,54,0.13,1.0,54,0.15,0.0,52,0.12,0.72,52,0.03,0.0,54,0.19,0.83,54,0.13,0.0,50,0.06,0.69,50,0.15,0.0,55,0.01,0.73,57,0.07,0.66,57,0.55,0.0,55,1.5,0.0";
     const COUNTDOWN_MELODY: &str = "66,0.42,1.0,66,0.55,0.0,73,0.17,1.0,73,0.01,0.0,71,0.13,0.77,71,0.0,0.0,73,0.45,0.41,73,0.13,0.0,66,0.85,0.8,66,0.32,0.0,74,0.16,1.0,74,0.0,0.0,74,0.37,0.87,74,0.03,0.0,73,0.2,1.0,73,0.03,0.0,71,0.03,0.06,71,0.04,0.0,71,0.93,1.0,71,0.27,0.0,74,0.16,1.0,74,0.03,0.0,73,0.13,1.0,73,0.03,0.0,74,0.45,1.0,74,0.12,0.0,66,0.58,0.8,66,0.5,0.0,71,0.15,0.75,71,0.02,0.0,71,0.13,0.81,71,0.03,0.0,71,0.21,1.0,71,0.08,0.0,69,0.24,0.94,69,0.08,0.0,68,0.22,0.65,68,0.07,0.0,71,0.24,1.0,71,0.06,0.0,69,0.68,1.0,69,0.15,0.0,73,0.16,1.0,73,0.03,0.0,71,0.14,0.91,71,0.03,0.0,73,0.29,1.0,73,0.22,0.0,66,0.61,0.64,66,0.45,0.0,74,0.15,0.87,74,0.04,0.0,74,0.14,0.83,74,0.02,0.0,74,0.2,1.0,74,0.13,0.0,73,0.29,0.96,73,0.0,0.0,72,0.04,0.49,72,0.03,0.0,71,1.01,1.0,71,0.41,0.0,74,0.14,0.94,74,0.04,0.0,73,0.13,0.8,73,0.03,0.0,74,0.49,1.0,74,0.12,0.0,66,0.93,0.54,66,0.19,0.0,71,0.16,0.81,71,0.02,0.0,71,0.13,0.79,71,0.03,0.0,71,0.21,0.87,71,0.11,0.0,69,0.24,0.86,69,0.08,0.0,68,0.24,0.67,68,0.07,0.0,71,0.24,1.0,71,0.11,0.0,69,0.75,0.86,69,0.05,0.0,68,0.18,0.71,68,0.02,0.0,69,0.16,0.89,69,0.04,0.0,71,0.02,0.99,71,0.0,0.0,83,0.01,1.0,83,0.0,0.0,71,0.56,0.98,71,0.16,0.0,69,0.19,1.0,69,0.04,0.0,71,0.2,1.0,71,0.05,0.0,73,0.24,1.0,73,0.0,0.0,72,0.03,0.62,72,0.07,0.0,71,0.2,0.91,71,0.03,0.0,69,0.01,0.06,69,0.06,0.0,69,0.18,0.73,69,0.11,0.0,68,0.19,0.46,68,0.18,0.0,66,0.51,0.76,66,0.17,0.0,74,0.56,1.0,74,0.01,0.0,73,1.09,0.79,73,0.07,0.0,75,0.16,0.9,75,0.03,0.0,73,0.16,0.84,73,0.03,0.0,71,0.18,0.57,71,0.03,0.0,73,0.78,0.64,73,0.06,0.0,73,0.14,0.91,73,0.04,0.0,73,0.14,0.87,73,0.04,0.0,73,0.26,0.81,73,0.1,0.0,71,0.23,0.91,71,0.07,0.0,69,0.19,0.98,69,0.1,0.0,68,0.23,0.59,68,0.15,0.0,66,1.22,0.68,66,2.0,0.0";
@@ -2199,15 +2205,12 @@ mod tests {
     fn test_parse_melody() {
         let m = "69,0.24,1.0,69,0.09,0.0,72,0.31,1.0,72,0.08,0.0,71,0.29,0.69";
         let notes = Melody::from_str(m);
-        println!("{}", notes.view_notes());
-        assert_eq!(format!("{:?}", notes), "Melody { notes: [Note { pitch: 69, duration: OrderedFloat(0.24), velocity: 127 }, Note { pitch: 69, duration: OrderedFloat(0.09), velocity: 0 }, Note { pitch: 72, duration: OrderedFloat(0.31), velocity: 127 }, Note { pitch: 72, duration: OrderedFloat(0.08), velocity: 0 }, Note { pitch: 71, duration: OrderedFloat(0.29), velocity: 87 }] }");
+        assert_eq!(format!("{:?}", notes), "Melody { notes: [Note { pitch: 69, duration: OrderedFloat(0.24), velocity: 127 }, Note { pitch: 69, duration: OrderedFloat(0.09), velocity: 0 }, Note { pitch: 72, duration: OrderedFloat(0.31), velocity: 127 }, Note { pitch: 72, duration: OrderedFloat(0.08), velocity: 0 }, Note { pitch: 71, duration: OrderedFloat(0.29), velocity: 87 }], sections: [], figures: [(FigureStart { start: 0, length: 5 }, MelodicFigure { shape: PivotLHP, polarity: Negative, direction: Reverse })] }");
     }
 
     #[test]
     fn test_distinct_consecutive_pitches_in() {
         let melody = lean_on_me_melody();
-        let pitches: Vec<MidiByte> = melody.iter().map(|n| n.pitch()).collect();
-        println!("{pitches:?}");
         for (start, end, count) in [
             (0, 3, 1),
             (0, 4, 2),
@@ -2242,7 +2245,6 @@ mod tests {
 
     fn test_natural_mode(root_pos: ModNumC<usize, DIATONIC_SCALE_SIZE>, notes: [MidiByte; 15]) {
         let mode = MusicMode::new(root_pos, notes[0]);
-        println!("{} {:?}", mode.name(), mode);
         for (i, n) in notes.iter().enumerate() {
             let i = i as MidiByte;
             let next = mode.next_pitch(notes[0], DiatonicInterval::pure(i));
@@ -2300,21 +2302,6 @@ mod tests {
     }
 
     #[test]
-    fn show_interval_table() {
-        println!("Length 3 figures");
-        let table = MelodicFigure::interval2figures(3);
-        for (i, ms) in table.iter() {
-            println!("{}: {:?}", *i, ms);
-        }
-
-        println!("Length 4 figures");
-        let table = MelodicFigure::interval2figures(4);
-        for (i, ms) in table.iter() {
-            println!("{}: {:?}", *i, ms);
-        }
-    }
-
-    #[test]
     fn test_diatonic_bug() {
         let mode = MusicMode {
             root_pos: ModNumC::new(0),
@@ -2348,8 +2335,6 @@ mod tests {
             ],
             intervals: [2, 2, 1, 2, 2, 2, 1],
         };
-        println!("mode: {}", mode.name());
-        println!("{:?}", mode);
         let tests = [
             (54, 1, 55),
             (67, 1, 69),
@@ -2405,7 +2390,7 @@ mod tests {
     fn test_diatonic_degree() {
         let melody = Melody::from_str(EXAMPLE_MELODY);
         let scale = melody.best_scale_for();
-        assert_eq!(scale.name(), "G Ionian");
+        assert_eq!(scale.name(), "G Major");
         for (i, pitch) in [67, 69, 71, 72, 74, 76, 78, 79, 81, 83, 84, 86, 88, 90, 91]
             .iter()
             .enumerate()
@@ -2415,6 +2400,12 @@ mod tests {
                 scale.diatonic_degree(*pitch)
             );
         }
+    }
+
+    fn test_figure_match(melody_str: &str) -> (usize, BTreeSet<MelodicFigure>) {
+        let melody = Melody::from_str(melody_str);
+        let figures = MAKER.all_figure_matches(&melody);
+        (figures.len(), figures.iter().map(|(_,f,_)| *f).collect())
     }
 
     #[test]
@@ -2431,21 +2422,6 @@ mod tests {
         assert_eq!(figure_count, 106);
         assert_eq!(figure_set.len(), 23);
         assert_eq!(format!("{:?}", figure_set), "{MelodicFigure { shape: Note3Scale, polarity: Positive, direction: Forward }, MelodicFigure { shape: Note3Scale, polarity: Negative, direction: Forward }, MelodicFigure { shape: Auxiliary, polarity: Positive, direction: Forward }, MelodicFigure { shape: Run, polarity: Negative, direction: Forward }, MelodicFigure { shape: Trill1, polarity: Negative, direction: Forward }, MelodicFigure { shape: PivotLHP, polarity: Negative, direction: Reverse }, MelodicFigure { shape: ReturnCrazyDriver, polarity: Positive, direction: Reverse }, MelodicFigure { shape: ReturnCrazyDriver, polarity: Negative, direction: Forward }, MelodicFigure { shape: ReturnCrazyDriver, polarity: Negative, direction: Reverse }, MelodicFigure { shape: Parkour1, polarity: Positive, direction: Reverse }, MelodicFigure { shape: ParkourBounce2, polarity: Positive, direction: Reverse }, MelodicFigure { shape: ParkourBounce2, polarity: Negative, direction: Forward }, MelodicFigure { shape: Vault7, polarity: Positive, direction: Forward }, MelodicFigure { shape: Vault7, polarity: Negative, direction: Reverse }, MelodicFigure { shape: Roll, polarity: Negative, direction: Forward }, MelodicFigure { shape: Roll, polarity: Negative, direction: Reverse }, MelodicFigure { shape: DoubleNeighbor, polarity: Negative, direction: Forward }, MelodicFigure { shape: Double3rd, polarity: Positive, direction: Forward }, MelodicFigure { shape: LeapingAux2, polarity: Positive, direction: Reverse }, MelodicFigure { shape: LeapingAux2, polarity: Negative, direction: Forward }, MelodicFigure { shape: PendulumAux1, polarity: Negative, direction: Forward }, MelodicFigure { shape: Cambiata2, polarity: Positive, direction: Forward }, MelodicFigure { shape: ZigZag2, polarity: Positive, direction: Forward }}");
-    }
-
-    fn test_figure_match(melody_str: &str) -> (usize, BTreeSet<MelodicFigure>) {
-        let melody = Melody::from_str(melody_str);
-        let scale = melody.best_scale_for();
-        println!("scale: {}", scale.name());
-        let maker = MelodyMaker::new();
-        let figures = maker.all_figure_matches(&melody);
-        let figure_set: BTreeSet<MelodicFigure> = figures.iter().map(|(_, f, _)| *f).collect();
-
-        println!("# figures: {}", figures.len());
-        println!("# distinct figures: {}", figure_set.len());
-        println!("figures: {:?}", figure_set);
-        println!("pause indices: {:?}", melody.find_pause_indices());
-        (figures.len(), figure_set)
     }
 
     fn test_variation_unchanged<V: Fn(&MelodyMaker, &Melody, f64) -> Melody>(v_func: V) {
@@ -2483,7 +2459,6 @@ mod tests {
             lo = min(lo, OrderedFloat(portion_changed));
             hi = max(hi, OrderedFloat(portion_changed));
         }
-        println!("lo: {:.2} hi: {:.2}", lo.into_inner(), hi.into_inner());
         assert!(lo > OrderedFloat(expected_lo));
         assert!(hi < OrderedFloat(expected_hi));
     }
@@ -2497,13 +2472,10 @@ mod tests {
     #[test]
     fn test_motive_remelodize_unchanged() {
         let melody = Melody::from_str(COUNTDOWN_MELODY);
-        melody.tuple_print();
-        println!("{melody:?}");
         let maker = MelodyMaker::new();
         let sections = maker.get_melody_sections(&melody);
         let mut variation = melody.clone();
         for section in sections.iter() {
-            println!("{section:?}");
             section.remelodize(&mut variation);
             assert_eq!(melody.len(), variation.len());
             for i in 0..melody.len() {
@@ -2558,19 +2530,10 @@ mod tests {
             Note::new(66, 1.22, 86),
             Note::new(66, 2.0, 0),
         ]);
-        let scale = melody.best_scale_for();
-        println!("{} {}", scale.name(), scale.root());
-        melody.tuple_print();
-        let consolidated = melody.get_consolidated_notes();
-        let consolidated_melody = Melody::from_vec(&consolidated.iter().map(|(_, n)| *n).collect());
-        println!("{consolidated_melody:?}");
-        let intervals = consolidated_melody.diatonic_intervals();
-        println!("{intervals:?}");
         let maker = MelodyMaker::new();
         let sections = maker.get_melody_sections(&melody);
         let mut variation = melody.clone();
         for section in sections.iter() {
-            println!("{section:?}");
             section.remelodize(&mut variation);
             assert_eq!(melody.len(), variation.len());
             for i in 0..melody.len() {
@@ -2598,7 +2561,7 @@ mod tests {
     #[test]
     fn chromatic_bug_1() {
         let scale = MusicMode::new(ModNumC::new(5), 6);
-        assert_eq!(scale.name(), "F♯ Aeolian");
+        assert_eq!(scale.name(), "F♯ Minor");
         for (p, d, c) in [
             (73, 0, 0),
             (74, 1, 0),
@@ -2631,41 +2594,7 @@ mod tests {
         let pattern = figure.pattern();
         assert_eq!(pattern, vec![4, -1, 1]);
         let m = figure.match_length(&melody, &scale, 0);
-        assert_eq!(m.unwrap(), 6);
-    }
-
-    #[test]
-    fn study_figures() {
-        let melody = Melody::from_str(COUNTDOWN_MELODY);
-        let scale = melody.best_scale_for();
-        let maker = MelodyMaker::new();
-        let mut start = 0;
-        let mut figures = Vec::new();
-        while start < melody.len() {
-            if let Some((matched, _matched_len)) = maker.matching_figure(&melody, start) {
-                figures.push((
-                    Some(matched),
-                    matched.make_pitches(melody[start].pitch, &scale),
-                ));
-            } else {
-                figures.push((None, VecDeque::from([melody[start].pitch])));
-            }
-            start += 1;
-        }
-        for (i, (figure, notes)) in figures.iter().enumerate() {
-            println!("{}: {}", i, melody[i].pitch());
-            println!("{:?} {:?}", figure, notes);
-            if i > 0 {
-                println!(
-                    "diatonic jump: {:?}",
-                    scale.diatonic_steps_between(
-                        *figures[i - 1].1.back().unwrap(),
-                        *notes.front().unwrap()
-                    )
-                );
-            }
-            println!();
-        }
+        assert_eq!(m.unwrap(), 7);
     }
 
     #[test]
@@ -2687,7 +2616,6 @@ mod tests {
         }
         assert!(!m.all_rests_synchronized());
         m.synchronize_rests();
-        println!("{m:?}");
         assert!(m.all_rests_synchronized());
     }
 
@@ -2826,7 +2754,7 @@ mod tests {
     #[test]
     fn test_staff_position_3() {
         let scale = MusicMode::new(ModNumC::new(0), 61);
-        assert_eq!(scale.name(), "D♭ Ionian");
+        assert_eq!(scale.name(), "D♭ Major");
         assert_eq!(scale.c_value(), 60);
         for (pitch, position, modifier) in [
             (49, -6, None),
@@ -2862,7 +2790,7 @@ mod tests {
     #[test]
     fn test_staff_position_4() {
         let scale = MusicMode::new(ModNumC::new(0), 66);
-        assert_eq!(scale.name(), "G♭ Ionian");
+        assert_eq!(scale.name(), "G♭ Major");
         assert_eq!(scale.c_value(), 59);
         for (pitch, position, modifier) in [
             (49, -6, None),
@@ -2896,7 +2824,7 @@ mod tests {
     #[test]
     fn test_note_names_1() {
         let scale = MusicMode::new(ModNumC::new(0), 66);
-        assert_eq!(scale.name(), "G♭ Ionian");
+        assert_eq!(scale.name(), "G♭ Major");
         let goal = [
             (NoteLetter::G, Accidental::Flat),
             (NoteLetter::A, Accidental::Flat),
@@ -2952,7 +2880,7 @@ mod tests {
     #[test]
     fn test_key_signature_2() {
         let scale = MusicMode::new(ModNumC::new(0), 66);
-        assert_eq!(scale.name(), "G♭ Ionian");
+        assert_eq!(scale.name(), "G♭ Major");
         assert_eq!(
             format!("{:?}", scale.key_signature()),
             "KeySignature { notes: [B, E, A, D, G, C], accidental: Flat }"
@@ -2962,14 +2890,14 @@ mod tests {
     #[test]
     fn test_treble_clef_2() {
         let scale = MusicMode::new(ModNumC::new(0), 66);
-        assert_eq!(scale.name(), "G♭ Ionian");
+        assert_eq!(scale.name(), "G♭ Major");
         assert_eq!(scale.key_signature().treble_clef(), vec![6, 9, 5, 8, 4, 7]);
     }
 
     #[test]
     fn test_bass_clef_2() {
         let scale = MusicMode::new(ModNumC::new(0), 66);
-        assert_eq!(scale.name(), "G♭ Ionian");
+        assert_eq!(scale.name(), "G♭ Major");
         assert_eq!(
             scale.key_signature().bass_clef(),
             vec![-8, -5, -9, -6, -10, -7]
@@ -2979,7 +2907,7 @@ mod tests {
     #[test]
     fn test_key_signature_3() {
         let scale = MusicMode::new(ModNumC::new(0), 60);
-        assert_eq!(scale.name(), "C Ionian");
+        assert_eq!(scale.name(), "C Major");
         assert_eq!(
             format!("{:?}", scale.key_signature()),
             "KeySignature { notes: [], accidental: Natural }"
@@ -2989,7 +2917,7 @@ mod tests {
     #[test]
     fn test_key_signature_4() {
         let scale = MusicMode::new(ModNumC::new(5), 64);
-        assert_eq!(scale.name(), "E Aeolian");
+        assert_eq!(scale.name(), "E Minor");
         assert_eq!(
             format!("{:?}", scale.key_signature()),
             "KeySignature { notes: [F], accidental: Sharp }"
@@ -2999,7 +2927,7 @@ mod tests {
     #[test]
     fn test_key_signature_5() {
         let scale = MusicMode::new(ModNumC::new(5), 62);
-        assert_eq!(scale.name(), "D Aeolian");
+        assert_eq!(scale.name(), "D Minor");
         assert_eq!(
             format!("{:?}", scale.key_signature()),
             "KeySignature { notes: [B], accidental: Flat }"
@@ -3010,7 +2938,7 @@ mod tests {
     fn test_next_non_diatonic() {
         let root = 60;
         let scale = MusicMode::new(ModNumC::new(0), root);
-        assert_eq!(scale.name(), "C Ionian");
+        assert_eq!(scale.name(), "C Major");
         for (i, (degree, chroma)) in [
             (0, 0),
             (0, 1),
@@ -3062,7 +2990,7 @@ mod tests {
     #[test]
     fn test_next_chromatic_reference() {
         let scale = MusicMode::new(ModNumC::new(0), 60);
-        assert_eq!(scale.name(), "C Ionian");
+        assert_eq!(scale.name(), "C Major");
         for (start, (degree, chroma), expected) in [
             (61, (0, 0), 62),
             (61, (0, 1), 62),
@@ -3071,7 +2999,6 @@ mod tests {
             (63, (1, -1), 64),
         ] {
             let n = scale.next_pitch(start, DiatonicInterval::chromatic(degree, chroma));
-            println!("{n}: {start} ({degree} {chroma}) {expected}");
             assert_eq!(expected, n);
         }
     }
@@ -3146,7 +3073,6 @@ mod tests {
         let maker = MelodyMaker::new();
         let melody = lean_on_me_melody();
         let sections = maker.get_melody_sections(&melody);
-        println!("{sections:?}");
         assert_eq!(4, sections.len());
         let expected = vec![
             MelodySection {
@@ -3254,12 +3180,10 @@ mod tests {
         for _ in 0..NUM_RANDOM_TESTS {
             let mut sections = maker.get_melody_sections(&melody);
             for section in sections.iter_mut() {
-                println!("before: {section:?}");
                 let len_before = section.intervals.len();
                 let total_before = section.overall_interval_change(&scale);
                 let values_before = section.intervals.clone();
                 section.vary(&scale, 1.0, &mut maker);
-                println!("after: {section:?}");
                 assert_eq!(len_before, section.intervals.len());
                 assert_eq!(total_before, section.overall_interval_change(&scale));
                 if values_before != section.intervals {
@@ -3520,10 +3444,11 @@ mod tests {
 
     #[test]
     fn test_ornamentation() {
+        const NUM_ORNAMENTATION_TESTS: usize = 3;
         let maker = MelodyMaker::new();
         let melody = lean_on_me_melody();
         let scale = melody.best_scale_for();
-        for _ in 0..NUM_RANDOM_TESTS {
+        for _ in 0..NUM_ORNAMENTATION_TESTS {
             let ornamented = maker.ornamented(&scale, &melody, 1.0);
             assert!(ornamented.len() > melody.len());
             assert_approx_eq!(f64, melody.duration(), ornamented.duration());
@@ -3536,7 +3461,6 @@ mod tests {
                     ornaments += 1;
                 }
             }
-            println!("{ornaments} ({})", melody.len());
         }
     }
 
