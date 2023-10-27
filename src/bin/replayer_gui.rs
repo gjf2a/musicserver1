@@ -1,7 +1,7 @@
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
 use eframe::egui::{self, Key, TextEdit};
-use eframe::egui::{Color32, FontData, FontDefinitions, FontFamily, Pos2, Ui, Vec2, Visuals};
+use eframe::egui::{Color32, FontDefinitions, Pos2, Ui, Vec2, Visuals};
 use eframe::emath::Numeric;
 use enum_iterator::all;
 use midi_fundsp::io::{start_input_thread, start_output_thread, Speaker, SynthMsg};
@@ -15,6 +15,7 @@ use musicserver1::database::{
     start_database_thread, Database, DatabaseGuiUpdate, FromAiMsg, GuiDatabaseUpdate, MelodyInfo,
     Preference, VariationStats,
 };
+use musicserver1::load_font;
 use musicserver1::melody_renderer::MelodyRenderer;
 use musicserver1::midi::MidiScenario;
 use musicserver1::runtime::{
@@ -76,29 +77,6 @@ struct ReplayerApp {
     show_figures: bool,
     new_tags: [String; 2],
     quit_threads: Arc<AtomicCell<bool>>,
-}
-
-macro_rules! load_font {
-    ($fonts:ident, $filename:literal) => {{
-        let name = $filename
-            .split("/")
-            .last()
-            .unwrap()
-            .split(".")
-            .next()
-            .unwrap()
-            .to_owned();
-        println!("Loading font {name} from {}.", $filename);
-        $fonts.font_data.insert(
-            name.clone(),
-            FontData::from_static(include_bytes!($filename)),
-        );
-        $fonts
-            .families
-            .get_mut(&FontFamily::Proportional)
-            .unwrap()
-            .push(name);
-    }};
 }
 
 impl ReplayerApp {

@@ -20,6 +20,30 @@ pub const SHOW_MIDI_MSG: bool = false;
 pub const HUMAN_SPEAKER: Speaker = Speaker::Left;
 pub const VARIATION_SPEAKER: Speaker = Speaker::Right;
 
+#[macro_export]
+macro_rules! load_font {
+    ($fonts:ident, $filename:literal) => {{
+        let name = $filename
+            .split("/")
+            .last()
+            .unwrap()
+            .split(".")
+            .next()
+            .unwrap()
+            .to_owned();
+        println!("Loading font {name} from {}.", $filename);
+        $fonts.font_data.insert(
+            name.clone(),
+            eframe::egui::FontData::from_static(include_bytes!($filename)),
+        );
+        $fonts
+            .families
+            .get_mut(&eframe::egui::FontFamily::Proportional)
+            .unwrap()
+            .push(name);
+    }};
+}
+
 pub struct TableInfo<T: Clone> {
     table: Arc<Mutex<ChooserTable<T>>>,
 }
