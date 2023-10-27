@@ -162,7 +162,6 @@ impl SynthApp {
         self.in_port_name = midi_in.as_ref().and_then(|m| m.port_name(in_port).ok());
     }
 
-    
     fn pick_midi_screen(
         &mut self,
         ctx: &egui::Context,
