@@ -931,9 +931,6 @@ impl MelodyMaker {
         }
     }
 
-    const MIN_MOTIVE_LEN: usize = 2;
-    const MIN_MOTIVE_REPETITIONS: usize = 2;
-
     pub fn create_remapped_variation(&self, original: &Melody, _p: f64) -> Melody {
         original.generalized_figure_variation()
     }
@@ -957,8 +954,8 @@ impl MelodyMaker {
         let intervals = consolidated_melody.diatonic_intervals();
         let subs = find_maximal_repeated_subs(
             &intervals,
-            Self::MIN_MOTIVE_REPETITIONS,
-            Self::MIN_MOTIVE_LEN,
+            Melody::MIN_MOTIVE_REPETITIONS,
+            Melody::MIN_MOTIVE_LEN,
         );
         MelodySection::from(&subs, &intervals, &consolidated)
     }
@@ -1177,7 +1174,7 @@ impl MelodySection {
                         starts: vec![consolidated[i].0],
                     };
                     std::mem::swap(&mut adding, &mut current);
-                    if adding.intervals.len() >= MelodyMaker::MIN_MOTIVE_LEN {
+                    if adding.intervals.len() >= Melody::MIN_MOTIVE_LEN {
                         sections.push(adding);
                     }
                 }
