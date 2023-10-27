@@ -2129,7 +2129,10 @@ mod tests {
     use bare_metal_modulo::ModNumC;
     use float_cmp::assert_approx_eq;
     use ordered_float::OrderedFloat;
-    use std::{cmp::{max, min}, collections::BTreeSet};
+    use std::{
+        cmp::{max, min},
+        collections::BTreeSet,
+    };
 
     use super::MAKER;
 
@@ -2342,7 +2345,7 @@ mod tests {
     fn test_figure_match(melody_str: &str) -> (usize, BTreeSet<MelodicFigure>) {
         let melody = Melody::from_str(melody_str);
         let figures = MAKER.all_figure_matches(&melody);
-        (figures.len(), figures.iter().map(|(_,f,_)| *f).collect())
+        (figures.len(), figures.iter().map(|(_, f, _)| *f).collect())
     }
 
     #[test]

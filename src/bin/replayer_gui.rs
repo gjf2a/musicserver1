@@ -957,7 +957,6 @@ impl ReplayerApp {
     }
 }
 
-
 impl eframe::App for ReplayerApp {
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
         ctx.set_visuals(Visuals::light());

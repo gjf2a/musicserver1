@@ -1,10 +1,19 @@
-use std::{ops::RangeInclusive, sync::Arc, cmp::{min, max}, collections::{VecDeque, HashMap}};
+use std::{
+    cmp::{max, min},
+    collections::{HashMap, VecDeque},
+    ops::RangeInclusive,
+    sync::Arc,
+};
 
-use bare_metal_modulo::{ModNum, MNum};
+use bare_metal_modulo::{MNum, ModNum};
 use crossbeam_utils::atomic::AtomicCell;
-use eframe::{epaint::{Stroke, Color32, Vec2, Pos2, Rect, FontId, FontFamily}, egui::{Ui, Painter, Sense, self}, emath::Align2};
+use eframe::{
+    egui::{self, Painter, Sense, Ui},
+    emath::Align2,
+    epaint::{Color32, FontFamily, FontId, Pos2, Rect, Stroke, Vec2},
+};
 
-use crate::analyzer::{MusicMode, KeySignature, MidiByte, Melody, Accidental, MelodicFigure, Note};
+use crate::analyzer::{Accidental, KeySignature, MelodicFigure, Melody, MidiByte, MusicMode, Note};
 
 const MIDDLE_C: MidiByte = 60;
 const STAFF_PITCH_WIDTH: MidiByte = 19;
