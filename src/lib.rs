@@ -4,3 +4,4 @@ pub mod database;
 pub mod melody_renderer;
 pub mod runtime;
 pub mod subsequence_finder;
+pub mod vec_tracker;
