@@ -207,7 +207,7 @@ impl Performer {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct PendingNote {
     pitch: u8,
     timestamp: Instant,

@@ -95,7 +95,7 @@ pub fn velocity2volume(midi_velocity: MidiByte) -> f64 {
     max(0, min(MAX_MIDI_VALUE, midi_velocity)) as f64 / MAX_MIDI_VALUE as f64
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct Note {
     pitch: MidiByte,
     duration: OrderedFloat<f64>,

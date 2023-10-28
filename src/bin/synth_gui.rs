@@ -12,9 +12,10 @@ use midi_fundsp::{
 };
 use midir::{MidiInput, MidiInputPort, MidiInputPorts};
 use musicserver1::{
+    chords::{ChordRecorder, PolyphonicRecording},
     load_font,
     midi::MidiScenario,
-    runtime::{make_synth_table, TableInfo}, analyzer::Melody,
+    runtime::{make_synth_table, TableInfo},
 };
 
 const NUM_OUTPUT_CHANNELS: usize = 10;
@@ -35,11 +36,12 @@ struct SynthApp {
     midi_scenario: Arc<Mutex<MidiScenario>>,
     midi_in: Arc<Mutex<Option<MidiInput>>>,
     synth: TableInfo<SynthFunc>,
-    input2output: Arc<SegQueue<SynthMsg>>,
+    input2gui: Arc<SegQueue<SynthMsg>>,
+    gui2output: Arc<SegQueue<SynthMsg>>,
     in_port: Option<MidiInputPort>,
     in_port_name: Option<String>,
     quit_threads: Arc<AtomicCell<bool>>,
-    melody: Melody,
+    recorder: Arc<Mutex<ChordRecorder>>,
 }
 
 impl eframe::App for SynthApp {
@@ -78,15 +80,22 @@ impl SynthApp {
         cc.egui_ctx.set_fonts(fonts);
 
         let synth = TableInfo::new(make_synth_table());
+        let input2gui = Arc::new(SegQueue::new());
+        let gui2output = Arc::new(SegQueue::new());
+        let recorder = Arc::new(Mutex::new(ChordRecorder::new(
+            input2gui.clone(),
+            gui2output.clone(),
+        )));
         let mut app = SynthApp {
             midi_scenario: Arc::new(Mutex::new(MidiScenario::StartingUp)),
             midi_in: Arc::new(Mutex::new(None)),
             synth,
             in_port: None,
             in_port_name: None,
-            input2output: Arc::new(SegQueue::new()),
+            input2gui,
+            gui2output,
             quit_threads: Arc::new(AtomicCell::new(false)),
-            melody: Melody::new(),
+            recorder,
         };
         app.startup();
         app
@@ -100,10 +109,18 @@ impl SynthApp {
 
     fn startup(&mut self) {
         start_output_thread::<NUM_OUTPUT_CHANNELS>(
-            self.input2output.clone(),
+            self.gui2output.clone(),
             Arc::new(Mutex::new(self.synth.choice_vec())),
             self.quit_threads.clone(),
         );
+
+        let recorder = self.recorder.clone();
+        std::thread::spawn(move || loop {
+            let mut recorder = recorder.lock().unwrap();
+            if recorder.try_next_input() {
+                println!("{:?}", recorder.recording().chords());
+            }
+        });
 
         self.try_midi_input();
     }
@@ -135,7 +152,7 @@ impl SynthApp {
             let current_synth = self.synth.current_name();
             self.synth.radio_choice(ui, "Synth choices");
             if self.synth.current_name() != current_synth {
-                self.input2output.push(SynthMsg::program_change(
+                self.input2gui.push(SynthMsg::program_change(
                     self.synth.current_index() as u8,
                     Speaker::Both,
                 ));
@@ -152,7 +169,7 @@ impl SynthApp {
         };
 
         start_input_thread(
-            self.input2output.clone(),
+            self.input2gui.clone(),
             midi_in.unwrap(),
             self.in_port.as_ref().unwrap().clone(),
             self.quit_threads.clone(),
