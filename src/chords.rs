@@ -116,7 +116,6 @@ impl PolyphonicRecording {
     }
 
     pub fn chords(&self) -> Vec<Chord> {
-        assert!(self.len() >= 2);
         let mut playback = self.playback();
         let mut result = vec![];
         let mut current_notes = BTreeSet::new();
@@ -128,16 +127,23 @@ impl PolyphonicRecording {
             } else {
                 current_notes.remove(&pitch);
             }
-            if let Some((prev_notes, prev_time)) = prev {
-                result.push(Chord {
-                    start: prev_time,
-                    duration: cmd.time - prev_time,
-                    notes: prev_notes,
-                });
-            }
+            let mut prev_prev = None;
+            std::mem::swap(&mut prev, &mut prev_prev);
+            push_next_chord(&mut result, cmd.time, prev_prev);
             prev = Some((current_notes.iter().copied().collect::<Vec<_>>(), cmd.time));
         }
+        push_next_chord(&mut result, self.total_time, prev);
         result
+    }
+}
+
+fn push_next_chord(result: &mut Vec<Chord>, current_time: OrderedFloat<f64>, prev: Option<(Vec<MidiByte>, OrderedFloat<f64>)>) {
+    if let Some((prev_notes, prev_time)) = prev {
+        result.push(Chord {
+            start: prev_time,
+            duration: current_time - prev_time,
+            notes: prev_notes,
+        });
     }
 }
 
