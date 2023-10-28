@@ -11,6 +11,92 @@ use ordered_float::OrderedFloat;
 
 use crate::analyzer::MidiByte;
 
+pub struct ChordRecorder {
+    input2recorder: Arc<SegQueue<SynthMsg>>,
+    recorder2output: Arc<SegQueue<SynthMsg>>,
+    pitch2candidate: [Option<usize>; NUM_MIDI_VALUES],
+    notes: Vec<MidiCmdCandidate>,
+    start: Instant,
+}
+
+impl ChordRecorder {
+    pub fn new(
+        input2recorder: Arc<SegQueue<SynthMsg>>,
+        recorder2output: Arc<SegQueue<SynthMsg>>,
+    ) -> Self {
+        Self {
+            input2recorder,
+            recorder2output,
+            pitch2candidate: [None; NUM_MIDI_VALUES],
+            notes: vec![],
+            start: Instant::now(),
+        }
+    }
+
+    pub fn try_next_input(&mut self) -> bool {
+        if let Some(s) = self.input2recorder.pop() {
+            self.recorder2output.push(s.clone());
+            if let Some((note, velocity)) = s.note_velocity() {
+                self.finalize_pitch(note);
+                if velocity > 0 {
+                    self.pitch2candidate[note as usize] = Some(self.notes.len());
+                    self.notes.push(MidiCmdCandidate::new(&s));
+                }
+            }
+            true
+        } else {
+            false
+        }
+    }
+
+    fn finalize_pitch(&mut self, pitch: u8) {
+        if let Some(i) = self.pitch2candidate[pitch as usize] {
+            self.notes[i].finalize();
+            println!("self.notes: {:?}", self.notes);
+            self.pitch2candidate[pitch as usize] = None;
+        }
+    }
+
+    pub fn recording(&self) -> PolyphonicRecording {
+        PolyphonicRecording::new(
+            self.notes
+                .iter()
+                .map(|n| n.timed_note(self.start))
+                .collect(),
+        )
+    }
+}
+
+#[derive(Clone, Debug)]
+struct MidiCmdCandidate {
+    msg: SynthMsg,
+    start: Instant,
+    end: Option<Instant>,
+}
+
+impl MidiCmdCandidate {
+    fn new(msg: &SynthMsg) -> Self {
+        Self {
+            msg: msg.clone(),
+            start: Instant::now(),
+            end: None,
+        }
+    }
+
+    fn finalize(&mut self) {
+        self.end = Some(Instant::now());
+    }
+
+    fn timed_note(&self, start: Instant) -> TimedMidiCmd {
+        TimedMidiCmd {
+            time: duration_between(start, self.start),
+            msg: self.msg.clone(),
+            end: Some(duration_between(start, self.end.unwrap_or(Instant::now())))
+        }
+    }
+}
+
+
 fn note_on_to_off(input: &SynthMsg) -> SynthMsg {
     if let MidiMsg::ChannelVoice { channel, msg } = input.msg {
         if let midi_msg::ChannelVoiceMsg::NoteOn { note, velocity: _ } = msg {
@@ -169,88 +255,5 @@ impl PolyphonicPlayback {
         } else {
             None
         }
-    }
-}
-
-struct MidiCmdCandidate {
-    msg: SynthMsg,
-    start: Instant,
-    end: Option<Instant>,
-}
-
-impl MidiCmdCandidate {
-    fn new(msg: &SynthMsg) -> Self {
-        Self {
-            msg: msg.clone(),
-            start: Instant::now(),
-            end: None,
-        }
-    }
-
-    fn finalize(&mut self) {
-        self.end = Some(Instant::now());
-    }
-
-    fn timed_note(&self, start: Instant) -> TimedMidiCmd {
-        TimedMidiCmd {
-            time: duration_between(start, self.start),
-            msg: self.msg.clone(),
-            end: Some(duration_between(start, self.end.unwrap_or(Instant::now())))
-        }
-    }
-}
-
-pub struct ChordRecorder {
-    input2recorder: Arc<SegQueue<SynthMsg>>,
-    recorder2output: Arc<SegQueue<SynthMsg>>,
-    pitch2candidate: [Option<usize>; NUM_MIDI_VALUES],
-    notes: Vec<MidiCmdCandidate>,
-    start: Instant,
-}
-
-impl ChordRecorder {
-    pub fn new(
-        input2recorder: Arc<SegQueue<SynthMsg>>,
-        recorder2output: Arc<SegQueue<SynthMsg>>,
-    ) -> Self {
-        Self {
-            input2recorder,
-            recorder2output,
-            pitch2candidate: [None; NUM_MIDI_VALUES],
-            notes: vec![],
-            start: Instant::now(),
-        }
-    }
-
-    pub fn try_next_input(&mut self) -> bool {
-        if let Some(s) = self.input2recorder.pop() {
-            self.recorder2output.push(s.clone());
-            if let Some((note, velocity)) = s.note_velocity() {
-                self.finalize_pitch(note);
-                if velocity > 0 {
-                    self.pitch2candidate[note as usize] = Some(self.notes.len());
-                    self.notes.push(MidiCmdCandidate::new(&s));
-                }
-            }
-            true
-        } else {
-            false
-        }
-    }
-
-    fn finalize_pitch(&mut self, pitch: u8) {
-        if let Some(i) = self.pitch2candidate[pitch as usize] {
-            self.notes[i].finalize();
-            self.pitch2candidate[pitch as usize] = None;
-        }
-    }
-
-    pub fn recording(&self) -> PolyphonicRecording {
-        PolyphonicRecording::new(
-            self.notes
-                .iter()
-                .map(|n| n.timed_note(self.start))
-                .collect(),
-        )
     }
 }
