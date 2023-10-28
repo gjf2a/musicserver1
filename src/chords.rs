@@ -9,7 +9,7 @@ use midi_fundsp::{io::SynthMsg, NUM_MIDI_VALUES};
 use midi_msg::MidiMsg;
 use ordered_float::OrderedFloat;
 
-use crate::analyzer::{MidiByte, Note};
+use crate::analyzer::MidiByte;
 
 fn note_on_to_off(input: &SynthMsg) -> SynthMsg {
     if let MidiMsg::ChannelVoice { channel, msg } = input.msg {
@@ -30,10 +30,6 @@ fn duration_between(early: Instant, later: Instant) -> OrderedFloat<f64> {
     OrderedFloat(later.duration_since(early).as_secs_f64())
 }
 
-fn duration_since(start: Instant) -> OrderedFloat<f64> {
-    duration_between(start, Instant::now())
-}
-
 #[derive(Clone, Debug)]
 pub struct TimedMidiCmd {
     time: OrderedFloat<f64>,
@@ -44,12 +40,6 @@ pub struct TimedMidiCmd {
 impl TimedMidiCmd {
     fn is_note_on(&self) -> bool {
         self.off_cmd().is_some()
-    }
-
-    fn to_note(&self, total_duration: OrderedFloat<f64>) -> Note {
-        let (note, velocity) = self.note_velocity();
-        let duration = self.end.unwrap_or(total_duration) - self.time;
-        Note::new(note, duration.into(), velocity)
     }
 
     fn note_velocity(&self) -> (MidiByte, MidiByte) {
@@ -116,6 +106,7 @@ impl PolyphonicRecording {
     }
 
     pub fn chords(&self) -> Vec<Chord> {
+        println!("timed cmds: {:?}\n", self.notes);
         let mut playback = self.playback();
         let mut result = vec![];
         let mut current_notes = BTreeSet::new();
@@ -184,7 +175,7 @@ impl PolyphonicPlayback {
 struct MidiCmdCandidate {
     msg: SynthMsg,
     start: Instant,
-    end: Option<OrderedFloat<f64>>,
+    end: Option<Instant>,
 }
 
 impl MidiCmdCandidate {
@@ -197,14 +188,14 @@ impl MidiCmdCandidate {
     }
 
     fn finalize(&mut self) {
-        self.end = Some(duration_since(self.start));
+        self.end = Some(Instant::now());
     }
 
     fn timed_note(&self, start: Instant) -> TimedMidiCmd {
         TimedMidiCmd {
             time: duration_between(start, self.start),
             msg: self.msg.clone(),
-            end: Some(self.end.unwrap_or(duration_since(self.start))),
+            end: Some(duration_between(start, self.end.unwrap_or(Instant::now())))
         }
     }
 }

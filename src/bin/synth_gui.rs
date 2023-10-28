@@ -118,7 +118,7 @@ impl SynthApp {
         std::thread::spawn(move || loop {
             let mut recorder = recorder.lock().unwrap();
             if recorder.try_next_input() {
-                println!("{:?}", recorder.recording().chords());
+                println!("{:?}\n\n", recorder.recording().chords());
             }
         });
 
