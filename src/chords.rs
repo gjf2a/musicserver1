@@ -170,14 +170,14 @@ impl PolyphonicPlayback {
     }
 
     pub fn next(&mut self) -> Option<TimedMidiCmd> {
-        if let Some(p) = self.pending.peek() {
-            let popped = self.pending.pop().unwrap();
+        if let Some(popped) = self.pending.pop() {
             if let Some(off) = popped.off_cmd() {
                 self.pending.push(off);
             }
-            return Some(popped);
+            Some(popped)
+        } else {
+            None
         }
-        None
     }
 }
 

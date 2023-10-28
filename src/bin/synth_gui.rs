@@ -12,7 +12,7 @@ use midi_fundsp::{
 };
 use midir::{MidiInput, MidiInputPort, MidiInputPorts};
 use musicserver1::{
-    chords::{ChordRecorder, PolyphonicRecording},
+    chords::ChordRecorder,
     load_font,
     midi::MidiScenario,
     runtime::{make_synth_table, TableInfo},
