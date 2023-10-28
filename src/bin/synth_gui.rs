@@ -14,7 +14,7 @@ use midir::{MidiInput, MidiInputPort, MidiInputPorts};
 use musicserver1::{
     load_font,
     midi::MidiScenario,
-    runtime::{make_synth_table, TableInfo},
+    runtime::{make_synth_table, TableInfo}, analyzer::Melody,
 };
 
 const NUM_OUTPUT_CHANNELS: usize = 10;
@@ -39,6 +39,7 @@ struct SynthApp {
     in_port: Option<MidiInputPort>,
     in_port_name: Option<String>,
     quit_threads: Arc<AtomicCell<bool>>,
+    melody: Melody,
 }
 
 impl eframe::App for SynthApp {
@@ -85,6 +86,7 @@ impl SynthApp {
             in_port_name: None,
             input2output: Arc::new(SegQueue::new()),
             quit_threads: Arc::new(AtomicCell::new(false)),
+            melody: Melody::new(),
         };
         app.startup();
         app
