@@ -91,11 +91,10 @@ impl MidiCmdCandidate {
         TimedMidiCmd {
             time: duration_between(start, self.start),
             msg: self.msg.clone(),
-            end: Some(duration_between(start, self.end.unwrap_or(Instant::now())))
+            end: Some(duration_between(start, self.end.unwrap_or(Instant::now()))),
         }
     }
 }
-
 
 fn note_on_to_off(input: &SynthMsg) -> SynthMsg {
     if let MidiMsg::ChannelVoice { channel, msg } = input.msg {
@@ -214,7 +213,11 @@ impl PolyphonicRecording {
     }
 }
 
-fn push_next_chord(result: &mut Vec<Chord>, current_time: OrderedFloat<f64>, prev: Option<(Vec<MidiByte>, OrderedFloat<f64>)>) {
+fn push_next_chord(
+    result: &mut Vec<Chord>,
+    current_time: OrderedFloat<f64>,
+    prev: Option<(Vec<MidiByte>, OrderedFloat<f64>)>,
+) {
     if let Some((prev_notes, prev_time)) = prev {
         result.push(Chord {
             start: prev_time,

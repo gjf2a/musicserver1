@@ -21,9 +21,13 @@ use musicserver1::{
 const NUM_OUTPUT_CHANNELS: usize = 10;
 
 fn main() {
-    let mut native_options = eframe::NativeOptions::default();
-    native_options.initial_window_size = Some(Vec2 { x: 400.0, y: 400.0 });
-    native_options.initial_window_pos = Some(Pos2 { x: 50.0, y: 25.0 });
+    let native_options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size(Vec2 { x: 400.0, y: 400.0 })
+            .with_position(Pos2 { x: 50.0, y: 25.0 })
+            .with_drag_and_drop(true),
+        ..Default::default()
+    };
     eframe::run_native(
         "Synth",
         native_options,

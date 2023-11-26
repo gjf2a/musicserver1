@@ -34,12 +34,12 @@ const MAIN_MELODY_SCALING: f32 = 0.8;
 
 fn main() {
     let native_options = eframe::NativeOptions {
-           viewport: egui::ViewportBuilder::default()
-               .with_inner_size(Vec2 { x: 800.0, y: 600.0 })
-               .with_position(Pos2 { x: 50.0, y: 25.0 })
-               .with_drag_and_drop(true),
-             ..Default::default()
-         };
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size(Vec2 { x: 800.0, y: 600.0 })
+            .with_position(Pos2 { x: 50.0, y: 25.0 })
+            .with_drag_and_drop(true),
+        ..Default::default()
+    };
     eframe::run_native(
         "Replayer",
         native_options,
