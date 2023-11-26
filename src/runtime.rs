@@ -2,6 +2,7 @@ use crate::analyzer::Melody;
 use crate::database::VariationStats;
 use crossbeam_queue::SegQueue;
 use crossbeam_utils::atomic::AtomicCell;
+use eframe::egui::Ui;
 use midi_fundsp::io::{Speaker, SynthMsg};
 use midi_fundsp::sounds::favorites;
 use midi_fundsp::SynthFunc;
@@ -11,13 +12,88 @@ use read_input::InputBuild;
 use std::collections::btree_map::BTreeMap;
 use std::collections::VecDeque;
 use std::ops::RangeInclusive;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 pub const SHOW_MIDI_MSG: bool = false;
 
 pub const HUMAN_SPEAKER: Speaker = Speaker::Left;
 pub const VARIATION_SPEAKER: Speaker = Speaker::Right;
+
+#[macro_export]
+macro_rules! load_font {
+    ($fonts:ident, $filename:literal) => {{
+        let name = $filename
+            .split("/")
+            .last()
+            .unwrap()
+            .split(".")
+            .next()
+            .unwrap()
+            .to_owned();
+        println!("Loading font {name} from {}.", $filename);
+        $fonts.font_data.insert(
+            name.clone(),
+            eframe::egui::FontData::from_static(include_bytes!($filename)),
+        );
+        $fonts
+            .families
+            .get_mut(&eframe::egui::FontFamily::Proportional)
+            .unwrap()
+            .push(name);
+    }};
+}
+
+pub struct TableInfo<T: Clone> {
+    table: Arc<Mutex<ChooserTable<T>>>,
+}
+
+impl<T: Clone> TableInfo<T> {
+    pub fn new(table: ChooserTable<T>) -> Self {
+        let table = Arc::new(Mutex::new(table));
+        Self { table }
+    }
+
+    pub fn table_ref(&self) -> Arc<Mutex<ChooserTable<T>>> {
+        self.table.clone()
+    }
+
+    pub fn current_name(&self) -> String {
+        let table = self.table.lock().unwrap();
+        table.current_name().to_owned()
+    }
+
+    pub fn name_vec(&self) -> Vec<String> {
+        let table = self.table.lock().unwrap();
+        table.name_vec()
+    }
+
+    pub fn choice_vec(&self) -> Vec<(String, T)> {
+        let table = self.table.lock().unwrap();
+        table.choice_vec()
+    }
+
+    pub fn update_choice(&mut self, updated_name: &str) {
+        let mut table = self.table.lock().unwrap();
+        table.choose(updated_name);
+    }
+
+    pub fn current_index(&self) -> usize {
+        let table = self.table.lock().unwrap();
+        table.current_index()
+    }
+
+    pub fn radio_choice(&mut self, ui: &mut Ui, header: &str) {
+        let mut current_name = self.current_name();
+        ui.vertical(|ui| {
+            ui.label(header);
+            for item in self.name_vec() {
+                ui.radio_value(&mut current_name, item.clone(), item.clone());
+            }
+        });
+        self.update_choice(current_name.as_str());
+    }
+}
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum SynthChoice {
