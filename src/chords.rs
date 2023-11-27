@@ -35,6 +35,7 @@ impl ChordRecorder {
 
     pub fn try_next_input(&mut self) -> bool {
         if let Some(s) = self.input2recorder.pop() {
+            println!("input: {s:?}");
             self.recorder2output.push(s.clone());
             if let Some((note, velocity)) = s.note_velocity() {
                 self.finalize_pitch(note);
@@ -91,6 +92,7 @@ impl MidiCmdCandidate {
         TimedMidiCmd {
             time: duration_between(start, self.start),
             msg: self.msg.clone(),
+            //end: self.end.map(|inst| duration_between(start, inst))
             end: Some(duration_between(start, self.end.unwrap_or(Instant::now()))),
         }
     }
@@ -155,11 +157,13 @@ impl Eq for TimedMidiCmd {}
 
 impl PartialOrd for TimedMidiCmd {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        match self.time.partial_cmp(&other.time) {
+        //match self.time.partial_cmp(&other.time) {
+        match other.time.partial_cmp(&self.time) {
             Some(core::cmp::Ordering::Equal) => {}
             ord => return ord,
         }
-        self.end.partial_cmp(&other.end)
+        //self.end.partial_cmp(&other.end)
+        other.end.partial_cmp(&self.end)
     }
 }
 
@@ -191,7 +195,7 @@ impl PolyphonicRecording {
     }
 
     pub fn chords(&self) -> Vec<Chord> {
-        println!("timed cmds: {:?}\n", self.notes);
+        println!("timed cmds: {:?}\n", self.notes); // This works as intended.
         let mut playback = self.playback();
         let mut result = vec![];
         let mut current_notes = BTreeSet::new();
