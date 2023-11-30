@@ -34,7 +34,7 @@ impl ChordRecorder {
     }
 
     pub fn try_next_input(&mut self) -> bool {
-        if let Some(s) = self.input2recorder.pop() {
+        self.input2recorder.pop().map_or(false, |s| {
             self.recorder2output.push(s.clone());
             if let Some((note, velocity)) = s.note_velocity() {
                 self.finalize_pitch(note);
@@ -44,9 +44,7 @@ impl ChordRecorder {
                 }
             }
             true
-        } else {
-            false
-        }
+        })
     }
 
     fn finalize_pitch(&mut self, pitch: u8) {
@@ -153,7 +151,7 @@ impl PartialEq for TimedMidiCmd {
 impl Eq for TimedMidiCmd {}
 
 impl PartialOrd for TimedMidiCmd {
-    /// This is designed to sort in reverse order of start time. 
+    /// This is designed to sort in reverse order of start time.
     /// If the self `TimedMidiCmd` starts earlier than `other`, this returns Ordering::Greater.
     /// The purpose behind this is to use a max-heap to get the earliest possible `TimedMidiCmd`.
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -255,13 +253,11 @@ impl PolyphonicPlayback {
     }
 
     pub fn next(&mut self) -> Option<TimedMidiCmd> {
-        if let Some(popped) = self.pending.pop() {
+        self.pending.pop().map(|popped| {
             if let Some(off) = popped.off_cmd() {
                 self.pending.push(off);
             }
-            Some(popped)
-        } else {
-            None
-        }
+            popped
+        })
     }
 }
