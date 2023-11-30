@@ -153,6 +153,9 @@ impl PartialEq for TimedMidiCmd {
 impl Eq for TimedMidiCmd {}
 
 impl PartialOrd for TimedMidiCmd {
+    /// This is designed to sort in reverse order of start time. 
+    /// If the self `TimedMidiCmd` starts earlier than `other`, this returns Ordering::Greater.
+    /// The purpose behind this is to use a max-heap to get the earliest possible `TimedMidiCmd`.
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         match other.time.partial_cmp(&self.time) {
             Some(core::cmp::Ordering::Equal) => {}
@@ -189,7 +192,7 @@ impl PolyphonicRecording {
         self.notes.len()
     }
 
-    pub fn chords(&self) -> Vec<Chord> {
+    pub fn chords(&self, min_chord_duration: f64) -> Vec<Chord> {
         let mut playback = self.playback();
         let mut result = vec![];
         let mut current_notes = BTreeSet::new();
@@ -203,10 +206,10 @@ impl PolyphonicRecording {
             }
             let mut prev_prev = None;
             std::mem::swap(&mut prev, &mut prev_prev);
-            push_next_chord(&mut result, cmd.time, prev_prev);
+            push_next_chord(&mut result, cmd.time, prev_prev, min_chord_duration);
             prev = Some((current_notes.iter().copied().collect::<Vec<_>>(), cmd.time));
         }
-        push_next_chord(&mut result, self.total_time, prev);
+        push_next_chord(&mut result, self.total_time, prev, min_chord_duration);
         result
     }
 }
@@ -215,13 +218,17 @@ fn push_next_chord(
     result: &mut Vec<Chord>,
     current_time: OrderedFloat<f64>,
     prev: Option<(Vec<MidiByte>, OrderedFloat<f64>)>,
+    min_chord_duration: f64,
 ) {
     if let Some((prev_notes, prev_time)) = prev {
-        result.push(Chord {
-            start: prev_time,
-            duration: current_time - prev_time,
-            notes: prev_notes,
-        });
+        let duration = current_time - prev_time;
+        if duration > OrderedFloat(min_chord_duration) {
+            result.push(Chord {
+                start: prev_time,
+                duration,
+                notes: prev_notes,
+            });
+        }
     }
 }
 

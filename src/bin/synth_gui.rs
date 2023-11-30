@@ -124,7 +124,7 @@ impl SynthApp {
             if recorder.try_next_input() {
                 println!();
                 println!("New input");
-                println!("{:?}\n\n", recorder.recording().chords());
+                println!("{:?}\n\n", recorder.recording().chords(0.01));
             }
         });
 
