@@ -124,7 +124,13 @@ impl SynthApp {
             if recorder.try_next_input() {
                 println!();
                 println!("New input");
-                println!("{:?}\n\n", recorder.recording().chords(0.05));
+                let chords = recorder.recording().chords(0.05);
+                for c in chords.iter() {
+                    if let Some(s) = c.best_scale_for() {
+                        println!("{} {c:?}", s.name());
+                    }
+                }
+                println!();
             }
         });
 

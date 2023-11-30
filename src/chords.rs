@@ -9,7 +9,7 @@ use midi_fundsp::{io::SynthMsg, NUM_MIDI_VALUES};
 use midi_msg::MidiMsg;
 use ordered_float::OrderedFloat;
 
-use crate::analyzer::MidiByte;
+use crate::analyzer::{MidiByte, MusicMode, USIZE_NOTES_PER_OCTAVE};
 
 pub struct ChordRecorder {
     input2recorder: Arc<SegQueue<SynthMsg>>,
@@ -235,6 +235,24 @@ pub struct Chord {
     start: OrderedFloat<f64>,
     duration: OrderedFloat<f64>,
     notes: Vec<MidiByte>,
+}
+
+impl Chord {
+    pub fn note_weight_vector(&self) -> Option<[f64; USIZE_NOTES_PER_OCTAVE]> {
+        if self.notes.len() > 0 {
+            let mut result = [0.0; USIZE_NOTES_PER_OCTAVE];
+            for n in self.notes.iter() {
+                result[*n as usize % USIZE_NOTES_PER_OCTAVE] += self.duration.0;
+            }
+            Some(result)
+        } else {
+            None
+        }
+    }
+
+    pub fn best_scale_for(&self) -> Option<MusicMode> {
+        self.note_weight_vector().map(|weights| MusicMode::best_scale_for(&weights))
+    }
 }
 
 pub struct PolyphonicPlayback {

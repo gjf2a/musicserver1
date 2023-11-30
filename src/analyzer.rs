@@ -20,7 +20,7 @@ pub type MidiByte = i16;
 
 const MAX_MIDI_VALUE: MidiByte = i8::MAX as MidiByte;
 const NOTES_PER_OCTAVE: MidiByte = 12;
-const USIZE_NOTES_PER_OCTAVE: usize = NOTES_PER_OCTAVE as usize;
+pub const USIZE_NOTES_PER_OCTAVE: usize = NOTES_PER_OCTAVE as usize;
 const DIATONIC_SCALE_SIZE: usize = 7;
 const DIATONIC_SCALE_HOPS: [MidiByte; DIATONIC_SCALE_SIZE] = [2, 2, 1, 2, 2, 2, 1];
 const DIATONIC_NOTE_LETTERS: [NoteLetter; DIATONIC_SCALE_SIZE] = [
@@ -429,13 +429,7 @@ impl Melody {
     }
 
     pub fn best_scale_for(&self) -> MusicMode {
-        let mv = self.note_weight_vector();
-        MusicMode::all_major_minor_weights()
-            .iter()
-            .map(|(mode, v)| (dot_product(v, &mv), mode))
-            .max_by_key(|(dp, _)| *dp)
-            .map(|(_, m)| m.clone())
-            .unwrap()
+        MusicMode::best_scale_for(&self.note_weight_vector())
     }
 
     pub fn diatonic_intervals(&self) -> Vec<DiatonicInterval> {
@@ -1452,6 +1446,15 @@ impl MusicMode {
             result.push((Self::new(ModNumC::new(5), i as MidiByte), minor));
         }
         result
+    }
+
+    pub fn best_scale_for(weights: &[f64; USIZE_NOTES_PER_OCTAVE]) -> Self {
+        Self::all_major_minor_weights()
+            .iter()
+            .map(|(mode, v)| (dot_product(v, weights), mode))
+            .max_by_key(|(dp, _)| *dp)
+            .map(|(_, m)| m.clone())
+            .unwrap()
     }
 
     pub fn root_name(&self) -> (NoteLetter, Accidental) {
