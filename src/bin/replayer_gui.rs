@@ -580,7 +580,6 @@ impl ReplayerApp {
         start_output_thread::<NUM_OUTPUT_CHANNELS>(
             self.ai2output.clone(),
             Arc::new(Mutex::new(self.human_synth.choice_vec())),
-            self.quit_threads.clone(),
         );
         start_ai_thread(
             self.ai_algorithm.table_ref(),
