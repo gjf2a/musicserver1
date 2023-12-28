@@ -115,7 +115,6 @@ impl SynthApp {
         start_output_thread::<NUM_OUTPUT_CHANNELS>(
             self.gui2output.clone(),
             Arc::new(Mutex::new(self.synth.choice_vec())),
-            self.quit_threads.clone(),
         );
 
         let recorder = self.recorder.clone();
