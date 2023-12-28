@@ -74,6 +74,7 @@ struct ReplayerApp {
     melody_progress: Arc<AtomicCell<Option<f32>>>,
     melody_run_status: MelodyRunStatus,
     adjust_search_preferences: bool,
+    select_record_chord_progressions: bool,
     variations_of_current_melody: bool,
     show_variation: bool,
     show_synth_choices: bool,
@@ -128,6 +129,7 @@ impl ReplayerApp {
             melody_progress: Arc::new(AtomicCell::new(None)),
             melody_run_status,
             adjust_search_preferences: false,
+            select_record_chord_progressions: false,
             variations_of_current_melody: false,
             show_variation: true,
             show_synth_choices: true,
@@ -261,25 +263,30 @@ impl ReplayerApp {
         if self.adjust_search_preferences {
             self.search_preference_screen(ui);
         } else {
-            ui.checkbox(&mut self.show_melody_sections, "Show Melody Sections");
-            ui.checkbox(&mut self.show_figures, "Show Figure Boundaries");
-            let before = self.variations_of_current_melody;
-            ui.checkbox(
-                &mut self.variations_of_current_melody,
-                "Variations of Current Melody",
-            );
-            if self.variations_of_current_melody {
-                if !before {
-                    self.request_refresh();
-                }
+            ui.checkbox(&mut self.select_record_chord_progressions, "Chord Progressions");
+            if self.select_record_chord_progressions {
+                ui.label("Selected Chord progressions. Have fun!");
             } else {
-                if before {
-                    self.request_refresh();
+                ui.checkbox(&mut self.show_melody_sections, "Show Melody Sections");
+                ui.checkbox(&mut self.show_figures, "Show Figure Boundaries");
+                let before = self.variations_of_current_melody;
+                ui.checkbox(
+                    &mut self.variations_of_current_melody,
+                    "Variations of Current Melody",
+                );
+                if self.variations_of_current_melody {
+                    if !before {
+                        self.request_refresh();
+                    }
+                } else {
+                    if before {
+                        self.request_refresh();
+                    }
+                    ui.checkbox(&mut self.show_variation, "Show Variation");
                 }
-                ui.checkbox(&mut self.show_variation, "Show Variation");
-            }
-            if self.displaying_melody_var_info() {
-                self.display_melody_info(ui, staff_scaling);
+                if self.displaying_melody_var_info() {
+                    self.display_melody_info(ui, staff_scaling);
+                }
             }
         }
     }

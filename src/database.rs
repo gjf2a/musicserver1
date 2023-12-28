@@ -532,7 +532,7 @@ impl Database {
         Ok(info)
     }
 
-    fn store_chord_progression(&mut self, progression: &Vec<Chord>) -> anyhow::Result<()> {
+    pub fn store_chord_progression(&mut self, progression: &Vec<Chord>) -> anyhow::Result<()> {
         let timestamp = Utc::now().timestamp();
         let rating = Preference::Neutral;
         let connection = self.get_connection()?;
