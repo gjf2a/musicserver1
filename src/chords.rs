@@ -196,7 +196,7 @@ impl PolyphonicRecording {
         let mut current_notes = BTreeSet::new();
         let mut prev = None;
         while let Some(cmd) = playback.next() {
-            let pitch = cmd.note_velocity().0;
+            let pitch = cmd.note_velocity();
             if cmd.is_note_on() {
                 current_notes.insert(pitch);
             } else {
@@ -215,7 +215,7 @@ impl PolyphonicRecording {
 fn push_next_chord(
     result: &mut Vec<Chord>,
     current_time: OrderedFloat<f64>,
-    prev: Option<(Vec<MidiByte>, OrderedFloat<f64>)>,
+    prev: Option<(Vec<(MidiByte,MidiByte)>, OrderedFloat<f64>)>,
     min_chord_duration: f64,
 ) {
     if let Some((prev_notes, prev_time)) = prev {
@@ -224,7 +224,7 @@ fn push_next_chord(
             result.push(Chord {
                 start: prev_time,
                 duration,
-                notes: prev_notes,
+                notes_velocities: prev_notes,
             });
         }
     }
@@ -234,16 +234,17 @@ fn push_next_chord(
 pub struct Chord {
     start: OrderedFloat<f64>,
     duration: OrderedFloat<f64>,
-    notes: Vec<MidiByte>,
+    notes_velocities: Vec<(MidiByte,MidiByte)>,
 }
 
 impl Chord {
     pub fn note_weight_vector(&self) -> Option<[f64; USIZE_NOTES_PER_OCTAVE]> {
-        if self.notes.len() > 0 {
+        if self.notes_velocities.len() > 0 {
             let mut result = [0.0; USIZE_NOTES_PER_OCTAVE];
-            for n in self.notes.iter() {
+            for (n,_) in self.notes_velocities.iter() {
                 result[*n as usize % USIZE_NOTES_PER_OCTAVE] += self.duration.0;
             }
+            println!("{result:?}");
             Some(result)
         } else {
             None

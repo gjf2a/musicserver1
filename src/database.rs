@@ -162,6 +162,9 @@ impl Database {
         connection.execute("CREATE TABLE IF NOT EXISTS melodies (melody_row INTEGER, pitch INTEGER, duration FLOAT, velocity INTEGER);")?;
         connection.execute("CREATE TABLE IF NOT EXISTS variation_info (variation_row INTEGER, original_row INTEGER, algorithm_name TEXT, random_prob FLOAT, ornament_prob FLOAT, min_note_duration FLOAT, whimsify INTEGER);")?;
 
+        //connection.execute("CREATE TABLE IF NOT EXISTS comps (comp_row INTEGER, pitch INTEGER, start FLOAT, duration FLOAT, velocity INTEGER);")?;
+        //todo!("Create tables for indexing comps, tagging comps, and relating comps and melodies.");
+
         connection
             .execute("CREATE INDEX IF NOT EXISTS original_rows ON variation_info (original_row)")?;
         connection.execute(
