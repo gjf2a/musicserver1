@@ -1,4 +1,5 @@
 use crate::analyzer::{Melody, MidiByte, Note};
+use crate::chords::Chord;
 use anyhow::bail;
 use chrono::{Local, NaiveDate, NaiveTime, TimeZone, Utc};
 use crossbeam_queue::SegQueue;
@@ -162,8 +163,15 @@ impl Database {
         connection.execute("CREATE TABLE IF NOT EXISTS melodies (melody_row INTEGER, pitch INTEGER, duration FLOAT, velocity INTEGER);")?;
         connection.execute("CREATE TABLE IF NOT EXISTS variation_info (variation_row INTEGER, original_row INTEGER, algorithm_name TEXT, random_prob FLOAT, ornament_prob FLOAT, min_note_duration FLOAT, whimsify INTEGER);")?;
 
-        //connection.execute("CREATE TABLE IF NOT EXISTS comps (comp_row INTEGER, pitch INTEGER, start FLOAT, duration FLOAT, velocity INTEGER);")?;
-        //todo!("Create tables for indexing comps, tagging comps, and relating comps and melodies.");
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS progression_index (timestamp INTEGER, rating TEXT);",
+        )?;
+        connection.execute(
+            "CREATE TABLE IF NOT EXISTS progression_tags (progression_row INTEGER, tag TEXT);",
+        )?;
+        connection.execute("CREATE TABLE IF NOT EXISTS chord_index (timestamp INTEGER);")?;
+        connection.execute("CREATE TABLE IF NOT EXISTS progression_times (progression_row INTEGER, chord_row INTEGER, start FLOAT, duration FLOAT);")?;
+        connection.execute("CREATE TABLE IF NOT EXISTS chord_notes (chord_row INTEGER, pitch INTEGER, velocity INTEGER);")?;
 
         connection
             .execute("CREATE INDEX IF NOT EXISTS original_rows ON variation_info (original_row)")?;
@@ -178,6 +186,21 @@ impl Database {
         connection.execute(
             "CREATE INDEX IF NOT EXISTS variation_algorithms ON variation_info (algorithm_name)",
         )?;
+
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS progression_rows ON progression_times (progression_row)",
+        )?;
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS progression_timestamps ON progression_index (timestamp)",
+        )?;
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS progression_ratings ON progression_index (rating)",
+        )?;
+        connection.execute(
+            "CREATE INDEX IF NOT EXISTS progression_tag ON progression_tags (progression_row)",
+        )?;
+        connection
+            .execute("CREATE INDEX IF NOT EXISTS progression_tagged ON progression_tags (tag)")?;
         Ok(connection)
     }
 
@@ -388,6 +411,27 @@ impl Database {
         }
     }
 
+    pub fn progression(&mut self, connection: &Connection, rowid: i64) -> anyhow::Result<Vec<Chord>> {
+        let mut statement = connection.prepare("SELECT chord_row, start, duration FROM progression_times WHERE progression_row = ?")?;
+        statement.bind((1, rowid))?;
+        let mut result = vec![];
+        while let State::Row = statement.next()? {
+            let chord_row = statement.read::<i64, usize>(0)?;
+            let start = statement.read::<f64, usize>(1)?;
+            let duration = statement.read::<f64, usize>(2)?;
+            let mut statement = connection.prepare("SELECT pitch, velocity FROM chord_notes WHERE chord_row = ?")?;
+            statement.bind((1, chord_row))?;
+            let mut notes_velocities = vec![];
+            while let State::Row = statement.next()? {
+                let note = statement.read::<i64, usize>(0)? as MidiByte;
+                let velocity = statement.read::<i64, usize>(1)? as MidiByte;
+                notes_velocities.push((note, velocity));
+            }
+            result.push(Chord::new(start, duration, notes_velocities));
+        }
+        Ok(result)
+    }
+
     pub fn stats(
         &self,
         connection: &Connection,
@@ -464,16 +508,12 @@ impl Database {
         statement.bind((1, timestamp))?;
         statement.bind((2, rating.to_string().as_str()))?;
         statement.next().unwrap();
-        let mut statement = connection.prepare("SELECT last_insert_rowid()")?;
-        statement.next()?;
-        let rowid = statement.read::<i64, usize>(0)?;
+        let rowid = Self::get_last_row_id(&connection)?;
 
         for note in melody.iter() {
-            let mut statement = connection
-                .prepare(
-                    "INSERT INTO melodies (melody_row, pitch, duration, velocity) VALUES (?, ?, ?, ?);",
-                )
-                .unwrap();
+            let mut statement = connection.prepare(
+                "INSERT INTO melodies (melody_row, pitch, duration, velocity) VALUES (?, ?, ?, ?);",
+            )?;
             statement.bind((1, rowid))?;
             statement.bind((2, note.pitch() as i64))?;
             statement.bind((3, note.duration()))?;
@@ -491,6 +531,48 @@ impl Database {
         self.melody_cache.insert(info.rowid, melody.clone());
         Ok(info)
     }
+
+    fn store_chord_progression(&mut self, progression: &Vec<Chord>) -> anyhow::Result<()> {
+        let timestamp = Utc::now().timestamp();
+        let rating = Preference::Neutral;
+        let connection = self.get_connection()?;
+        let mut statement = connection
+            .prepare("INSERT INTO progression_index (timestamp, rating) VALUES (?, ?)")?;
+        statement.bind((1, timestamp))?;
+        statement.bind((2, rating.to_string().as_str()))?;
+        statement.next().unwrap();
+        let progression_row = Self::get_last_row_id(&connection)?;
+
+        for chord in progression.iter() {
+            let mut statement = connection.prepare("INSERT INTO chord_index (timestamp) VALUES (?);")?;
+            statement.bind((1, timestamp))?;
+            statement.next().unwrap();
+            let chord_row = Self::get_last_row_id(&connection)?;
+            for (note, velocity) in chord.notes_velocities() {
+                let mut statement = connection.prepare("INSERT INTO chord_notes (chord_row, pitch, velocity) VALUES (?, ?, ?")?;
+                statement.bind((1, chord_row))?;
+                statement.bind((2, note as i64))?;
+                statement.bind((3, velocity as i64))?;
+                statement.next().unwrap();
+            }
+
+            let mut statement = connection.prepare(
+                "INSERT INTO progression_times (progression_row, chord_row, start, duration) VALUES (?, ?, ?, ?);")?;
+            statement.bind((1, progression_row))?;
+            statement.bind((2, chord_row))?;
+            statement.bind((3, chord.start().0))?;
+            statement.bind((4, chord.duration().0))?;
+            statement.next().unwrap();
+        }
+        Ok(())
+    }
+
+    fn get_last_row_id(connection: &Connection) -> sqlite::Result<i64> {
+        let mut statement = connection.prepare("SELECT last_insert_rowid()")?;
+        statement.next()?;
+        statement.read::<i64, usize>(0)
+    }
+
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

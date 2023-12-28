@@ -1,5 +1,5 @@
 use std::{
-    collections::{BinaryHeap, BTreeMap},
+    collections::{BTreeMap, BinaryHeap},
     sync::Arc,
     time::Instant,
 };
@@ -205,7 +205,13 @@ impl PolyphonicRecording {
             let mut prev_prev = None;
             std::mem::swap(&mut prev, &mut prev_prev);
             push_next_chord(&mut result, cmd.time, prev_prev, min_chord_duration);
-            prev = Some((current_notes.iter().map(|(n, v)| (*n, *v)).collect::<Vec<_>>(), cmd.time));
+            prev = Some((
+                current_notes
+                    .iter()
+                    .map(|(n, v)| (*n, *v))
+                    .collect::<Vec<_>>(),
+                cmd.time,
+            ));
         }
         push_next_chord(&mut result, self.total_time, prev, min_chord_duration);
         result
@@ -215,7 +221,7 @@ impl PolyphonicRecording {
 fn push_next_chord(
     result: &mut Vec<Chord>,
     current_time: OrderedFloat<f64>,
-    prev: Option<(Vec<(MidiByte,MidiByte)>, OrderedFloat<f64>)>,
+    prev: Option<(Vec<(MidiByte, MidiByte)>, OrderedFloat<f64>)>,
     min_chord_duration: f64,
 ) {
     if let Some((prev_notes, prev_time)) = prev {
@@ -234,14 +240,18 @@ fn push_next_chord(
 pub struct Chord {
     start: OrderedFloat<f64>,
     duration: OrderedFloat<f64>,
-    notes_velocities: Vec<(MidiByte,MidiByte)>,
+    notes_velocities: Vec<(MidiByte, MidiByte)>,
 }
 
 impl Chord {
+    pub fn new(start: f64, duration: f64, notes_velocities: Vec<(MidiByte, MidiByte)>) -> Self {
+        Self {start: OrderedFloat(start), duration: OrderedFloat(duration), notes_velocities}
+    }
+
     pub fn note_weight_vector(&self) -> Option<[f64; USIZE_NOTES_PER_OCTAVE]> {
         if self.notes_velocities.len() > 0 {
             let mut result = [0.0; USIZE_NOTES_PER_OCTAVE];
-            for (n,_) in self.notes_velocities.iter() {
+            for (n, _) in self.notes_velocities.iter() {
                 result[*n as usize % USIZE_NOTES_PER_OCTAVE] += self.duration.0;
             }
             Some(result)
@@ -250,8 +260,21 @@ impl Chord {
         }
     }
 
+    pub fn notes_velocities(&self) -> impl Iterator<Item=(MidiByte, MidiByte)> + '_ {
+        self.notes_velocities.iter().copied()
+    }
+
+    pub fn start(&self) -> OrderedFloat<f64> {
+        self.start
+    }
+
+    pub fn duration(&self) -> OrderedFloat<f64> {
+        self.duration
+    }
+
     pub fn best_scale_for(&self) -> Option<MusicMode> {
-        self.note_weight_vector().map(|weights| MusicMode::best_scale_for(&weights))
+        self.note_weight_vector()
+            .map(|weights| MusicMode::best_scale_for(&weights))
     }
 }
 
