@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, BinaryHeap},
+    collections::{BTreeSet, BinaryHeap, BTreeMap},
     sync::Arc,
     time::Instant,
 };
@@ -193,19 +193,19 @@ impl PolyphonicRecording {
     pub fn chords(&self, min_chord_duration: f64) -> Vec<Chord> {
         let mut playback = self.playback();
         let mut result = vec![];
-        let mut current_notes = BTreeSet::new();
+        let mut current_notes = BTreeMap::new();
         let mut prev = None;
         while let Some(cmd) = playback.next() {
-            let pitch = cmd.note_velocity();
+            let (pitch, velocity) = cmd.note_velocity();
             if cmd.is_note_on() {
-                current_notes.insert(pitch);
+                current_notes.insert(pitch, velocity);
             } else {
                 current_notes.remove(&pitch);
             }
             let mut prev_prev = None;
             std::mem::swap(&mut prev, &mut prev_prev);
             push_next_chord(&mut result, cmd.time, prev_prev, min_chord_duration);
-            prev = Some((current_notes.iter().copied().collect::<Vec<_>>(), cmd.time));
+            prev = Some((current_notes.iter().map(|(n, v)| (*n, *v)).collect::<Vec<_>>(), cmd.time));
         }
         push_next_chord(&mut result, self.total_time, prev, min_chord_duration);
         result
@@ -244,7 +244,6 @@ impl Chord {
             for (n,_) in self.notes_velocities.iter() {
                 result[*n as usize % USIZE_NOTES_PER_OCTAVE] += self.duration.0;
             }
-            println!("{result:?}");
             Some(result)
         } else {
             None
