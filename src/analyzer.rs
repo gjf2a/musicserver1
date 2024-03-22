@@ -1345,11 +1345,11 @@ pub enum NoteLetter {
 
 impl NoteLetter {
     pub fn next(&self) -> Self {
-        enum_iterator::next_cycle(self).unwrap()
+        enum_iterator::next_cycle(self)
     }
 
     pub fn prev(&self) -> Self {
-        enum_iterator::previous_cycle(self).unwrap()
+        enum_iterator::previous_cycle(self)
     }
 
     pub fn natural_pitch(&self) -> MidiByte {
