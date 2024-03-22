@@ -361,11 +361,12 @@ impl<'a> IncrementalNoteRenderer<'a> {
 
     fn show_sections(&self, i: usize, x: f32, y: f32) {
         match self.melody.section_number_for(i) {
-            None => self.painter.circle_filled(
+            None => {self.painter.circle_filled(
                 Pos2 { x, y },
                 self.renderer.y_per_pitch,
                 self.note_color,
-            ),
+            );
+        }
             Some(s) => {
                 self.painter.text(
                     Pos2 { x, y },
